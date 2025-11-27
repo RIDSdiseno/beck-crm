@@ -1,6 +1,7 @@
 // src/components/DateRangeQuickFilter.tsx
 import React from "react";
 import { DatePicker, Segmented, Tooltip } from "antd";
+import type { RangePickerProps } from "antd/es/date-picker";
 import { CalendarOutlined } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 
@@ -58,6 +59,15 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
     return "todo";
   })();
 
+  // handler tipado usando RangePickerProps, sin any
+  const handleRangeChange: RangePickerProps["onChange"] = (dates) => {
+    if (!dates || !dates[0] || !dates[1]) {
+      onChange(null);
+      return;
+    }
+    onChange([dates[0], dates[1]] as [Dayjs, Dayjs]);
+  };
+
   return (
     <div className="flex flex-1 flex-col gap-1 min-w-[260px]">
       <div className="flex items-center justify-between">
@@ -65,7 +75,10 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
           <CalendarOutlined className="text-beck-accent" />
           Rango de fechas
         </span>
-        <Tooltip title="Atajos: Hoy / Semana / Mes / Toda la obra" placement="topRight">
+        <Tooltip
+          title="Atajos: Hoy / Semana / Mes / Toda la obra"
+          placement="topRight"
+        >
           <Segmented
             size="small"
             value={currentPreset}
@@ -83,14 +96,8 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
       <RangePicker
         size="small"
         format="DD-MM-YYYY"
-        value={value as any}
-        onChange={(values) =>
-          onChange(
-            values && values[0] && values[1]
-              ? [values[0], values[1]]
-              : null
-          )
-        }
+        value={value as RangePickerProps["value"]}
+        onChange={handleRangeChange}
         placeholder={["Desde", "Hasta"]}
         allowClear
         style={{ width: "100%" }}

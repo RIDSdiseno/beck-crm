@@ -19,7 +19,7 @@ import {
   FileTextOutlined,
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
-import type { EstadoCotizacion } from "../types/cotizacion";
+import type { EstadoCotizacion, Cotizacion } from "../types/cotizacion";
 
 export type CotizacionEditorValues = {
   id?: number;
@@ -29,8 +29,8 @@ export type CotizacionEditorValues = {
   // datos de cotización
   cliente: string;
   proyecto?: string;
-  origen: string;
-  tipo: string;
+  origen: "BECK" | "FIREMAT";
+  tipo: Cotizacion["tipo"];
   fecha: Dayjs;
   vigencia: Dayjs;
   estado: EstadoCotizacion;
@@ -166,7 +166,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       cliente: initialValues?.cliente || "",
       proyecto: initialValues?.proyecto || "",
       origen: initialValues?.origen || "BECK",
-      tipo: initialValues?.tipo || "Cliente",
+      tipo: (initialValues?.tipo as Cotizacion["tipo"]) || "Cliente",
       fecha: baseFecha,
       vigencia: baseVigencia,
       estado: initialValues?.estado || "Borrador",
@@ -222,7 +222,11 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
               <Form.Item<CotizacionEditorValues>
                 name="tipoEntidad"
-                label={<span className="text-[11px] text-slate-600">Tipo de entidad</span>}
+                label={
+                  <span className="text-[11px] text-slate-600">
+                    Tipo de entidad
+                  </span>
+                }
               >
                 <Select
                   size="small"
@@ -269,7 +273,9 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                     Entidad / cliente
                   </span>
                 }
-                rules={[{ required: true, message: "Ingrese o seleccione el cliente" }]}
+                rules={[
+                  { required: true, message: "Ingrese o seleccione el cliente" },
+                ]}
               >
                 <Input
                   size="small"
@@ -289,7 +295,9 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Form.Item<CotizacionEditorValues>
                   name="tipo"
-                  label={<span className="text-[11px] text-slate-600">Tipo</span>}
+                  label={
+                    <span className="text-[11px] text-slate-600">Tipo</span>
+                  }
                   rules={[{ required: true, message: "Seleccione tipo" }]}
                 >
                   <Select
@@ -306,18 +314,25 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
                 <Form.Item<CotizacionEditorValues>
                   name="estado"
-                  label={<span className="text-[11px] text-slate-600">Estado</span>}
+                  label={
+                    <span className="text-[11px] text-slate-600">Estado</span>
+                  }
                   rules={[{ required: true, message: "Seleccione estado" }]}
                 >
                   <Select
                     size="small"
-                    options={estadosOptions.map((e) => ({ label: e, value: e }))}
+                    options={estadosOptions.map((e) => ({
+                      label: e,
+                      value: e,
+                    }))}
                   />
                 </Form.Item>
 
                 <Form.Item<CotizacionEditorValues>
                   name="origen"
-                  label={<span className="text-[11px] text-slate-600">Origen</span>}
+                  label={
+                    <span className="text-[11px] text-slate-600">Origen</span>
+                  }
                   rules={[{ required: true, message: "Seleccione origen" }]}
                 >
                   <Select
@@ -408,7 +423,10 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               <InputNumber min={1} style={{ width: "100%" }} size="small" />
             </Form.Item>
 
-            <Form.Item<CotizacionEditorValues> name="codigo" label="Código (opcional)">
+            <Form.Item<CotizacionEditorValues>
+              name="codigo"
+              label="Código (opcional)"
+            >
               <Input size="small" placeholder="Ej: BECK-COT-2025-021" />
             </Form.Item>
           </div>
@@ -425,10 +443,16 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               >
                 + Crear producto nuevo
               </Button>
-              <Button size="small" className="border-emerald-200 text-emerald-600">
+              <Button
+                size="small"
+                className="border-emerald-200 text-emerald-600"
+              >
                 + Servicio
               </Button>
-              <Button size="small" className="border-amber-200 text-amber-600">
+              <Button
+                size="small"
+                className="border-amber-200 text-amber-600"
+              >
                 + Descuento adicional
               </Button>
             </div>
@@ -492,28 +516,29 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 </div>
 
                 <Form.Item<CotizacionEditorValues>
-                  name="monto"
-                  className="mt-2 mb-0"
-                  label={
-                    <span className="text-[11px] font-semibold text-slate-800">
-                      Total final
-                    </span>
-                  }
-                >
-                  <InputNumber
-                    min={0}
-                    style={{ width: "100%" }}
-                    size="small"
-                    formatter={(value) =>
-                      value
-                        ? `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-                        : ""
+                    name="monto"
+                    className="mt-2 mb-0"
+                    label={
+                        <span className="text-[11px] font-semibold text-slate-800">
+                        Total final
+                        </span>
                     }
-                    parser={(value) =>
-                      value ? Number(value.replace(/\$\s?|(\.)/g, "")) : 0
-                    }
-                  />
+                    >
+                    <InputNumber<number>
+                        min={0}
+                        style={{ width: "100%" }}
+                        size="small"
+                        formatter={(value) =>
+                        value
+                            ? `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                            : ""
+                        }
+                        parser={(value) =>
+                        value ? Number(value.replace(/\$\s?|(\.)/g, "")) : 0
+                        }
+                    />
                 </Form.Item>
+
               </div>
             </div>
           </div>
@@ -541,7 +566,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 htmlType="submit"
                 className="bg-sky-500 hover:bg-sky-600 border-none"
               >
-                {mode === "create" ? "Creando..." : "Guardar cambios"}
+                {mode === "create" ? "Crear cotización" : "Guardar cambios"}
               </Button>
             </div>
           </div>

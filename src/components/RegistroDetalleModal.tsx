@@ -5,8 +5,8 @@ import {
   FireOutlined,
   EnvironmentOutlined,
   UserOutlined,
-  NumberOutlined,
   FieldTimeOutlined,
+  CameraOutlined,  
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { RegistroSello } from "../types/registroSello";

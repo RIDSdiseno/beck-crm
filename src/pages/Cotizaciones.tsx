@@ -10,6 +10,7 @@ import {
   Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { RangePickerProps } from "antd/es/date-picker";
 import {
   PlusOutlined,
   FileTextOutlined,
@@ -29,7 +30,7 @@ import * as XLSX from "xlsx";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 import type { Cotizacion, EstadoCotizacion } from "../types/cotizacion";
 import CotizacionEditorModal, {
-  type CotizacionEditorValues, // 👈 IMPORTAR COMO TYPE
+  type CotizacionEditorValues,
 } from "../components/CotizacionEditorModal";
 
 const { RangePicker } = DatePicker;
@@ -58,7 +59,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
       codigo: "BECK-COT-2025-020",
       cliente: "3DENTAL SPA",
       proyecto: "Sellos cortafuego clínica dental",
-      origen: "BECK", // 🔹 mock con origen BECK
+      origen: "BECK",
       tipo: "Cliente",
       fecha: dayjs("2025-11-26").format("YYYY-MM-DD"),
       vigencia: dayjs("2025-12-26").format("YYYY-MM-DD"),
@@ -79,10 +80,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   const [filtroEstado, setFiltroEstado] =
     useState<EstadoCotizacion | undefined>();
   const [filtroOrigen, setFiltroOrigen] = useState<string | undefined>();
-
-  // 🔹 usar el mismo tipo de "tipo" que en Cotizacion
   const [filtroTipo, setFiltroTipo] = useState<Cotizacion["tipo"] | undefined>();
-
   const [filtroFechas, setFiltroFechas] = useState<RangeValue>(null);
   const [searchText, setSearchText] = useState<string>("");
 
@@ -91,7 +89,6 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
     [data]
   );
 
-  // 🔹 tipos bien tipados según Cotizacion["tipo"]
   const tipos = useMemo<Cotizacion["tipo"][]>(
     () => Array.from(new Set(data.map((c) => c.tipo))).sort(),
     [data]
@@ -344,7 +341,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           codigo: editingRecord.codigo,
           cliente: editingRecord.cliente,
           proyecto: editingRecord.proyecto,
-          origen: editingRecord.origen,
+          origen: editingRecord.origen as CotizacionEditorValues["origen"],
           tipo: editingRecord.tipo,
           fecha: dayjs(editingRecord.fecha),
           vigencia: dayjs(editingRecord.vigencia),
@@ -406,6 +403,15 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
 
     setEditorOpen(false);
     setEditingRecord(null);
+  };
+
+  // handler tipado para RangePicker (sin any, sin genéricos)
+  const handleRangeChange: RangePickerProps["onChange"] = (val) => {
+    if (!val || !val[0] || !val[1]) {
+      setFiltroFechas(null);
+      return;
+    }
+    setFiltroFechas([val[0], val[1]] as [Dayjs, Dayjs]);
   };
 
   // --------- render ----------
@@ -513,18 +519,12 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
 
           <div className="flex flex-col gap-1">
             <span className="text-[11px] text-slate-500">Rango de fecha</span>
-            <RangePicker<Dayjs>
+            <RangePicker
               size="small"
               className="w-full"
               format="DD-MM-YYYY"
-              value={filtroFechas ?? undefined}
-              onChange={(val) => {
-                if (!val || val.length < 2 || !val[0] || !val[1]) {
-                  setFiltroFechas(null);
-                  return;
-                }
-                setFiltroFechas([val[0], val[1]]);
-              }}
+              value={filtroFechas as RangePickerProps["value"]}
+              onChange={handleRangeChange}
             />
           </div>
         </div>

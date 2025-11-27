@@ -14,10 +14,17 @@ type LoginProps = {
   onLogin: (values: { email: string; password: string }) => void;
 };
 
+// 👇 Tipo explícito para los valores del formulario
+type LoginFormValues = {
+  email: string;
+  password: string;
+  remember?: boolean;
+};
+
 const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
   const isDark = themeMode === "dark";
 
-  const handleFinish = (values: any) => {
+  const handleFinish = (values: LoginFormValues) => {
     onLogin({ email: values.email, password: values.password });
   };
 
@@ -131,7 +138,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
               </p>
             </div>
 
-            <Form
+            <Form<LoginFormValues>
               layout="vertical"
               size="middle"
               onFinish={handleFinish}

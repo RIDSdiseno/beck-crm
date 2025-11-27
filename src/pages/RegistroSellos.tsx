@@ -19,8 +19,8 @@ import * as XLSX from "xlsx";
 import type { RegistroSello } from "../types/registroSello";
 import DateRangeQuickFilter from "../components/DateRangeQuickFilter";
 import RegistroDetalleModal from "../components/RegistroDetalleModal";
-import NuevoRegistroDrawer, { type
-  NuevoRegistroValues,
+import NuevoRegistroDrawer, {
+  type NuevoRegistroValues,
 } from "../components/NuevoRegistroDrawer";
 
 type RegistroSellosProps = {
@@ -142,7 +142,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "itemizadoBeck",
       fixed: "left",
       width: 130,
-      render: (text) => (
+      render: (text: string) => (
         <span className="font-semibold text-orange-700">{text}</span>
       ),
     },
@@ -157,7 +157,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "fechaEjecucion",
       key: "fechaEjecucion",
       width: 110,
-      render: (value) => dayjs(value).format("DD-MM-YYYY"),
+      render: (value: string) => dayjs(value).format("DD-MM-YYYY"),
     },
     {
       title: "Día",
@@ -261,7 +261,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "fotoUrl",
       key: "foto",
       width: 160,
-      render: (_: any, record) =>
+      render: (_value: RegistroSello["fotoUrl"], record: RegistroSello) =>
         record.fotoUrl ? (
           <div className="flex items-center gap-3">
             <div className="relative h-10 w-16 overflow-hidden rounded-md border border-slate-200">
@@ -332,16 +332,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     const nuevo: RegistroSello = {
       id: data.length ? data[data.length - 1].id + 1 : 1,
       itemizadoBeck: values.itemizadoBeck,
-      itemizadoSacyr: values.itemizadoSacyr,
+      // 👇 aseguramos string, aunque el form permita undefined
+      itemizadoSacyr: values.itemizadoSacyr || "",
       fechaEjecucion: values.fechaEjecucion.format("YYYY-MM-DD"),
       dia: dayjs(values.fechaEjecucion).format("dddd"),
       piso: values.piso,
-      ejeAlfabetico: values.ejeAlfabetico,
-      ejeNumerico: values.ejeNumerico,
+      ejeAlfabetico: values.ejeAlfabetico || "",
+      ejeNumerico: values.ejeNumerico || "",
       nombreSellador: values.nombreSellador,
       fotoUrl: values.fotoUrl,
-      recinto: values.recinto,
-      numeroSello: values.numeroSello,
+      recinto: values.recinto || "",
+      numeroSello: values.numeroSello || "",
       cantidadSellos: cantidad,
       holguraCm: values.holguraCm,
       factorHolgura: factor,
@@ -516,7 +517,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 Equivalente por factor de holgura y tipo de cielo
               </p>
             </div>
-              <BarChartOutlined className="text-xl text-emerald-600" />
+            <BarChartOutlined className="text-xl text-emerald-600" />
           </div>
         </Card>
       </div>
