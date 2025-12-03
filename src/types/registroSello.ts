@@ -1,22 +1,5 @@
-<<<<<<< HEAD
 export type RegistroSello = {
   id: number;
-=======
-export type EstadoRegistro =
-  | "Pendiente"
-  | "Ejecutado"
-  | "Observado"
-  | "Reparado";
-
-export type RegistroSello = {
-  id: number;
-  // relaciones CRM
-  obraId?: string;
-  contratoId?: string;
-  frenteTrabajo?: string;
-  estado?: EstadoRegistro;
-
->>>>>>> 68e4f8a (push 1)
   itemizadoBeck: string;
   itemizadoSacyr: string;
   fechaEjecucion: string; // ISO

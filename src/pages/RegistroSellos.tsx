@@ -22,10 +22,6 @@ import RegistroDetalleModal from "../components/RegistroDetalleModal";
 import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
 } from "../components/NuevoRegistroDrawer";
-<<<<<<< HEAD
-=======
-import { useRegistros } from "../context/RegistrosProvider";
->>>>>>> 68e4f8a (push 1)
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
@@ -36,7 +32,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   void themeMode;
 
   const [openDrawer, setOpenDrawer] = useState(false);
-<<<<<<< HEAD
 
   const [data, setData] = useState<RegistroSello[]>([
     {
@@ -61,9 +56,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       observaciones: "Sellos verificados por supervisor.",
     },
   ]);
-=======
-  const { data, setData } = useRegistros();
->>>>>>> 68e4f8a (push 1)
 
   // filtros
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
