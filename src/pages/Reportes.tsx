@@ -378,32 +378,35 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
     [registrosEspuma]
   );
 
-  const columnsSelladores: ColumnsType<ResumenSellador> = [
-    {
-      title: "Sellador / equipo",
-      dataIndex: "nombre",
-      key: "nombre",
-      render: (value) => (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-slate-100">
-            <UserOutlined className="text-[11px]" />
-          </span>
+const columnsSelladores: ColumnsType<ResumenSellador> = [
+  {
+    title: "Sellador / equipo",
+    dataIndex: "nombre",
+    key: "nombre",
+    width: 180,
+    render: (value) => (
+      <div className="flex items-center gap-2 text-xs">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-slate-100">
+          <UserOutlined className="text-[11px]" />
+        </span>
           <span>{value}</span>
         </div>
       ),
     },
-    {
-      title: "Pisos intervenidos",
-      dataIndex: "pisos",
-      key: "pisos",
-      width: 200,
-      render: (value) => (
-        <span className="text-[11px] text-slate-400">{value}</span>
-      ),
-    },
-    {
-      title: "Registros",
-      dataIndex: "registros",
+  {
+    title: "Pisos intervenidos",
+    dataIndex: "pisos",
+    key: "pisos",
+    width: 220,
+    render: (value) => (
+      <span className="text-[11px] text-slate-500 block truncate max-w-[200px]">
+        {value}
+      </span>
+    ),
+  },
+  {
+    title: "Registros",
+    dataIndex: "registros",
       key: "registros",
       width: 90,
       sorter: (a, b) => a.registros - b.registros,
@@ -434,30 +437,35 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const columnsItemizado: ColumnsType<ResumenItemizado> = [
     {
       title: "Código",
-      dataIndex: "codigo",
-      key: "codigo",
-      width: 120,
-      render: (value) => (
-        <Tag color="gold" className="font-mono text-xs px-2 py-1">
-          {value}
-        </Tag>
-      ),
-    },
-    {
+    dataIndex: "codigo",
+    key: "codigo",
+    width: 140,
+    render: (value) => (
+      <Tag
+        color="gold"
+        className="font-mono text-xs px-2 py-1 max-w-[120px] truncate"
+      >
+        {value}
+      </Tag>
+    ),
+  },
+  {
       title: "Descripción",
       dataIndex: "descripcion",
       key: "descripcion",
       ellipsis: true,
     },
     {
-      title: "Pisos involucrados",
-      dataIndex: "pisos",
-      key: "pisos",
-      width: 200,
-      render: (value) => (
-        <span className="text-[11px] text-slate-400">{value}</span>
-      ),
-    },
+    title: "Pisos involucrados",
+    dataIndex: "pisos",
+    key: "pisos",
+    width: 220,
+    render: (value) => (
+      <span className="text-[11px] text-slate-500 block truncate max-w-[200px]">
+        {value}
+      </span>
+    ),
+  },
     {
       title: "Sellos",
       dataIndex: "totalSellos",
@@ -515,7 +523,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 px-2 sm:px-0 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
@@ -554,7 +562,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       </div>
 
       {/* KPIs principales sellos */}
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <Card
           styles={{ body: { padding: 16 } }}
           className={`border ${
@@ -642,7 +650,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       </div>
 
       {/* Métricas BECK / SACYR + pisos */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Card
           styles={{ body: { padding: 16 } }}
           className={`border ${
@@ -725,7 +733,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       </div>
 
       {/* Gráficos sellos: por sellador y por piso */}
-      <div className="grid lg:grid-cols-[1.3fr,1fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.3fr,1fr] gap-4">
         {/* Barras por sellador */}
         <Card
           title={
@@ -864,7 +872,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
         styles={{ body: { padding: 16 } }}
       >
         {/* KPIs espuma */}
-        <div className="grid md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div>
             <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
               Metros lineales ejecutados
@@ -901,8 +909,8 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
         </div>
 
         {/* Gráfico + tabla espuma */}
-        <div className="grid lg:grid-cols-[1.1fr,1.2fr] gap-4">
-          <div className="h-64">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr,1.2fr] gap-4">
+          <div className="h-64 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartEspumaPorPiso}
@@ -956,12 +964,14 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             </ResponsiveContainer>
           </div>
 
-          <div>
+          <div className="overflow-x-auto">
             <Table
               size="small"
               columns={columnsEspuma}
               dataSource={dataEspumaTabla}
               pagination={false}
+              scroll={{ x: 600 }}
+              tableLayout="fixed"
             />
           </div>
         </div>
@@ -986,12 +996,17 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           body: { padding: 0 },
         }}
       >
-        <Table
-          size="small"
-          columns={columnsSelladores}
-          dataSource={resumenSellador}
-          pagination={{ pageSize: 5 }}
-        />
+        <div className="overflow-x-auto">
+          <Table
+            size="small"
+            columns={columnsSelladores}
+            dataSource={resumenSellador}
+            pagination={{ pageSize: 5 }}
+            scroll={{ x: 750 }}
+            tableLayout="fixed"
+            style={{ minWidth: 720 }}
+          />
+        </div>
       </Card>
 
       {/* Tablas BECK / SACYR */}
@@ -1021,12 +1036,17 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               : "bg-beck-card-light border-beck-border-light"
           }`}
         >
-          <Table
-            size="small"
-            columns={columnsItemizado}
-            dataSource={resumenBeck}
-            pagination={false}
-          />
+          <div className="w-full overflow-x-auto touch-pan-x">
+            <Table
+              size="small"
+              columns={columnsItemizado}
+              dataSource={resumenBeck}
+              pagination={false}
+              scroll={{ x: "max-content" }}
+              tableLayout="fixed"
+              className="min-w-[880px]"
+            />
+          </div>
         </Card>
 
         <Card
@@ -1054,12 +1074,17 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               : "bg-beck-card-light border-beck-border-light"
           }`}
         >
-          <Table
-            size="small"
-            columns={columnsItemizado}
-            dataSource={resumenSacyr}
-            pagination={false}
-          />
+          <div className="w-full overflow-x-auto touch-pan-x">
+            <Table
+              size="small"
+              columns={columnsItemizado}
+              dataSource={resumenSacyr}
+              pagination={false}
+              scroll={{ x: "max-content" }}
+              tableLayout="fixed"
+              className="min-w-[880px]"
+            />
+          </div>
         </Card>
       </div>
     </div>

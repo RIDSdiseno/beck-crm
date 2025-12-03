@@ -79,11 +79,33 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   onSubmit,
 }) => {
   const [form] = Form.useForm<CotizacionEditorValues>();
+  const [modalWidth, setModalWidth] = React.useState(980);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (typeof window === "undefined") return;
+      const next = Math.min(980, window.innerWidth - 24);
+      setModalWidth(next);
+    };
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
 
   // tabla de productos (estructura, aún sin lógica)
   const columns: ColumnsType<ItemTabla> = [
-    { title: "Tipo", dataIndex: "tipo", key: "tipo", width: 90 },
-    { title: "Descripción", dataIndex: "descripcion", key: "descripcion" },
+    { title: "Tipo", dataIndex: "tipo", key: "tipo", width: 90, ellipsis: true },
+    {
+      title: "Descripción",
+      dataIndex: "descripcion",
+      key: "descripcion",
+      ellipsis: true,
+      render: (value: string) => (
+        <span className="block max-w-[180px] md:max-w-none truncate">
+          {value}
+        </span>
+      ),
+    },
     {
       title: "Cant.",
       dataIndex: "cantidad",
@@ -189,10 +211,12 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={980}
+      width={modalWidth}
       destroyOnClose={false}
       title={null}
       bodyStyle={{ padding: 0 }}
+      styles={{ body: { padding: 0 } }}
+      maskStyle={{ backdropFilter: "blur(2px)" }}
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
         <div className="p-5 space-y-4">
@@ -432,7 +456,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
           </div>
 
           {/* productos/servicios */}
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 overflow-x-auto">
             <div className="flex flex-wrap gap-2 mb-3">
               <Button size="small" className="border-sky-200 text-sky-600">
                 + Seleccionar producto
@@ -462,6 +486,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               dataSource={[]}
               size="small"
               pagination={false}
+              scroll={{ x: 720 }}
+              tableLayout="fixed"
               locale={{
                 emptyText: (
                   <span className="text-[11px] text-slate-400">

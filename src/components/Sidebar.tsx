@@ -18,13 +18,18 @@ type SidebarProps = {
   themeMode: ThemeMode; // lo recibimos pero el tema es fijo claro
   collapsed: boolean;
   onToggleCollapse: () => void;
+  hiddenOnMobile?: boolean;
 };
 
 // Deben calzar con w-64 / w-20 usadas abajo
 export const SIDEBAR_WIDTH_EXPANDED = 256; // ~ w-64
 export const SIDEBAR_WIDTH_COLLAPSED = 80; // ~ w-20
 
-const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  collapsed,
+  onToggleCollapse,
+  hiddenOnMobile,
+}) => {
   const sidebarBase =
     "bg-[#f4f5fb] border-r border-slate-200/80 backdrop-blur-sm";
 
@@ -45,7 +50,8 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse }) => {
         ${sidebarBase}
         ${collapsed ? "w-20" : "w-64"}
         fixed inset-y-0 left-0
-        flex flex-col
+        ${hiddenOnMobile ? "hidden md:flex" : "flex"}
+        flex-col
         z-40
       `}
     >

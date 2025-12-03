@@ -8,8 +8,14 @@ import {
   Select,
   DatePicker,
   Button,
+  Upload,
+  message,
 } from "antd";
-import { CameraOutlined, FireOutlined } from "@ant-design/icons";
+import {
+  CameraOutlined,
+  FireOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 
 
@@ -28,6 +34,7 @@ export type NuevoRegistroValues = {
   factorHolgura: 1 | 1.2 | 1.4 | 1.8;
   cieloModular: 1 | 2 | 3;
   fotoUrl?: string;
+  fotoArchivo?: File;
   observaciones?: string;
 };
 
@@ -39,11 +46,13 @@ type Props = {
 
 const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
   const [form] = Form.useForm<NuevoRegistroValues>();
+  const [fileList, setFileList] = React.useState<any[]>([]);
 
   // cada vez que se abre, resetea y setea la fecha de hoy
   useEffect(() => {
     if (open) {
       form.resetFields();
+      setFileList([]);
       form.setFieldsValue({
         fechaEjecucion: dayjs(),
       } as Partial<NuevoRegistroValues>);
@@ -51,7 +60,14 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
   }, [open, form]);
 
   const handleFinish = (values: NuevoRegistroValues) => {
-    onSubmit(values);
+    const file =
+      fileList && fileList.length > 0
+        ? (fileList[0].originFileObj as File)
+        : undefined;
+    onSubmit({ ...values, fotoArchivo: file });
+    if (!values.fotoUrl && !file) {
+      message.info("Recuerda adjuntar foto o URL en la siguiente edición.");
+    }
   };
 
   return (
@@ -218,6 +234,22 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
                 prefix={<CameraOutlined />}
                 placeholder="URL foto o ID (Cloudinary después)"
               />
+            </Form.Item>
+            <Form.Item label="Foto local (subida)">
+              <Upload
+                fileList={fileList}
+                maxCount={1}
+                beforeUpload={() => false}
+                onChange={({ fileList: next }) => setFileList(next)}
+                accept="image/*"
+              >
+                <Button icon={<UploadOutlined />} size="small">
+                  Seleccionar archivo
+                </Button>
+              </Upload>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Guardado local (mock). Para backend real, conectar a Cloudinary/S3.
+              </p>
             </Form.Item>
           </div>
         </div>

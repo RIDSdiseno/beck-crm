@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Routes,
   Route,
@@ -27,9 +27,26 @@ const AppShell: React.FC = () => {
   // 🔒 Tema fijo: siempre "light"
   const themeMode: ThemeMode = "light";
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setCollapsed(true);
+    }
+  }, [isMobile]);
 
   const isLoginRoute = location.pathname === "/login";
 
@@ -51,22 +68,38 @@ const AppShell: React.FC = () => {
       className="bg-slate-100 text-slate-900"
       style={{ minHeight: "100vh" }}
     >
+      {isMobile && collapsed && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="fixed top-3 left-3 z-50 rounded-full bg-white/90 border border-slate-200 shadow px-3 py-2 text-xs font-semibold text-slate-700"
+        >
+          Menu
+        </button>
+      )}
       {/* SIDEBAR CLARO A LA IZQUIERDA */}
       <Sidebar
         themeMode={themeMode}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
+        hiddenOnMobile={isMobile && collapsed}
       />
 
       {/* CONTENIDO PRINCIPAL */}
       <Layout
         style={{
-          marginLeft: currentSidebarWidth,
+          marginLeft: isMobile ? 0 : currentSidebarWidth,
           transition: "margin-left 0.2s ease",
           minHeight: "100vh",
         }}
       >
-        <Content className="bg-slate-100" style={{ padding: 16 }}>
+        <Content
+          className="bg-slate-100"
+          style={{
+            padding: 16,
+            paddingTop: isMobile && collapsed ? 56 : 16,
+          }}
+        >
           <div className="max-w-6xl mx-auto">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
