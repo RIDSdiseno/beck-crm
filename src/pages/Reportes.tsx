@@ -25,7 +25,11 @@ import {
 } from "recharts";
 
 import type { ThemeMode } from "../hooks/useSystemTheme";
+<<<<<<< HEAD
 import type { RegistroSello } from "../types/registroSello";
+=======
+import { useRegistros } from "../context/RegistrosProvider";
+>>>>>>> 68e4f8a (push 1)
 
 type ReportesProps = {
   themeMode: ThemeMode;
@@ -91,6 +95,7 @@ const COLORS = [
 const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const isDark = themeMode === "dark";
 
+<<<<<<< HEAD
   // --- MOCK sellos (RegistroSello) ---
   const registros: RegistroSello[] = [
     {
@@ -157,6 +162,9 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       observaciones: "Holguras mayores, revisar en próxima inspección.",
     },
   ];
+=======
+  const { data: registros } = useRegistros();
+>>>>>>> 68e4f8a (push 1)
 
   // --- MOCK Junta lineal · ESPUMA ---
   const registrosEspuma: RegistroEspuma[] = [
@@ -431,6 +439,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
     },
   ];
 
+<<<<<<< HEAD
   const columnsItemizado: ColumnsType<ResumenItemizado> = [
     {
       title: "Código",
@@ -459,6 +468,44 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       ),
     },
     {
+=======
+const columnsItemizado: ColumnsType<ResumenItemizado> = [
+  {
+    title: "Código",
+    dataIndex: "codigo",
+    key: "codigo",
+    width: 140,
+    render: (value) => (
+      <Tag
+        color="gold"
+        className="font-mono text-xs px-2 py-1 max-w-[120px] truncate"
+      >
+        {value}
+      </Tag>
+    ),
+  },
+  {
+    title: "Descripción",
+    dataIndex: "descripcion",
+    key: "descripcion",
+    ellipsis: true,
+    render: (value: string) => (
+      <span className="text-xs text-slate-700 truncate block">{value}</span>
+    ),
+  },
+  {
+    title: "Pisos involucrados",
+    dataIndex: "pisos",
+    key: "pisos",
+    width: 220,
+    render: (value) => (
+      <span className="text-[11px] text-slate-500 block truncate max-w-[200px]">
+        {value}
+      </span>
+    ),
+  },
+  {
+>>>>>>> 68e4f8a (push 1)
       title: "Sellos",
       dataIndex: "totalSellos",
       key: "totalSellos",
@@ -559,6 +606,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
           }`}
@@ -573,6 +621,26 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             </p>
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+            Sellos totales
+          </p>
+          <div className="flex items-center gap-2">
+            <FireOutlined className="text-amber-500" />
+            <p
+              className={`text-2xl font-semibold ${
+                isDark ? "text-amber-200" : "text-slate-900"
+              }`}
+            >
+              {totalSellos}
+            </p>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-1">
+>>>>>>> 68e4f8a (push 1)
             Suma de todos los sellos registrados en la obra.
           </p>
         </Card>
@@ -581,6 +649,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
           }`}
@@ -592,6 +661,23 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             {totalRegistros}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+            Registros en sistema
+          </p>
+          <p
+            className={`text-2xl font-semibold ${
+              isDark ? "text-slate-100" : "text-slate-900"
+            }`}
+          >
+            {totalRegistros}
+          </p>
+          <p className="text-[11px] text-slate-600 mt-1">
+>>>>>>> 68e4f8a (push 1)
             Cada fila equivale a un punto de sellado.
           </p>
         </Card>
@@ -600,6 +686,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
           }`}
@@ -614,6 +701,26 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             </p>
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+            Selladores / equipos
+          </p>
+          <div className="flex items-center gap-2">
+            <UserOutlined className="text-sky-500" />
+            <p
+              className={`text-2xl font-semibold ${
+                isDark ? "text-slate-100" : "text-slate-900"
+              }`}
+            >
+              {totalSelladores}
+            </p>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-1">
+>>>>>>> 68e4f8a (push 1)
             Personas o cuadrillas con registros asignados.
           </p>
         </Card>
@@ -622,6 +729,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
           }`}
@@ -637,6 +745,27 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             Útil para ver eficiencia de cubicación en terreno.
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+            Promedio sellos / registro
+          </p>
+          <div className="flex items-center gap-2">
+            <BarChartOutlined className="text-emerald-500" />
+            <p
+              className={`text-2xl font-semibold ${
+                isDark ? "text-emerald-300" : "text-emerald-600"
+              }`}
+            >
+              {promedioSellosRegistro.toFixed(1)}
+            </p>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-1">
+            Util para ver eficiencia de cubicacion en terreno.
+>>>>>>> 68e4f8a (push 1)
           </p>
         </Card>
       </div>
@@ -647,8 +776,13 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+>>>>>>> 68e4f8a (push 1)
           }`}
         >
           <div className="flex items-center gap-3">
@@ -656,6 +790,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               <PartitionOutlined />
             </div>
             <div>
+<<<<<<< HEAD
               <p className="text-[11px] uppercase tracking-wide text-slate-400">
                 Ponderado BECK
               </p>
@@ -664,6 +799,16 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               </p>
               <p className="text-[11px] text-slate-500">
                 Factor por holguras y acceso según contrato BECK.
+=======
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                Ponderado BECK
+              </p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {totalBeck.toFixed(1)}
+              </p>
+              <p className="text-[11px] text-slate-600">
+                Factor por holguras y acceso segun contrato BECK.
+>>>>>>> 68e4f8a (push 1)
               </p>
             </div>
           </div>
@@ -673,8 +818,13 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+>>>>>>> 68e4f8a (push 1)
           }`}
         >
           <div className="flex items-center gap-3">
@@ -682,14 +832,23 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               <BarChartOutlined />
             </div>
             <div>
+<<<<<<< HEAD
               <p className="text-[11px] uppercase tracking-wide text-slate-400">
+=======
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+>>>>>>> 68e4f8a (push 1)
                 Ponderado SACYR
               </p>
               <p className="text-2xl font-semibold text-sky-400">
                 {totalSacyr.toFixed(1)}
               </p>
+<<<<<<< HEAD
               <p className="text-[11px] text-slate-500">
                 Acumulado según itemizado SACYR de cubicación.
+=======
+              <p className="text-[11px] text-slate-600">
+                Acumulado segun itemizado SACYR de cubicación.
+>>>>>>> 68e4f8a (push 1)
               </p>
             </div>
           </div>
@@ -699,19 +858,32 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
           styles={{ body: { padding: 16 } }}
           className={`border ${
             isDark
+<<<<<<< HEAD
               ? "bg-gradient-to-br from-[#050814] via-[#050814] to-black border-beck-border-dark"
               : "bg-white border-beck-border-light"
+=======
+              ? "bg-gradient-to-br from-[#0b1220] via-[#0b1220] to-[#050814] border-beck-border-dark"
+              : "bg-white border-slate-200"
+>>>>>>> 68e4f8a (push 1)
           }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div>
+<<<<<<< HEAD
               <p className="text-[11px] uppercase tracking-wide text-slate-400">
+=======
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+>>>>>>> 68e4f8a (push 1)
                 Pisos con avance
               </p>
               <p className="text-2xl font-semibold text-slate-100">
                 {pisosUnicos}
               </p>
+<<<<<<< HEAD
               <p className="text-[11px] text-slate-500">
+=======
+              <p className="text-[11px] text-slate-600">
+>>>>>>> 68e4f8a (push 1)
                 Pisos que ya tienen al menos un sello registrado.
               </p>
             </div>
@@ -866,13 +1038,21 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
         {/* KPIs espuma */}
         <div className="grid md:grid-cols-3 gap-4 mb-4">
           <div>
+<<<<<<< HEAD
             <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
+=======
+            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+>>>>>>> 68e4f8a (push 1)
               Metros lineales ejecutados
             </p>
             <p className="text-2xl font-semibold text-sky-300">
               {totalMetrosEspuma.toFixed(1)} m
             </p>
+<<<<<<< HEAD
             <p className="text-[11px] text-slate-500 mt-1">
+=======
+            <p className="text-[11px] text-slate-600 mt-1">
+>>>>>>> 68e4f8a (push 1)
               Longitud total de junta lineal sellada con espuma.
             </p>
           </div>
@@ -1026,6 +1206,10 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             columns={columnsItemizado}
             dataSource={resumenBeck}
             pagination={false}
+<<<<<<< HEAD
+=======
+            scroll={{ x: 720 }}
+>>>>>>> 68e4f8a (push 1)
           />
         </Card>
 
@@ -1059,6 +1243,10 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             columns={columnsItemizado}
             dataSource={resumenSacyr}
             pagination={false}
+<<<<<<< HEAD
+=======
+            scroll={{ x: 720 }}
+>>>>>>> 68e4f8a (push 1)
           />
         </Card>
       </div>
