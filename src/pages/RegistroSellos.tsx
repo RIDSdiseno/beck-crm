@@ -22,6 +22,7 @@ import RegistroDetalleModal from "../components/RegistroDetalleModal";
 import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
 } from "../components/NuevoRegistroDrawer";
+import { loadObras } from "../data/obrasStorage";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
@@ -326,11 +327,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   };
 
   const handleSubmit = (values: NuevoRegistroValues) => {
+    const obra = loadObras().find((o) => o.id === values.obraId);
     const factor = Number(values.factorHolgura) as 1 | 1.2 | 1.4 | 1.8;
     const cantidad = Number(values.cantidadSellos || 0);
 
     const nuevo: RegistroSello = {
       id: data.length ? data[data.length - 1].id + 1 : 1,
+      obraId: values.obraId,
+      obraNombre: obra?.nombre,
       itemizadoBeck: values.itemizadoBeck,
       // 👇 aseguramos string, aunque el form permita undefined
       itemizadoSacyr: values.itemizadoSacyr || "",

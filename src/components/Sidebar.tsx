@@ -8,17 +8,21 @@ import {
   ThunderboltOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  LogoutOutlined,
   FireOutlined,
   FileTextOutlined,
 } from "@ant-design/icons";
 import { NavLink } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { RolUsuario } from "../types/usuario";
 
 type SidebarProps = {
   themeMode: ThemeMode; // lo recibimos pero el tema es fijo claro
   collapsed: boolean;
   onToggleCollapse: () => void;
   hiddenOnMobile?: boolean;
+  user?: { nombre: string; rol: RolUsuario } | null;
+  onLogout?: () => void;
 };
 
 // Deben calzar con w-64 / w-20 usadas abajo
@@ -29,6 +33,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse,
   hiddenOnMobile,
+  user,
+  onLogout,
 }) => {
   const sidebarBase =
     "bg-[#f4f5fb] border-r border-slate-200/80 backdrop-blur-sm";
@@ -43,6 +49,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const sectionTitleCls =
     "text-[10px] font-semibold tracking-wide text-slate-500 uppercase";
+
+  const isAdministrador = user?.rol === "Administrador";
+  const canUsarTerreno =
+    user?.rol === "Administrador" || user?.rol === "Terreno";
 
   return (
     <aside
@@ -110,20 +120,23 @@ const Sidebar: React.FC<SidebarProps> = ({
             ${collapsed ? "items-center" : ""}
           `}
         >
-          <NavLink
-            to="/dashboard"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <DashboardOutlined />
-            {!collapsed && <span>Dashboard</span>}
-          </NavLink>
+          {isAdministrador && (
+            <NavLink
+              to="/dashboard"
+              className={({ isActive }) =>
+                `
+                ${linkBase}
+                ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
+                ${getLinkClasses(isActive)}
+                `
+              }
+            >
+              <DashboardOutlined />
+              {!collapsed && <span>Dashboard</span>}
+            </NavLink>
+          )}
 
+          {canUsarTerreno && (
           <NavLink
             to="/registro"
             className={({ isActive }) =>
@@ -137,6 +150,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <ProfileOutlined />
             {!collapsed && <span>Registro · BECK / SACYR</span>}
           </NavLink>
+          )}
 
           <NavLink
             to="/reportes"
@@ -167,6 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && <span>Cotizaciones</span>}
           </NavLink>
 
+          {canUsarTerreno && (
           <NavLink
             to="/junta-espuma"
             className={({ isActive }) =>
@@ -180,10 +195,12 @@ const Sidebar: React.FC<SidebarProps> = ({
             <ThunderboltOutlined />
             {!collapsed && <span>Junta lineal · ESPUMA</span>}
           </NavLink>
+          )}
         </nav>
 
         {/* CONFIGURACIÓN */}
-        <div className="pt-4 border-t border-slate-200/80">
+        {isAdministrador && (
+          <div className="pt-4 border-t border-slate-200/80">
           {!collapsed && (
             <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
           )}
@@ -202,11 +219,42 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!collapsed && <span>Usuarios y parámetros</span>}
             </NavLink>
           </nav>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* FOOTER VERSIÓN */}
       <div className="px-3 py-3 border-t border-slate-200/80 text-[10px]">
+        {user && (
+          <div
+            className={
+              collapsed
+                ? "flex items-center justify-center mb-2"
+                : "mb-2 flex items-center justify-between gap-2"
+            }
+          >
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-800 truncate">
+                  {user.nombre}
+                </p>
+                <p className="text-[10px] text-slate-500 truncate">{user.rol}</p>
+              </div>
+            )}
+
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex items-center justify-center w-9 h-9 rounded-full border border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 text-xs flex-shrink-0"
+                title="Cerrar sesión"
+              >
+                <LogoutOutlined />
+              </button>
+            )}
+          </div>
+        )}
+
         {!collapsed && (
           <>
             <p className="text-slate-400">Versión 0.1 · Demo interactiva</p>

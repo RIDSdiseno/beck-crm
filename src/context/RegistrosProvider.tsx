@@ -1,21 +1,11 @@
 import React, {
-  createContext,
-  useContext,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { mockRegistrosSellos } from "../data/mockRegistrosSellos";
 import type { RegistroSello } from "../types/registroSello";
-
-type RegistrosContextValue = {
-  data: RegistroSello[];
-  setData: React.Dispatch<React.SetStateAction<RegistroSello[]>>;
-};
-
-const RegistrosContext = createContext<RegistrosContextValue | undefined>(
-  undefined
-);
+import { RegistrosContext } from "./registrosContext";
 
 type RegistrosProviderProps = {
   children: ReactNode;
@@ -37,12 +27,4 @@ export const RegistrosProvider: React.FC<RegistrosProviderProps> = ({
       {children}
     </RegistrosContext.Provider>
   );
-};
-
-export const useRegistros = (): RegistrosContextValue => {
-  const ctx = useContext(RegistrosContext);
-  if (!ctx) {
-    throw new Error("useRegistros debe usarse dentro de RegistrosProvider");
-  }
-  return ctx;
 };

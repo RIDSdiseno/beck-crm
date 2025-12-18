@@ -7,7 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { Layout } from "antd";
+import { Layout, message } from "antd";
 
 import Sidebar, {
   SIDEBAR_WIDTH_EXPANDED,
@@ -17,11 +17,20 @@ import Dashboard from "./pages/Dashboard";
 import RegistroSellos from "./pages/RegistroSellos";
 import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
 import Reportes from "./pages/Reportes";
+import Configuracion from "./pages/Configuracion";
 import Cotizaciones from "./pages/Cotizaciones"; // 👈 NUEVO
 import Login from "./pages/Login";
 import type { ThemeMode } from "./hooks/useSystemTheme";
+import type { RolUsuario } from "./types/usuario";
+import { useAuth } from "./context/useAuth";
 
 const { Content } = Layout;
+
+const getHomeRouteForRole = (rol: RolUsuario): string => {
+  if (rol === "Administrador") return "/dashboard";
+  if (rol === "Terreno") return "/registro";
+  return "/reportes";
+};
 
 const AppShell: React.FC = () => {
   // 🔒 Tema fijo: siempre "light"
@@ -35,18 +44,27 @@ const AppShell: React.FC = () => {
   );
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, login, logout } = useAuth();
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setCollapsed(true);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    if (isMobile) {
-      setCollapsed(true);
+    if (!user && location.pathname !== "/login") {
+      navigate("/login", { replace: true });
+      return;
     }
-  }, [isMobile]);
+    if (user && location.pathname === "/login") {
+      navigate(getHomeRouteForRole(user.rol), { replace: true });
+    }
+  }, [location.pathname, navigate, user]);
 
   const isLoginRoute = location.pathname === "/login";
 
@@ -54,13 +72,33 @@ const AppShell: React.FC = () => {
     ? SIDEBAR_WIDTH_COLLAPSED
     : SIDEBAR_WIDTH_EXPANDED;
 
-  const handleLogin = () => {
-    navigate("/dashboard", { replace: true });
+  const handleLogin = async (values: { email: string; password: string }) => {
+    try {
+      const authUser = await login(values);
+      navigate(getHomeRouteForRole(authUser.rol), { replace: true });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "No se pudo iniciar sesión";
+      message.error(msg);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
   };
 
   // Vista login sin sidebar
-  if (isLoginRoute) {
+  if (!user) {
     return <Login themeMode={themeMode} onLogin={handleLogin} />;
+  }
+
+  const isAdministrador = user.rol === "Administrador";
+  const canUsarTerreno = user.rol === "Administrador" || user.rol === "Terreno";
+  const homeRoute = getHomeRouteForRole(user.rol);
+
+  if (isLoginRoute) {
+    return <Navigate to={homeRoute} replace />;
   }
 
   return (
@@ -83,6 +121,8 @@ const AppShell: React.FC = () => {
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
         hiddenOnMobile={isMobile && collapsed}
+        user={user}
+        onLogout={handleLogout}
       />
 
       {/* CONTENIDO PRINCIPAL */}
@@ -102,15 +142,27 @@ const AppShell: React.FC = () => {
         >
           <div className="max-w-6xl mx-auto">
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/" element={<Navigate to={homeRoute} replace />} />
 
               <Route
                 path="/dashboard"
-                element={<Dashboard themeMode={themeMode} />}
+                element={
+                  isAdministrador ? (
+                    <Dashboard themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/registro"
-                element={<RegistroSellos themeMode={themeMode} />}
+                element={
+                  canUsarTerreno ? (
+                    <RegistroSellos themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/reportes"
@@ -118,15 +170,32 @@ const AppShell: React.FC = () => {
               />
               <Route
                 path="/junta-espuma"
-                element={<JuntaLinealEspuma themeMode={themeMode} />}
+                element={
+                  canUsarTerreno ? (
+                    <JuntaLinealEspuma themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/cotizaciones"
                 element={<Cotizaciones themeMode={themeMode} />} // 👈 NUEVA RUTA
               />
 
+              <Route
+                path="/configuracion"
+                element={
+                  isAdministrador ? (
+                    <Configuracion themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
+              />
+
               {/* fallback */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to={homeRoute} replace />} />
             </Routes>
           </div>
         </Content>

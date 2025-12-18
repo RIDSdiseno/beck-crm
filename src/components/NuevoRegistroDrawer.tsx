@@ -1,5 +1,5 @@
 // src/components/NuevoRegistroDrawer.tsx
-import React, { useEffect } from "react";
+import React, { useState } from "react";
 import {
   Drawer,
   Form,
@@ -10,16 +10,23 @@ import {
   Button,
   Upload,
   message,
+  Modal,
 } from "antd";
+import type { UploadFile } from "antd/es/upload/interface";
 import {
   CameraOutlined,
+  PlusOutlined,
   FireOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
+import { useAuth } from "../context/useAuth";
+import type { Obra } from "../types/obra";
+import { loadObras, saveObras } from "../data/obrasStorage";
 
 
 export type NuevoRegistroValues = {
+  obraId: string;
   itemizadoBeck: string;
   itemizadoSacyr?: string;
   fechaEjecucion: Dayjs;
@@ -44,20 +51,45 @@ type Props = {
   onSubmit: (values: NuevoRegistroValues) => void;
 };
 
-const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
-  const [form] = Form.useForm<NuevoRegistroValues>();
-  const [fileList, setFileList] = React.useState<any[]>([]);
+type CreateObraValues = {
+  nombre: string;
+  codigo?: string;
+};
 
-  // cada vez que se abre, resetea y setea la fecha de hoy
-  useEffect(() => {
-    if (open) {
-      form.resetFields();
-      setFileList([]);
-      form.setFieldsValue({
-        fechaEjecucion: dayjs(),
-      } as Partial<NuevoRegistroValues>);
+const createId = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `obra_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+};
+
+const normalizeText = (value: string): string => value.trim().toLowerCase();
+
+const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
+  const { user } = useAuth();
+  const isAdministrador = user?.rol === "Administrador";
+
+  const [form] = Form.useForm<NuevoRegistroValues>();
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [obras, setObras] = useState<Obra[]>([]);
+  const [createObraOpen, setCreateObraOpen] = useState(false);
+  const [obraForm] = Form.useForm<CreateObraValues>();
+
+  const obraId = Form.useWatch("obraId", form);
+  const selectedObra = obras.find((o) => o.id === obraId);
+
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setCreateObraOpen(false);
+      return;
     }
-  }, [open, form]);
+    form.resetFields();
+    setFileList([]);
+    setObras(loadObras());
+    form.setFieldsValue({
+      fechaEjecucion: dayjs(),
+    } as Partial<NuevoRegistroValues>);
+  };
 
   const handleFinish = (values: NuevoRegistroValues) => {
     const file =
@@ -68,6 +100,45 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
     if (!values.fotoUrl && !file) {
       message.info("Recuerda adjuntar foto o URL en la siguiente edición.");
     }
+  };
+
+  const openCreateObra = () => {
+    obraForm.resetFields();
+    setCreateObraOpen(true);
+  };
+
+  const handleCreateObra = (values: CreateObraValues) => {
+    if (!isAdministrador) {
+      message.error("No tienes permisos para crear obras");
+      return;
+    }
+
+    const nombre = values.nombre.trim();
+    const codigo = values.codigo?.trim();
+
+    if (!nombre) {
+      message.error("Ingresa el nombre de la obra");
+      return;
+    }
+
+    if (obras.some((o) => normalizeText(o.nombre) === normalizeText(nombre))) {
+      message.error("Ya existe una obra con ese nombre");
+      return;
+    }
+
+    const nueva: Obra = {
+      id: createId(),
+      nombre,
+      codigo: codigo ? codigo : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = [nueva, ...obras];
+    setObras(next);
+    saveObras(next);
+    form.setFieldsValue({ obraId: nueva.id } as Partial<NuevoRegistroValues>);
+    setCreateObraOpen(false);
+    message.success("Obra creada");
   };
 
   return (
@@ -87,17 +158,101 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
       }
       open={open}
       onClose={onClose}
+      afterOpenChange={handleAfterOpenChange}
       size="large"
       styles={{
         body: { paddingBottom: 24, backgroundColor: "#f9fafb" },
       }}
     >
+      <Modal
+        title="Crear obra"
+        open={createObraOpen}
+        onCancel={() => setCreateObraOpen(false)}
+        okText="Crear"
+        cancelText="Cancelar"
+        onOk={() => obraForm.submit()}
+        destroyOnClose
+      >
+        <Form<CreateObraValues>
+          form={obraForm}
+          layout="vertical"
+          requiredMark={false}
+          onFinish={handleCreateObra}
+        >
+          <Form.Item
+            name="nombre"
+            label="Nombre de la obra"
+            rules={[{ required: true, message: "Ingresa el nombre" }]}
+          >
+            <Input placeholder="Ej: Hospital Buin Paine" />
+          </Form.Item>
+          <Form.Item name="codigo" label="Código (opcional)">
+            <Input placeholder="Ej: OB-2025-001" />
+          </Form.Item>
+          <p className="text-[11px] text-slate-500">
+            Solo el Administrador puede crear obras.
+          </p>
+        </Form>
+      </Modal>
+
       <Form
         layout="vertical"
         form={form}
         onFinish={handleFinish}
         className="space-y-4"
       >
+        {/* Paso 0: Obra (solo Admin crea) */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Obra
+          </p>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,auto]">
+            <Form.Item
+              name="obraId"
+              label="Selecciona la obra"
+              rules={[{ required: true, message: "Selecciona una obra" }]}
+            >
+              <Select
+                placeholder={
+                  obras.length ? "Selecciona una obra" : "No hay obras creadas"
+                }
+                options={obras.map((o) => ({
+                  value: o.id,
+                  label: o.codigo ? `${o.codigo} · ${o.nombre}` : o.nombre,
+                }))}
+                showSearch
+                optionFilterProp="label"
+              />
+            </Form.Item>
+
+            {isAdministrador && (
+              <div className="flex items-end">
+                <Button
+                  icon={<PlusOutlined />}
+                  onClick={openCreateObra}
+                  className="text-xs"
+                >
+                  Crear obra
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {!isAdministrador && obras.length === 0 && (
+            <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              No hay obras creadas. Pide al Administrador que cree una para
+              continuar.
+            </div>
+          )}
+        </div>
+
+        {!selectedObra ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-3 text-[11px] text-slate-600">
+            Selecciona una obra para continuar con el registro.
+          </div>
+        ) : (
+          <>
         {/* Bloque 1: Identificación del itemizado */}
         <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -277,6 +432,8 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
             Guardar registro
           </Button>
         </div>
+          </>
+        )}
       </Form>
     </Drawer>
   );
