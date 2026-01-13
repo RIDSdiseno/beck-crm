@@ -18,7 +18,8 @@ import RegistroSellos from "./pages/RegistroSellos";
 import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
 import Reportes from "./pages/Reportes";
 import Configuracion from "./pages/Configuracion";
-import Cotizaciones from "./pages/Cotizaciones"; // 👈 NUEVO
+import Cotizaciones from "./pages/Cotizaciones";
+import Ingenieria from "./pages/Ingenieria";
 import Login from "./pages/Login";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import type { RolUsuario } from "./types/usuario";
@@ -29,6 +30,7 @@ const { Content } = Layout;
 const getHomeRouteForRole = (rol: RolUsuario): string => {
   if (rol === "Administrador") return "/dashboard";
   if (rol === "Terreno") return "/registro";
+  if (rol === "Ingenieria") return "/ingenieria";
   return "/reportes";
 };
 
@@ -95,6 +97,7 @@ const AppShell: React.FC = () => {
 
   const isAdministrador = user.rol === "Administrador";
   const canUsarTerreno = user.rol === "Administrador" || user.rol === "Terreno";
+  const isIngenieria = user.rol === "Ingenieria";
   const homeRoute = getHomeRouteForRole(user.rol);
 
   if (isLoginRoute) {
@@ -159,6 +162,16 @@ const AppShell: React.FC = () => {
                 element={
                   canUsarTerreno ? (
                     <RegistroSellos themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
+              />
+              <Route
+                path="/ingenieria"
+                element={
+                  isIngenieria ? (
+                    <Ingenieria themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />
                   )

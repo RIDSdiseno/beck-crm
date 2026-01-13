@@ -5,7 +5,7 @@ import React, {
   type ReactNode,
 } from "react";
 import type { RolUsuario } from "../types/usuario";
-import { loadUsuarios } from "../data/usuariosStorage";
+import { authAPI } from "../services/api";
 import {
   AuthContext,
   type AuthUser,
@@ -13,9 +13,10 @@ import {
 } from "./authContext";
 
 const SESSION_KEY = "beck_crm_session_v1";
+const TOKEN_KEY = "beck_token";
 
 const isRolUsuario = (value: unknown): value is RolUsuario =>
-  value === "Administrador" || value === "Terreno" || value === "Visualizador";
+  value === "Administrador" || value === "Terreno" || value === "Ingenieria" || value === "Visualizador";
 
 const parseAuthUser = (value: unknown): AuthUser | null => {
   if (!value || typeof value !== "object") return null;
@@ -51,37 +52,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   });
 
-  const login = useCallback(async ({ email }: LoginParams): Promise<AuthUser> => {
-    const emailNorm = normalizeEmail(email);
-    const usuarios = loadUsuarios();
+  const login = useCallback(async ({ email, password }: LoginParams): Promise<AuthUser> => {
+    try {
+      // Llamar a la API real
+      const response = await authAPI.login(email, password || '');
 
-    const found = usuarios.find((u) => normalizeEmail(u.email) === emailNorm);
-    if (!found) {
-      throw new Error("Usuario no encontrado");
+      // Mapear rol del backend (minúsculas) al frontend (PascalCase)
+      const rolMap: Record<string, RolUsuario> = {
+        'administrador': 'Administrador',
+        'terreno': 'Terreno',
+        'ingenieria': 'Ingenieria',
+        'visualizador': 'Visualizador',
+      };
+
+      const authUser: AuthUser = {
+        id: response.user.id,
+        nombre: response.user.nombre,
+        email: response.user.email,
+        rol: rolMap[response.user.rol] || 'Visualizador',
+      };
+
+      // Guardar token y usuario
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TOKEN_KEY, response.token);
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
+      }
+
+      setUser(authUser);
+      return authUser;
+    } catch (error: any) {
+      // Limpiar datos en caso de error
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(TOKEN_KEY);
+        window.localStorage.removeItem(SESSION_KEY);
+      }
+
+      // Propagar error con mensaje claro
+      const errorMessage = error.response?.data?.error || error.message || 'Error al iniciar sesión';
+      throw new Error(errorMessage);
     }
-    if (!found.activo) {
-      throw new Error("Usuario inactivo");
-    }
-
-    const authUser: AuthUser = {
-      id: found.id,
-      nombre: found.nombre,
-      email: found.email,
-      rol: found.rol,
-    };
-
-    setUser(authUser);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
-    }
-
-    return authUser;
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_KEY);
+      window.localStorage.removeItem(TOKEN_KEY);
     }
   }, []);
 

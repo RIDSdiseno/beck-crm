@@ -53,6 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isAdministrador = user?.rol === "Administrador";
   const canUsarTerreno =
     user?.rol === "Administrador" || user?.rol === "Terreno";
+  const isIngenieria = user?.rol === "Ingenieria";
 
   return (
     <aside
@@ -133,6 +134,22 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <DashboardOutlined />
               {!collapsed && <span>Dashboard</span>}
+            </NavLink>
+          )}
+
+          {isIngenieria && (
+            <NavLink
+              to="/ingenieria"
+              className={({ isActive }) =>
+                `
+                ${linkBase}
+                ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
+                ${getLinkClasses(isActive)}
+                `
+              }
+            >
+              <FireOutlined />
+              {!collapsed && <span>Procesamiento Ingeniería</span>}
             </NavLink>
           )}
 

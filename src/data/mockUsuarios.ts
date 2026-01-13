@@ -18,6 +18,14 @@ export const mockUsuarios: Usuario[] = [
     creadoEn: "2025-01-02T09:00:00.000Z",
   },
   {
+    id: "u_ingenieria_demo",
+    nombre: "Ingeniero Demo",
+    email: "ing@beck.cl",
+    rol: "Ingenieria",
+    activo: true,
+    creadoEn: "2025-01-02T09:00:00.000Z",
+  },
+  {
     id: "u_visualizador_demo",
     nombre: "Visualizador Demo",
     email: "visualizador@beck.cl",
@@ -25,6 +33,5 @@ export const mockUsuarios: Usuario[] = [
     activo: true,
     creadoEn: "2025-01-02T09:00:00.000Z",
   },
-
 ];
 
