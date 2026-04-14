@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   FireOutlined,
   FileTextOutlined,
+  ProjectOutlined,
 } from "@ant-design/icons";
 import { NavLink } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
@@ -124,6 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {isAdministrador && (
             <NavLink
               to="/dashboard"
+              end
               className={({ isActive }) =>
                 `
                 ${linkBase}
@@ -136,6 +138,20 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!collapsed && <span>Dashboard</span>}
             </NavLink>
           )}
+
+          <NavLink
+            to="/dashboard/funnel"
+            className={({ isActive }) =>
+              `
+              ${linkBase}
+              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
+              ${getLinkClasses(isActive)}
+              `
+            }
+          >
+            <ProjectOutlined />
+            {!collapsed && <span>Funnel</span>}
+          </NavLink>
 
           {isIngenieria && (
             <NavLink

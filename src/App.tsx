@@ -21,6 +21,7 @@ import Configuracion from "./pages/Configuracion";
 import Cotizaciones from "./pages/Cotizaciones";
 import Ingenieria from "./pages/Ingenieria";
 import Login from "./pages/Login";
+import FunnelPage from "./pages/FunnelPage";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import type { RolUsuario } from "./types/usuario";
 import { useAuth } from "./context/useAuth";
@@ -156,6 +157,10 @@ const AppShell: React.FC = () => {
                     <Navigate to={homeRoute} replace />
                   )
                 }
+              />
+              <Route
+                path="/dashboard/funnel"
+                element={<FunnelPage themeMode={themeMode} />}
               />
               <Route
                 path="/registro"
