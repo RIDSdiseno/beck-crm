@@ -47,13 +47,13 @@ export interface LoginResponse {
     id: string;
     nombre: string;
     email: string;
-    rol: 'administrador' | 'terreno' | 'ingenieria' | 'visualizador';
+    rol: 'administrador' | 'vendedor' | 'terreno' | 'ingenieria' | 'visualizador';
   };
 }
 
 export interface ApiError {
   error: string;
-  details?: any;
+  details?: unknown;
 }
 
 // ============================================
@@ -62,6 +62,11 @@ export interface ApiError {
 export const authAPI = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>('/auth/login', { email, password });
+    return response.data;
+  },
+
+  loginMicrosoft: async (token: string): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>('/auth/microsoft', { token });
     return response.data;
   },
 

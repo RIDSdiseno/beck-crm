@@ -47,7 +47,7 @@ const AppShell: React.FC = () => {
   );
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login, logout } = useAuth();
+  const { user, login, loginMicrosoft, logout } = useAuth();
 
   useEffect(() => {
     const onResize = () => {
@@ -86,6 +86,19 @@ const AppShell: React.FC = () => {
     }
   };
 
+  const handleMicrosoftLogin = async (token: string) => {
+    try {
+      const authUser = await loginMicrosoft(token);
+      navigate(getHomeRouteForRole(authUser.rol), { replace: true });
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "No se pudo iniciar sesión con Microsoft";
+      message.error(msg);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
@@ -93,7 +106,13 @@ const AppShell: React.FC = () => {
 
   // Vista login sin sidebar
   if (!user) {
-    return <Login themeMode={themeMode} onLogin={handleLogin} />;
+    return (
+      <Login
+        themeMode={themeMode}
+        onLogin={handleLogin}
+        onMicrosoftLogin={handleMicrosoftLogin}
+      />
+    );
   }
 
   const isAdministrador = user.rol === "Administrador";

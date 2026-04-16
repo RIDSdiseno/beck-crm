@@ -1,5 +1,5 @@
 // src/pages/Login.tsx
-import React from "react";
+import React, { useState } from "react";
 import { Form, Input, Button, Checkbox } from "antd";
 import {
   SafetyCertificateOutlined,
@@ -7,11 +7,13 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
+import { msalInstance, msalInitPromise, loginRequest } from "../auth/msalConfig";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 
 type LoginProps = {
   themeMode: ThemeMode;
   onLogin: (values: { email: string; password: string }) => void;
+  onMicrosoftLogin: (token: string) => Promise<void>;
 };
 
 // 👇 Tipo explícito para los valores del formulario
@@ -21,11 +23,36 @@ type LoginFormValues = {
   remember?: boolean;
 };
 
-const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
+const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) => {
   const isDark = themeMode === "dark";
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
   const handleFinish = (values: LoginFormValues) => {
     onLogin({ email: values.email, password: values.password });
+  };
+
+  const handleMicrosoftLogin = async () => {
+    if (isMicrosoftLoading) return;
+
+    try {
+      setIsMicrosoftLoading(true);
+
+      await msalInitPromise;
+      
+      const loginResponse = await msalInstance.loginPopup(loginRequest);
+
+      const token = loginResponse.idToken;
+
+      if (!token) {
+        throw new Error("Microsoft no devolvió un token válido");
+      }
+
+      await onMicrosoftLogin(token);
+    } catch (error) {
+      console.error("Error login Microsoft", error);
+    } finally {
+      setIsMicrosoftLoading(false);
+    }
   };
 
   return (
@@ -202,6 +229,18 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
                   ¿Olvidaste tu contraseña?
                 </button>
               </div>
+
+              <Form.Item>
+                <Button
+                  block
+                  onClick={handleMicrosoftLogin}
+                  loading={isMicrosoftLoading}
+                  disabled={isMicrosoftLoading}
+                  className="mb-2 border border-gray-300 hover:border-gray-400"
+                >
+                  Iniciar sesión con Microsoft
+                </Button>
+              </Form.Item>
 
               <Form.Item>
                 <Button

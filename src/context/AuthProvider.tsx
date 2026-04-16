@@ -16,7 +16,11 @@ const SESSION_KEY = "beck_crm_session_v1";
 const TOKEN_KEY = "beck_token";
 
 const isRolUsuario = (value: unknown): value is RolUsuario =>
-  value === "Administrador" || value === "Terreno" || value === "Ingenieria" || value === "Visualizador";
+  value === "Administrador" ||
+  value === "Vendedor" ||
+  value === "Terreno" ||
+  value === "Ingenieria" ||
+  value === "Visualizador";
 
 const parseAuthUser = (value: unknown): AuthUser | null => {
   if (!value || typeof value !== "object") return null;
@@ -34,8 +38,6 @@ const parseAuthUser = (value: unknown): AuthUser | null => {
   return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol };
 };
 
-const normalizeEmail = (email: string): string => email.trim().toLowerCase();
-
 type AuthProviderProps = {
   children: ReactNode;
 };
@@ -52,46 +54,93 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   });
 
-  const login = useCallback(async ({ email, password }: LoginParams): Promise<AuthUser> => {
-    try {
-      // Llamar a la API real
-      const response = await authAPI.login(email, password || '');
+  const login = useCallback(
+    async ({ email, password }: LoginParams): Promise<AuthUser> => {
+      try {
+        const response = await authAPI.login(email, password || "");
 
-      // Mapear rol del backend (minúsculas) al frontend (PascalCase)
-      const rolMap: Record<string, RolUsuario> = {
-        'administrador': 'Administrador',
-        'terreno': 'Terreno',
-        'ingenieria': 'Ingenieria',
-        'visualizador': 'Visualizador',
-      };
+        const rolMap: Record<string, RolUsuario> = {
+          administrador: "Administrador",
+          terreno: "Terreno",
+          vendedor: "Vendedor",
+          ingenieria: "Ingenieria",
+          visualizador: "Visualizador",
+        };
 
-      const authUser: AuthUser = {
-        id: response.user.id,
-        nombre: response.user.nombre,
-        email: response.user.email,
-        rol: rolMap[response.user.rol] || 'Visualizador',
-      };
+        const authUser: AuthUser = {
+          id: response.user.id,
+          nombre: response.user.nombre,
+          email: response.user.email,
+          rol: rolMap[response.user.rol] || "Visualizador",
+        };
 
-      // Guardar token y usuario
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(TOKEN_KEY, response.token);
-        window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TOKEN_KEY, response.token);
+          window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
+        }
+
+        setUser(authUser);
+        return authUser;
+      } catch (error: unknown) {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(TOKEN_KEY);
+          window.localStorage.removeItem(SESSION_KEY);
+        }
+
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Error al iniciar sesión";
+
+        throw new Error(errorMessage);
       }
+    },
+    []
+  );
 
-      setUser(authUser);
-      return authUser;
-    } catch (error: any) {
-      // Limpiar datos en caso de error
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(TOKEN_KEY);
-        window.localStorage.removeItem(SESSION_KEY);
+  const loginMicrosoft = useCallback(
+    async (token: string): Promise<AuthUser> => {
+      try {
+        const response = await authAPI.loginMicrosoft(token);
+
+        const rolMap: Record<string, RolUsuario> = {
+          administrador: "Administrador",
+          vendedor: "Vendedor",
+          terreno: "Terreno",
+          ingenieria: "Ingenieria",
+          visualizador: "Visualizador",
+        };
+
+        const authUser: AuthUser = {
+          id: response.user.id,
+          nombre: response.user.nombre,
+          email: response.user.email,
+          rol: rolMap[response.user.rol] || "Visualizador",
+        };
+
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TOKEN_KEY, response.token);
+          window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
+        }
+
+        setUser(authUser);
+        return authUser;
+      } catch (error: unknown) {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(TOKEN_KEY);
+          window.localStorage.removeItem(SESSION_KEY);
+        }
+
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Error con login Microsoft";
+
+        throw new Error(errorMessage);
       }
-
-      // Propagar error con mensaje claro
-      const errorMessage = error.response?.data?.error || error.message || 'Error al iniciar sesión';
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     setUser(null);
@@ -101,7 +150,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, []);
 
-  const value = useMemo(() => ({ user, login, logout }), [user, login, logout]);
+  const value = useMemo(
+    () => ({ user, login, loginMicrosoft, logout }),
+    [user, login, loginMicrosoft, logout]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

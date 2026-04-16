@@ -11,6 +11,7 @@ export type LoginParams = {
 export type AuthContextValue = {
   user: AuthUser | null;
   login: (params: LoginParams) => Promise<AuthUser>;
+  loginMicrosoft: (token: string) => Promise<AuthUser>; // 👈 NUEVO
   logout: () => void;
 };
 
