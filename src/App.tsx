@@ -1,30 +1,30 @@
-// src/App.tsx
 import React, { useEffect, useState } from "react";
 import {
-  Routes,
-  Route,
   Navigate,
+  Route,
+  Routes,
   useLocation,
   useNavigate,
 } from "react-router-dom";
 import { Layout, message } from "antd";
 
 import Sidebar, {
-  SIDEBAR_WIDTH_EXPANDED,
   SIDEBAR_WIDTH_COLLAPSED,
+  SIDEBAR_WIDTH_EXPANDED,
 } from "./components/Sidebar";
-import Dashboard from "./pages/Dashboard";
-import RegistroSellos from "./pages/RegistroSellos";
-import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
-import Reportes from "./pages/Reportes";
+import FunnelPage from "./pages/FunnelPage";
 import Configuracion from "./pages/Configuracion";
 import Cotizaciones from "./pages/Cotizaciones";
+import Dashboard from "./pages/Dashboard";
 import Ingenieria from "./pages/Ingenieria";
+import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
+import AuthCallback from "./pages/AuthCallback";
 import Login from "./pages/Login";
-import FunnelPage from "./pages/FunnelPage";
+import RegistroSellos from "./pages/RegistroSellos";
+import Reportes from "./pages/Reportes";
 import type { ThemeMode } from "./hooks/useSystemTheme";
-import type { RolUsuario } from "./types/usuario";
 import { useAuth } from "./context/useAuth";
+import type { RolUsuario } from "./types/usuario";
 
 const { Content } = Layout;
 
@@ -36,7 +36,6 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
 };
 
 const AppShell: React.FC = () => {
-  // 🔒 Tema fijo: siempre "light"
   const themeMode: ThemeMode = "light";
 
   const [collapsed, setCollapsed] = useState(
@@ -47,7 +46,7 @@ const AppShell: React.FC = () => {
   );
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login, loginMicrosoft, logout } = useAuth();
+  const { user, login, logout } = useAuth();
 
   useEffect(() => {
     const onResize = () => {
@@ -55,22 +54,27 @@ const AppShell: React.FC = () => {
       setIsMobile(mobile);
       if (mobile) setCollapsed(true);
     };
+
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    if (!user && location.pathname !== "/login") {
+    if (
+      !user &&
+      location.pathname !== "/login" &&
+      location.pathname !== "/auth/callback"
+    ) {
       navigate("/login", { replace: true });
       return;
     }
+
     if (user && location.pathname === "/login") {
       navigate(getHomeRouteForRole(user.rol), { replace: true });
     }
   }, [location.pathname, navigate, user]);
 
   const isLoginRoute = location.pathname === "/login";
-
   const currentSidebarWidth = collapsed
     ? SIDEBAR_WIDTH_COLLAPSED
     : SIDEBAR_WIDTH_EXPANDED;
@@ -79,23 +83,10 @@ const AppShell: React.FC = () => {
     try {
       const authUser = await login(values);
       navigate(getHomeRouteForRole(authUser.rol), { replace: true });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "No se pudo iniciar sesión";
-      message.error(msg);
-    }
-  };
-
-  const handleMicrosoftLogin = async (token: string) => {
-    try {
-      const authUser = await loginMicrosoft(token);
-      navigate(getHomeRouteForRole(authUser.rol), { replace: true });
-    } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "No se pudo iniciar sesión con Microsoft";
-      message.error(msg);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "No se pudo iniciar sesión";
+      message.error(errorMessage);
     }
   };
 
@@ -104,14 +95,16 @@ const AppShell: React.FC = () => {
     navigate("/login", { replace: true });
   };
 
-  // Vista login sin sidebar
   if (!user) {
     return (
-      <Login
-        themeMode={themeMode}
-        onLogin={handleLogin}
-        onMicrosoftLogin={handleMicrosoftLogin}
-      />
+      <Routes>
+        <Route
+          path="/login"
+          element={<Login themeMode={themeMode} onLogin={handleLogin} />}
+        />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
     );
   }
 
@@ -133,12 +126,12 @@ const AppShell: React.FC = () => {
         <button
           type="button"
           onClick={() => setCollapsed(false)}
-          className="fixed top-3 left-3 z-50 rounded-full bg-white/90 border border-slate-200 shadow px-3 py-2 text-xs font-semibold text-slate-700"
+          className="fixed top-3 left-3 z-50 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 shadow"
         >
           Menu
         </button>
       )}
-      {/* SIDEBAR CLARO A LA IZQUIERDA */}
+
       <Sidebar
         themeMode={themeMode}
         collapsed={collapsed}
@@ -148,7 +141,6 @@ const AppShell: React.FC = () => {
         onLogout={handleLogout}
       />
 
-      {/* CONTENIDO PRINCIPAL */}
       <Layout
         style={{
           marginLeft: isMobile ? 0 : currentSidebarWidth,
@@ -163,8 +155,9 @@ const AppShell: React.FC = () => {
             paddingTop: isMobile && collapsed ? 56 : 16,
           }}
         >
-          <div className="max-w-6xl mx-auto">
+          <div className="mx-auto max-w-6xl">
             <Routes>
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/" element={<Navigate to={homeRoute} replace />} />
 
               <Route
@@ -217,9 +210,8 @@ const AppShell: React.FC = () => {
               />
               <Route
                 path="/cotizaciones"
-                element={<Cotizaciones themeMode={themeMode} />} // 👈 NUEVA RUTA
+                element={<Cotizaciones themeMode={themeMode} />}
               />
-
               <Route
                 path="/configuracion"
                 element={
@@ -231,7 +223,6 @@ const AppShell: React.FC = () => {
                 }
               />
 
-              {/* fallback */}
               <Route path="*" element={<Navigate to={homeRoute} replace />} />
             </Routes>
           </div>
@@ -241,8 +232,6 @@ const AppShell: React.FC = () => {
   );
 };
 
-const App: React.FC = () => {
-  return <AppShell />;
-};
+const App: React.FC = () => <AppShell />;
 
 export default App;

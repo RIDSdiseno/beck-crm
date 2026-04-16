@@ -11,11 +11,9 @@ export type LoginParams = {
 export type AuthContextValue = {
   user: AuthUser | null;
   login: (params: LoginParams) => Promise<AuthUser>;
-  loginMicrosoft: (token: string) => Promise<AuthUser>; // 👈 NUEVO
   logout: () => void;
 };
 
 export const AuthContext = createContext<AuthContextValue | undefined>(
   undefined
 );
-

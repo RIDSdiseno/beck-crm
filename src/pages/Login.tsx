@@ -1,29 +1,31 @@
-// src/pages/Login.tsx
 import React, { useState } from "react";
-import { Form, Input, Button, Checkbox } from "antd";
+import { Button, Checkbox, Form, Input } from "antd";
 import {
-  SafetyCertificateOutlined,
   LockOutlined,
+  SafetyCertificateOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
-import { msalInstance, msalInitPromise, loginRequest } from "../auth/msalConfig";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 
 type LoginProps = {
   themeMode: ThemeMode;
-  onLogin: (values: { email: string; password: string }) => void;
-  onMicrosoftLogin: (token: string) => Promise<void>;
+  onLogin: (values: { email: string; password: string }) => Promise<void> | void;
 };
 
-// 👇 Tipo explícito para los valores del formulario
 type LoginFormValues = {
   email: string;
   password: string;
   remember?: boolean;
 };
 
-const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) => {
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(
+  /\/$/,
+  ""
+);
+const MICROSOFT_LOGIN_URL = `${API_URL}/auth/microsoft/login`;
+
+const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
   const isDark = themeMode === "dark";
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
@@ -31,33 +33,15 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
     onLogin({ email: values.email, password: values.password });
   };
 
-  const handleMicrosoftLogin = async () => {
+  const handleMicrosoftLogin = () => {
     if (isMicrosoftLoading) return;
 
-    try {
-      setIsMicrosoftLoading(true);
-
-      await msalInitPromise;
-      
-      const loginResponse = await msalInstance.loginPopup(loginRequest);
-
-      const token = loginResponse.idToken;
-
-      if (!token) {
-        throw new Error("Microsoft no devolvió un token válido");
-      }
-
-      await onMicrosoftLogin(token);
-    } catch (error) {
-      console.error("Error login Microsoft", error);
-    } finally {
-      setIsMicrosoftLoading(false);
-    }
+    setIsMicrosoftLoading(true);
+    window.location.href = MICROSOFT_LOGIN_URL;
   };
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Fondo con foto */}
       <div
         className="absolute inset-0"
         style={{
@@ -67,35 +51,31 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
           backgroundRepeat: "no-repeat",
         }}
       />
-      {/* Overlay según tema para que el contenido sea legible */}
       <div
         className={`absolute inset-0 ${
           isDark ? "bg-black/75" : "bg-black/55"
         }`}
       />
 
-      {/* Contenido del login */}
-      <div className="relative min-h-screen flex items-center justify-center px-4">
-        {/* Glows extra encima del overlay */}
-        <div className="pointer-events-none absolute -top-40 -left-10 h-72 w-72 rounded-full bg-beck-primary/35 blur-3xl" />
+      <div className="relative flex min-h-screen items-center justify-center px-4">
+        <div className="pointer-events-none absolute -left-10 -top-40 h-72 w-72 rounded-full bg-beck-primary/35 blur-3xl" />
         <div className="pointer-events-none absolute bottom-[-80px] right-[-40px] h-80 w-80 rounded-full bg-beck-primary-dark/40 blur-3xl" />
 
         <motion.div
-          className="max-w-4xl w-full grid md:grid-cols-[1.1fr,1fr] gap-8 items-stretch relative z-10"
+          className="relative z-10 grid w-full max-w-4xl items-stretch gap-8 md:grid-cols-[1.1fr,1fr]"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
         >
-          {/* Panel izquierdo: branding (siempre sobre fondo oscuro) */}
           <motion.div
-            className="hidden md:flex flex-col justify-between rounded-3xl p-8 border border-white/10 bg-black/40 backdrop-blur-md shadow-beck-soft"
+            className="hidden flex-col justify-between rounded-3xl border border-white/10 bg-black/40 p-8 shadow-beck-soft backdrop-blur-md md:flex"
             initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1, duration: 0.3 }}
           >
             <div>
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-beck-primary to-beck-accent flex items-center justify-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-beck-primary to-beck-accent">
                   <SafetyCertificateOutlined
                     style={{ fontSize: 20, color: "#111" }}
                   />
@@ -129,20 +109,19 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
             </div>
           </motion.div>
 
-          {/* Panel derecho: formulario de login */}
           <motion.div
-            className={`rounded-3xl p-8 border shadow-beck-soft flex flex-col justify-center ${
+            className={`flex flex-col justify-center rounded-3xl border p-8 shadow-beck-soft backdrop-blur-md ${
               isDark
-                ? "bg-beck-card-dark/95 border-beck-border-dark"
-                : "bg-white/95 border-beck-border-light"
-            } backdrop-blur-md`}
+                ? "border-beck-border-dark bg-beck-card-dark/95"
+                : "border-beck-border-light bg-white/95"
+            }`}
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.15, duration: 0.3 }}
           >
             <div className="mb-6">
               <p
-                className={`text-xs font-semibold tracking-wide uppercase ${
+                className={`text-xs font-semibold uppercase tracking-wide ${
                   isDark ? "text-beck-accent" : "text-beck-primary-dark"
                 }`}
               >
@@ -160,8 +139,8 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
                   isDark ? "text-slate-400" : "text-slate-500"
                 }`}
               >
-                Usa tus credenciales corporativas BECK. Más adelante conectaremos
-                SSO / Directorio.
+                Usa tus credenciales corporativas BECK. El acceso con Microsoft
+                ahora se inicia desde el backend.
               </p>
             </div>
 
@@ -212,7 +191,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
                 />
               </Form.Item>
 
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex items-center justify-between">
                 <Form.Item name="remember" valuePropName="checked" noStyle>
                   <Checkbox
                     className={`text-[11px] ${
@@ -224,7 +203,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
                 </Form.Item>
                 <button
                   type="button"
-                  className="text-[11px] text-beck-accent hover:text-beck-primary underline-offset-2 hover:underline"
+                  className="text-[11px] text-beck-accent underline-offset-2 hover:text-beck-primary hover:underline"
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
@@ -233,6 +212,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
               <Form.Item>
                 <Button
                   block
+                  htmlType="button"
                   onClick={handleMicrosoftLogin}
                   loading={isMicrosoftLoading}
                   disabled={isMicrosoftLoading}
@@ -247,7 +227,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
                   type="primary"
                   htmlType="submit"
                   block
-                  className="bg-beck-primary hover:bg-beck-primary-dark border-none"
+                  className="border-none bg-beck-primary hover:bg-beck-primary-dark"
                 >
                   Entrar al CRM
                 </Button>
@@ -259,7 +239,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin, onMicrosoftLogin }) =
                 }`}
               >
                 Esta es una versión demo. La validación real se hará contra el
-                microservicio de autenticación (API BECK) en el backend.
+                microservicio de autenticación en el backend.
               </p>
             </Form>
           </motion.div>

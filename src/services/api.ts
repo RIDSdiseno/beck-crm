@@ -1,53 +1,50 @@
-// src/services/api.ts
-import axios, { AxiosError, type AxiosInstance } from 'axios';
+import axios, { AxiosError, type AxiosInstance } from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// Crear instancia de axios
 export const api: AxiosInstance = axios.create({
   baseURL: API_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
-  timeout: 30000, // 30 segundos
+  timeout: 30000,
 });
 
-// Interceptor para agregar JWT a todas las peticiones
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('beck_token');
+    const token = localStorage.getItem("beck_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores de respuesta
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Token inválido o expirado
-      localStorage.removeItem('beck_token');
-      localStorage.removeItem('beck_crm_session_v1');
-      window.location.href = '/login';
+      localStorage.removeItem("beck_token");
+      localStorage.removeItem("beck_crm_session_v1");
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }
 );
 
-// Tipos para las respuestas de autenticación
 export interface LoginResponse {
   token: string;
   user: {
     id: string;
     nombre: string;
     email: string;
-    rol: 'administrador' | 'vendedor' | 'terreno' | 'ingenieria' | 'visualizador';
+    rol:
+      | "administrador"
+      | "vendedor"
+      | "terreno"
+      | "ingenieria"
+      | "visualizador";
   };
 }
 
@@ -56,27 +53,22 @@ export interface ApiError {
   details?: unknown;
 }
 
-// ============================================
-// AUTENTICACIÓN
-// ============================================
 export const authAPI = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
-    const response = await api.post<LoginResponse>('/auth/login', { email, password });
-    return response.data;
-  },
-
-  loginMicrosoft: async (token: string): Promise<LoginResponse> => {
-    const response = await api.post<LoginResponse>('/auth/microsoft', { token });
+    const response = await api.post<LoginResponse>("/auth/login", {
+      email,
+      password,
+    });
     return response.data;
   },
 
   me: async () => {
-    const response = await api.get('/auth/me');
+    const response = await api.get("/auth/me");
     return response.data;
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
-    const response = await api.put('/auth/change-password', {
+    const response = await api.put("/auth/change-password", {
       currentPassword,
       newPassword,
     });
@@ -84,9 +76,6 @@ export const authAPI = {
   },
 };
 
-// ============================================
-// REGISTROS DE TERRENO
-// ============================================
 export interface RegistroTerrenoInput {
   obra_id: string;
   descripcion_material: string;
@@ -114,31 +103,38 @@ export interface RegistroTerreno extends RegistroTerrenoInput {
 }
 
 export const registrosTerrenoAPI = {
-  crear: async (data: RegistroTerrenoInput, fotos: File[]): Promise<RegistroTerreno> => {
+  crear: async (
+    data: RegistroTerrenoInput,
+    fotos: File[]
+  ): Promise<RegistroTerreno> => {
     const formData = new FormData();
 
-    // Agregar todos los campos de texto
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         formData.append(key, String(value));
       }
     });
 
-    // Agregar fotos
     fotos.forEach((foto) => {
-      formData.append('fotos', foto);
+      formData.append("fotos", foto);
     });
 
-    const response = await api.post<RegistroTerreno>('/registros-terreno', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.post<RegistroTerreno>(
+      "/registros-terreno",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
     return response.data;
   },
 
   listar: async (params?: { procesado?: boolean; obra_id?: string }) => {
-    const response = await api.get<RegistroTerreno[]>('/registros-terreno', { params });
+    const response = await api.get<RegistroTerreno[]>("/registros-terreno", {
+      params,
+    });
     return response.data;
   },
 
@@ -148,14 +144,13 @@ export const registrosTerrenoAPI = {
   },
 
   pendientes: async () => {
-    const response = await api.get<RegistroTerreno[]>('/registros-terreno/pendientes');
+    const response = await api.get<RegistroTerreno[]>(
+      "/registros-terreno/pendientes"
+    );
     return response.data;
   },
 };
 
-// ============================================
-// PROCESAMIENTO INGENIERÍA
-// ============================================
 export interface ProcesamientoInput {
   registro_terreno_id: string;
   codigo: string;
@@ -173,23 +168,22 @@ export interface Procesamiento extends ProcesamientoInput {
 
 export const procesamientoAPI = {
   procesar: async (data: ProcesamientoInput): Promise<Procesamiento> => {
-    const response = await api.post<Procesamiento>('/procesamiento', data);
+    const response = await api.post<Procesamiento>("/procesamiento", data);
     return response.data;
   },
 
   listar: async (params?: { registro_terreno_id?: string }) => {
-    const response = await api.get<Procesamiento[]>('/procesamiento', { params });
+    const response = await api.get<Procesamiento[]>("/procesamiento", {
+      params,
+    });
     return response.data;
   },
 };
 
-// ============================================
-// NOTIFICACIONES
-// ============================================
 export interface Notificacion {
   id: string;
   usuario_id: string;
-  tipo: 'nuevo_registro' | 'procesado' | 'sistema';
+  tipo: "nuevo_registro" | "procesado" | "sistema";
   mensaje: string;
   referencia_id?: string;
   leido: boolean;
@@ -198,7 +192,9 @@ export interface Notificacion {
 
 export const notificacionesAPI = {
   listar: async (params?: { leido?: boolean }) => {
-    const response = await api.get<Notificacion[]>('/notificaciones', { params });
+    const response = await api.get<Notificacion[]>("/notificaciones", {
+      params,
+    });
     return response.data;
   },
 
@@ -208,19 +204,16 @@ export const notificacionesAPI = {
   },
 
   marcarTodasLeidas: async () => {
-    const response = await api.put('/notificaciones/leer-todas');
+    const response = await api.put("/notificaciones/leer-todas");
     return response.data;
   },
 
   noLeidas: async () => {
-    const response = await api.get<number>('/notificaciones/no-leidas');
+    const response = await api.get<number>("/notificaciones/no-leidas");
     return response.data;
   },
 };
 
-// ============================================
-// OBRAS
-// ============================================
 export interface Obra {
   id: string;
   codigo: string;
@@ -237,7 +230,7 @@ export interface Obra {
 
 export const obrasAPI = {
   listar: async (params?: { activa?: boolean }) => {
-    const response = await api.get<Obra[]>('/obras', { params });
+    const response = await api.get<Obra[]>("/obras", { params });
     return response.data;
   },
 
@@ -246,12 +239,15 @@ export const obrasAPI = {
     return response.data;
   },
 
-  crear: async (data: Omit<Obra, 'id' | 'created_at' | 'updated_at'>) => {
-    const response = await api.post<Obra>('/obras', data);
+  crear: async (data: Omit<Obra, "id" | "created_at" | "updated_at">) => {
+    const response = await api.post<Obra>("/obras", data);
     return response.data;
   },
 
-  actualizar: async (id: string, data: Partial<Omit<Obra, 'id' | 'created_at' | 'updated_at'>>) => {
+  actualizar: async (
+    id: string,
+    data: Partial<Omit<Obra, "id" | "created_at" | "updated_at">>
+  ) => {
     const response = await api.put<Obra>(`/obras/${id}`, data);
     return response.data;
   },
@@ -262,9 +258,6 @@ export const obrasAPI = {
   },
 };
 
-// ============================================
-// ITEMIZADOS
-// ============================================
 export interface Itemizado {
   id: string;
   codigo: string;
@@ -279,7 +272,7 @@ export interface Itemizado {
 
 export const itemizadosAPI = {
   listar: async (params?: { activo?: boolean; categoria?: string }) => {
-    const response = await api.get<Itemizado[]>('/itemizados', { params });
+    const response = await api.get<Itemizado[]>("/itemizados", { params });
     return response.data;
   },
 
@@ -288,12 +281,17 @@ export const itemizadosAPI = {
     return response.data;
   },
 
-  crear: async (data: Omit<Itemizado, 'id' | 'created_at' | 'updated_at'>) => {
-    const response = await api.post<Itemizado>('/itemizados', data);
+  crear: async (
+    data: Omit<Itemizado, "id" | "created_at" | "updated_at">
+  ) => {
+    const response = await api.post<Itemizado>("/itemizados", data);
     return response.data;
   },
 
-  actualizar: async (id: string, data: Partial<Omit<Itemizado, 'id' | 'created_at' | 'updated_at'>>) => {
+  actualizar: async (
+    id: string,
+    data: Partial<Omit<Itemizado, "id" | "created_at" | "updated_at">>
+  ) => {
     const response = await api.put<Itemizado>(`/itemizados/${id}`, data);
     return response.data;
   },
@@ -304,14 +302,11 @@ export const itemizadosAPI = {
   },
 };
 
-// ============================================
-// USUARIOS (Admin)
-// ============================================
 export interface Usuario {
   id: string;
   nombre: string;
   email: string;
-  rol: 'administrador' | 'terreno' | 'ingenieria' | 'visualizador';
+  rol: "administrador" | "terreno" | "ingenieria" | "visualizador";
   activo: boolean;
   created_at: string;
   updated_at: string;
@@ -319,7 +314,7 @@ export interface Usuario {
 
 export const usuariosAPI = {
   listar: async (params?: { rol?: string; activo?: boolean }) => {
-    const response = await api.get<Usuario[]>('/usuarios', { params });
+    const response = await api.get<Usuario[]>("/usuarios", { params });
     return response.data;
   },
 
@@ -328,12 +323,25 @@ export const usuariosAPI = {
     return response.data;
   },
 
-  crear: async (data: { nombre: string; email: string; password: string; rol: Usuario['rol'] }) => {
-    const response = await api.post<Usuario>('/usuarios', data);
+  crear: async (data: {
+    nombre: string;
+    email: string;
+    password: string;
+    rol: Usuario["rol"];
+  }) => {
+    const response = await api.post<Usuario>("/usuarios", data);
     return response.data;
   },
 
-  actualizar: async (id: string, data: Partial<{ nombre: string; email: string; rol: Usuario['rol']; activo: boolean }>) => {
+  actualizar: async (
+    id: string,
+    data: Partial<{
+      nombre: string;
+      email: string;
+      rol: Usuario["rol"];
+      activo: boolean;
+    }>
+  ) => {
     const response = await api.put<Usuario>(`/usuarios/${id}`, data);
     return response.data;
   },
@@ -349,9 +357,6 @@ export const usuariosAPI = {
   },
 };
 
-// ===========================================
-// ESTADÍSTICAS
-// ===========================================
 export interface DashboardStats {
   totalRegistros: number;
   registrosProcesados: number;
@@ -370,12 +375,12 @@ export interface DashboardStats {
 
 export const statsAPI = {
   dashboard: async () => {
-    const response = await api.get<DashboardStats>('/stats/dashboard');
+    const response = await api.get<DashboardStats>("/stats/dashboard");
     return response.data;
   },
 
   obras: async () => {
-    const response = await api.get('/stats/obras');
+    const response = await api.get("/stats/obras");
     return response.data;
   },
 };

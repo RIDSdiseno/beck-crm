@@ -4,8 +4,9 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-import type { RolUsuario } from "../types/usuario";
+import type { LoginResponse } from "../services/api";
 import { authAPI } from "../services/api";
+import type { RolUsuario } from "../types/usuario";
 import {
   AuthContext,
   type AuthUser,
@@ -14,6 +15,14 @@ import {
 
 const SESSION_KEY = "beck_crm_session_v1";
 const TOKEN_KEY = "beck_token";
+
+const ROLE_MAP: Record<string, RolUsuario> = {
+  administrador: "Administrador",
+  terreno: "Terreno",
+  vendedor: "Vendedor",
+  ingenieria: "Ingenieria",
+  visualizador: "Visualizador",
+};
 
 const isRolUsuario = (value: unknown): value is RolUsuario =>
   value === "Administrador" ||
@@ -24,18 +33,44 @@ const isRolUsuario = (value: unknown): value is RolUsuario =>
 
 const parseAuthUser = (value: unknown): AuthUser | null => {
   if (!value || typeof value !== "object") return null;
-  const u = value as Partial<AuthUser>;
+  const user = value as Partial<AuthUser>;
 
   if (
-    typeof u.id !== "string" ||
-    typeof u.nombre !== "string" ||
-    typeof u.email !== "string" ||
-    !isRolUsuario(u.rol)
+    typeof user.id !== "string" ||
+    typeof user.nombre !== "string" ||
+    typeof user.email !== "string" ||
+    !isRolUsuario(user.rol)
   ) {
     return null;
   }
 
-  return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol };
+  return {
+    id: user.id,
+    nombre: user.nombre,
+    email: user.email,
+    rol: user.rol,
+  };
+};
+
+const buildAuthUser = (user: LoginResponse["user"]): AuthUser => ({
+  id: user.id,
+  nombre: user.nombre,
+  email: user.email,
+  rol: ROLE_MAP[user.rol] || "Visualizador",
+});
+
+const persistSession = (user: AuthUser, token: string) => {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(TOKEN_KEY, token);
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+};
+
+const clearSession = () => {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(SESSION_KEY);
 };
 
 type AuthProviderProps = {
@@ -45,6 +80,7 @@ type AuthProviderProps = {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(() => {
     if (typeof window === "undefined") return null;
+
     try {
       const raw = window.localStorage.getItem(SESSION_KEY);
       if (!raw) return null;
@@ -57,84 +93,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useCallback(
     async ({ email, password }: LoginParams): Promise<AuthUser> => {
       try {
-        const response = await authAPI.login(email, password || "");
+        const response = await authAPI.login(email, password);
+        const authUser = buildAuthUser(response.user);
 
-        const rolMap: Record<string, RolUsuario> = {
-          administrador: "Administrador",
-          terreno: "Terreno",
-          vendedor: "Vendedor",
-          ingenieria: "Ingenieria",
-          visualizador: "Visualizador",
-        };
-
-        const authUser: AuthUser = {
-          id: response.user.id,
-          nombre: response.user.nombre,
-          email: response.user.email,
-          rol: rolMap[response.user.rol] || "Visualizador",
-        };
-
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(TOKEN_KEY, response.token);
-          window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
-        }
-
+        persistSession(authUser, response.token);
         setUser(authUser);
+
         return authUser;
       } catch (error: unknown) {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem(TOKEN_KEY);
-          window.localStorage.removeItem(SESSION_KEY);
-        }
+        clearSession();
 
         const errorMessage =
-          error instanceof Error
-            ? error.message
-            : "Error al iniciar sesión";
-
-        throw new Error(errorMessage);
-      }
-    },
-    []
-  );
-
-  const loginMicrosoft = useCallback(
-    async (token: string): Promise<AuthUser> => {
-      try {
-        const response = await authAPI.loginMicrosoft(token);
-
-        const rolMap: Record<string, RolUsuario> = {
-          administrador: "Administrador",
-          vendedor: "Vendedor",
-          terreno: "Terreno",
-          ingenieria: "Ingenieria",
-          visualizador: "Visualizador",
-        };
-
-        const authUser: AuthUser = {
-          id: response.user.id,
-          nombre: response.user.nombre,
-          email: response.user.email,
-          rol: rolMap[response.user.rol] || "Visualizador",
-        };
-
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(TOKEN_KEY, response.token);
-          window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
-        }
-
-        setUser(authUser);
-        return authUser;
-      } catch (error: unknown) {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem(TOKEN_KEY);
-          window.localStorage.removeItem(SESSION_KEY);
-        }
-
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : "Error con login Microsoft";
+          error instanceof Error ? error.message : "Error al iniciar sesión";
 
         throw new Error(errorMessage);
       }
@@ -144,16 +114,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = useCallback(() => {
     setUser(null);
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(SESSION_KEY);
-      window.localStorage.removeItem(TOKEN_KEY);
-    }
+    clearSession();
   }, []);
 
-  const value = useMemo(
-    () => ({ user, login, loginMicrosoft, logout }),
-    [user, login, loginMicrosoft, logout]
-  );
+  const value = useMemo(() => ({ user, login, logout }), [user, login, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
