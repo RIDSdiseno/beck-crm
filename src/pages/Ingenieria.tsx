@@ -1,6 +1,6 @@
 // src/pages/Ingenieria.tsx
 import React, { useState } from "react";
-import { Card, Table, Tag, Button, Modal, Form, Input, Select, InputNumber, message } from "antd";
+import { Card, Table, Tag, Button, Modal, Form, Input, Select, message } from "antd";
 import { EyeOutlined, CheckCircleOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 
@@ -125,7 +125,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Estado",
       key: "estado",
       width: 100,
-      render: (_, record: RegistroPendiente) => (
+      render: (_: unknown, record: RegistroPendiente) => (
         <Tag
           icon={record.procesado ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
           color={record.procesado ? "success" : "warning"}
@@ -158,7 +158,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     {
       title: "Ubicación",
       key: "ubicacion",
-      render: (_, record: RegistroPendiente) => (
+      render: (_: unknown, record: RegistroPendiente) => (
         <div className="text-xs">
           {record.piso} · Eje {record.eje_alfabetico}{record.eje_numerico}
         </div>
@@ -186,7 +186,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Acciones",
       key: "acciones",
       width: 120,
-      render: (_, record: RegistroPendiente) => (
+      render: (_: unknown, record: RegistroPendiente) => (
         <Button
           type="primary"
           size="small"

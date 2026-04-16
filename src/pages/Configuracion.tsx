@@ -40,7 +40,9 @@ const roleOptions: Array<{ label: string; value: RolUsuario }> = [
 const roleTagColor: Record<RolUsuario, string> = {
   Administrador: "volcano",
   Terreno: "green",
+  Ingenieria: "gold",
   Visualizador: "geekblue",
+  Vendedor: "purple",
 };
 
 const createId = (): string => {
