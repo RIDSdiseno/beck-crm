@@ -1,4 +1,9 @@
-import axios, { AxiosError, type AxiosInstance } from "axios";
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
+} from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -11,11 +16,19 @@ export const api: AxiosInstance = axios.create({
 });
 
 api.interceptors.request.use(
-  (config) => {
+  (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem("beck_token");
+
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      const headers =
+        config.headers instanceof AxiosHeaders
+          ? config.headers
+          : new AxiosHeaders(config.headers);
+
+      headers.set("Authorization", `Bearer ${token}`);
+      config.headers = headers;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -24,11 +37,25 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const data = error.response?.data as { error?: string } | undefined;
+    const message = data?.error;
+
+    if (
+      status === 401 ||
+      (status === 403 && message === "Usuario desactivado")
+    ) {
       localStorage.removeItem("beck_token");
       localStorage.removeItem("beck_crm_session_v1");
-      window.location.href = "/login";
+
+      if (
+        window.location.pathname !== "/login" &&
+        window.location.pathname !== "/auth/callback"
+      ) {
+        window.location.replace("/login");
+      }
     }
+
     return Promise.reject(error);
   }
 );
@@ -302,57 +329,47 @@ export const itemizadosAPI = {
   },
 };
 
-export interface Usuario {
+export type UsuarioApiRol =
+  | "administrador"
+  | "vendedor"
+  | "terreno"
+  | "ingenieria"
+  | "visualizador";
+
+export interface UsuarioApi {
   id: string;
   nombre: string;
   email: string;
-  rol: "administrador" | "terreno" | "ingenieria" | "visualizador";
+  rol: UsuarioApiRol;
   activo: boolean;
-  created_at: string;
-  updated_at: string;
+  azureId: string | null;
+  createdAt: string;
+}
+
+export interface ActualizarUsuarioInput {
+  nombre?: string;
+  email?: string;
+  rol?: UsuarioApiRol;
+  activo?: boolean;
+}
+
+export interface EliminarUsuarioResponse {
+  message: string;
 }
 
 export const usuariosAPI = {
-  listar: async (params?: { rol?: string; activo?: boolean }) => {
-    const response = await api.get<Usuario[]>("/usuarios", { params });
+  listar: async () => {
+    const response = await api.get<UsuarioApi[]>("/usuarios");
     return response.data;
   },
 
-  obtenerPorId: async (id: string) => {
-    const response = await api.get<Usuario>(`/usuarios/${id}`);
-    return response.data;
-  },
-
-  crear: async (data: {
-    nombre: string;
-    email: string;
-    password: string;
-    rol: Usuario["rol"];
-  }) => {
-    const response = await api.post<Usuario>("/usuarios", data);
-    return response.data;
-  },
-
-  actualizar: async (
-    id: string,
-    data: Partial<{
-      nombre: string;
-      email: string;
-      rol: Usuario["rol"];
-      activo: boolean;
-    }>
-  ) => {
-    const response = await api.put<Usuario>(`/usuarios/${id}`, data);
-    return response.data;
-  },
-
-  cambiarPassword: async (id: string, password: string) => {
-    const response = await api.put(`/usuarios/${id}/password`, { password });
+  actualizar: async (id: string, data: ActualizarUsuarioInput) => {
+    const response = await api.put<UsuarioApi>(`/usuarios/${id}`, data);
     return response.data;
   },
 
   eliminar: async (id: string) => {
-    const response = await api.delete(`/usuarios/${id}`);
+    const response = await api.delete<EliminarUsuarioResponse>(`/usuarios/${id}`);
     return response.data;
   },
 };

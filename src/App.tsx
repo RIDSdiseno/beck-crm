@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Navigate,
   Route,
@@ -11,6 +11,7 @@ import { Layout, message } from "antd";
 import Sidebar, {
   SIDEBAR_WIDTH_COLLAPSED,
   SIDEBAR_WIDTH_EXPANDED,
+  type RoleAccess,
 } from "./components/Sidebar";
 import FunnelPage from "./pages/FunnelPage";
 import Configuracion from "./pages/Configuracion";
@@ -28,11 +29,102 @@ import type { RolUsuario } from "./types/usuario";
 
 const { Content } = Layout;
 
+const getRoleAccess = (rol: RolUsuario): RoleAccess => {
+  switch (rol) {
+    case "Administrador":
+      return {
+        dashboard: true,
+        funnel: true,
+        registro: true,
+        ingenieria: true,
+        reportes: true,
+        juntaEspuma: true,
+        cotizaciones: true,
+        configuracion: true,
+      };
+    case "Vendedor":
+      return {
+        dashboard: false,
+        funnel: true,
+        registro: false,
+        ingenieria: false,
+        reportes: true,
+        juntaEspuma: false,
+        cotizaciones: true,
+        configuracion: false,
+      };
+    case "Terreno":
+      return {
+        dashboard: false,
+        funnel: true,
+        registro: true,
+        ingenieria: false,
+        reportes: true,
+        juntaEspuma: true,
+        cotizaciones: false,
+        configuracion: false,
+      };
+    case "Ingenieria":
+      return {
+        dashboard: false,
+        funnel: true,
+        registro: false,
+        ingenieria: true,
+        reportes: true,
+        juntaEspuma: false,
+        cotizaciones: false,
+        configuracion: false,
+      };
+    case "Visualizador":
+    default:
+      return {
+        dashboard: false,
+        funnel: true,
+        registro: false,
+        ingenieria: false,
+        reportes: true,
+        juntaEspuma: false,
+        cotizaciones: false,
+        configuracion: false,
+      };
+  }
+};
+
 const getHomeRouteForRole = (rol: RolUsuario): string => {
-  if (rol === "Administrador") return "/dashboard";
-  if (rol === "Terreno") return "/registro";
-  if (rol === "Ingenieria") return "/ingenieria";
-  return "/reportes";
+  switch (rol) {
+    case "Administrador":
+      return "/dashboard";
+    case "Vendedor":
+      return "/dashboard/funnel";
+    case "Terreno":
+      return "/registro";
+    case "Ingenieria":
+      return "/ingenieria";
+    case "Visualizador":
+    default:
+      return "/reportes";
+  }
+};
+
+const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
+  if (
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/auth/callback"
+  ) {
+    return true;
+  }
+
+  if (pathname.startsWith("/dashboard/funnel")) return access.funnel;
+  if (pathname.startsWith("/dashboard")) return access.dashboard;
+  if (pathname.startsWith("/registro")) return access.registro;
+  if (pathname.startsWith("/ingenieria")) return access.ingenieria;
+  if (pathname.startsWith("/reportes")) return access.reportes;
+  if (pathname.startsWith("/junta-espuma")) return access.juntaEspuma;
+  if (pathname.startsWith("/cotizaciones")) return access.cotizaciones;
+  if (pathname.startsWith("/configuracion")) return access.configuracion;
+
+  return true;
 };
 
 const AppShell: React.FC = () => {
@@ -46,7 +138,13 @@ const AppShell: React.FC = () => {
   );
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login, logout } = useAuth();
+  const { user, login, logout, refreshSession } = useAuth();
+
+  const access = useMemo(
+    () => (user ? getRoleAccess(user.rol) : null),
+    [user]
+  );
+  const homeRoute = user ? getHomeRouteForRole(user.rol) : "/login";
 
   useEffect(() => {
     const onResize = () => {
@@ -70,9 +168,31 @@ const AppShell: React.FC = () => {
     }
 
     if (user && location.pathname === "/login") {
-      navigate(getHomeRouteForRole(user.rol), { replace: true });
+      navigate(homeRoute, { replace: true });
     }
-  }, [location.pathname, navigate, user]);
+  }, [homeRoute, location.pathname, navigate, user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = window.setInterval(async () => {
+      try {
+        await refreshSession();
+      } catch {
+        // El interceptor y el provider resuelven la sesión inválida.
+      }
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [refreshSession, user]);
+
+  useEffect(() => {
+    if (!user || !access) return;
+
+    if (!canAccessPath(location.pathname, access)) {
+      navigate(homeRoute, { replace: true });
+    }
+  }, [access, homeRoute, location.pathname, navigate, user]);
 
   const isLoginRoute = location.pathname === "/login";
   const currentSidebarWidth = collapsed
@@ -85,7 +205,7 @@ const AppShell: React.FC = () => {
       navigate(getHomeRouteForRole(authUser.rol), { replace: true });
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : "No se pudo iniciar sesión";
+        error instanceof Error ? error.message : "No se pudo iniciar sesion";
       message.error(errorMessage);
     }
   };
@@ -95,7 +215,7 @@ const AppShell: React.FC = () => {
     navigate("/login", { replace: true });
   };
 
-  if (!user) {
+  if (!user || !access) {
     return (
       <Routes>
         <Route
@@ -107,11 +227,6 @@ const AppShell: React.FC = () => {
       </Routes>
     );
   }
-
-  const isAdministrador = user.rol === "Administrador";
-  const canUsarTerreno = user.rol === "Administrador" || user.rol === "Terreno";
-  const isIngenieria = user.rol === "Ingenieria";
-  const homeRoute = getHomeRouteForRole(user.rol);
 
   if (isLoginRoute) {
     return <Navigate to={homeRoute} replace />;
@@ -138,6 +253,7 @@ const AppShell: React.FC = () => {
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
         hiddenOnMobile={isMobile && collapsed}
         user={user}
+        access={access}
         onLogout={handleLogout}
       />
 
@@ -163,7 +279,7 @@ const AppShell: React.FC = () => {
               <Route
                 path="/dashboard"
                 element={
-                  isAdministrador ? (
+                  access.dashboard ? (
                     <Dashboard themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />
@@ -172,12 +288,18 @@ const AppShell: React.FC = () => {
               />
               <Route
                 path="/dashboard/funnel"
-                element={<FunnelPage themeMode={themeMode} />}
+                element={
+                  access.funnel ? (
+                    <FunnelPage themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/registro"
                 element={
-                  canUsarTerreno ? (
+                  access.registro ? (
                     <RegistroSellos themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />
@@ -187,7 +309,7 @@ const AppShell: React.FC = () => {
               <Route
                 path="/ingenieria"
                 element={
-                  isIngenieria ? (
+                  access.ingenieria ? (
                     <Ingenieria themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />
@@ -196,12 +318,18 @@ const AppShell: React.FC = () => {
               />
               <Route
                 path="/reportes"
-                element={<Reportes themeMode={themeMode} />}
+                element={
+                  access.reportes ? (
+                    <Reportes themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/junta-espuma"
                 element={
-                  canUsarTerreno ? (
+                  access.juntaEspuma ? (
                     <JuntaLinealEspuma themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />
@@ -210,12 +338,18 @@ const AppShell: React.FC = () => {
               />
               <Route
                 path="/cotizaciones"
-                element={<Cotizaciones themeMode={themeMode} />}
+                element={
+                  access.cotizaciones ? (
+                    <Cotizaciones themeMode={themeMode} />
+                  ) : (
+                    <Navigate to={homeRoute} replace />
+                  )
+                }
               />
               <Route
                 path="/configuracion"
                 element={
-                  isAdministrador ? (
+                  access.configuracion ? (
                     <Configuracion themeMode={themeMode} />
                   ) : (
                     <Navigate to={homeRoute} replace />

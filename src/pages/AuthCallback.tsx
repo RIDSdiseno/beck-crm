@@ -5,6 +5,7 @@ import type { RolUsuario } from "../types/usuario";
 
 const TOKEN_KEY = "beck_token";
 const SESSION_KEY = "beck_crm_session_v1";
+const POST_LOGIN_REDIRECT = "/dashboard";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
   administrador: "Administrador",
@@ -13,6 +14,9 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
 };
+
+let activeCallbackKey: string | null = null;
+let activeCallbackPromise: Promise<void> | null = null;
 
 type BackendUser = {
   id?: unknown;
@@ -59,15 +63,21 @@ const redirectTo = (path: string) => {
 
 const AuthCallback: React.FC = () => {
   useEffect(() => {
-    const handleAuthCallback = async () => {
-      const hash = window.location.hash.startsWith("#")
-        ? window.location.hash.slice(1)
-        : window.location.hash;
-      const params = new URLSearchParams(hash);
-      const error = params.get("error");
-      const token = params.get("token");
+    const rawHash = window.location.hash;
+    const rawSearch = window.location.search;
+    const callbackKey = `${rawSearch}|${rawHash}`;
 
-      window.history.replaceState(null, document.title, window.location.pathname);
+    if (activeCallbackKey === callbackKey && activeCallbackPromise) {
+      return;
+    }
+
+    const processCallback = async () => {
+      const hash = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+      const hashParams = new URLSearchParams(hash);
+      const searchParams = new URLSearchParams(rawSearch);
+
+      const error = hashParams.get("error") || searchParams.get("error");
+      const token = hashParams.get("token") || searchParams.get("token");
 
       if (error || !token) {
         clearSession();
@@ -86,17 +96,25 @@ const AuthCallback: React.FC = () => {
         }
 
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
-        redirectTo("/");
+        redirectTo(POST_LOGIN_REDIRECT);
       } catch {
         clearSession();
         redirectTo("/login");
       }
     };
 
-    void handleAuthCallback();
+    const promise = processCallback().finally(() => {
+      activeCallbackKey = null;
+      activeCallbackPromise = null;
+    });
+
+    activeCallbackKey = callbackKey;
+    activeCallbackPromise = promise;
+
+    void promise;
   }, []);
 
-  return <div>Procesando autenticación...</div>;
+  return null;
 };
 
 export default AuthCallback;

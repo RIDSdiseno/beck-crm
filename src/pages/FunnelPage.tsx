@@ -1,5 +1,6 @@
 import React, { type FormEvent, useEffect, useState } from "react";
 import CierreDeProyecto from "../components/Cierredeproyecto";
+import { useAuth } from "../context/useAuth";
 
 import {
   regionesComunasChile,
@@ -58,12 +59,14 @@ type FunnelDraft = {
 
 type FunnelCardProps = {
   deal: FunnelDeal;
+  canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
 };
 
 type FunnelColumnProps = {
   etapa: FunnelStage;
   deals: FunnelDeal[];
+  canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
 };
 
@@ -121,7 +124,6 @@ const createEmptyDraft = (): FunnelDraft => ({
   etapa: "prospecto",
 });
 
-
 const formatEstimatedValue = (
   value: number,
   moneda: FunnelCurrency
@@ -162,25 +164,30 @@ const formatDisplayDate = (value: string): string => {
 const inputClassName =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100";
 
+const disabledInputClassName =
+  "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+
 const FunnelFieldRow: React.FC<FunnelFieldRowProps> = ({ label, value }) => (
   <div className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs">
     <span className="font-medium text-slate-500">{label}</span>
-    <span className="text-right text-slate-700 break-words">{value}</span>
+    <span className="break-words text-right text-slate-700">{value}</span>
   </div>
 );
 
-const FunnelCard: React.FC<FunnelCardProps> = ({ deal, onStageChange }) => (
-  <article className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md transition">
+const FunnelCard: React.FC<FunnelCardProps> = ({
+  deal,
+  canEditFunnel,
+  onStageChange,
+}) => (
+  <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
     <h4 className="text-sm font-semibold text-slate-900">
       {deal.nombreProyecto}
     </h4>
 
-    {deal.empresa && (
-      <p className="text-xs text-slate-500 mt-1">{deal.empresa}</p>
-    )}
+    {deal.empresa && <p className="mt-1 text-xs text-slate-500">{deal.empresa}</p>}
 
     {typeof deal.valorEstimado === "number" && (
-      <p className="text-xs text-slate-600 mt-2 font-medium">
+      <p className="mt-2 text-xs font-medium text-slate-600">
         {formatEstimatedValue(deal.valorEstimado, deal.moneda)}
       </p>
     )}
@@ -193,16 +200,14 @@ const FunnelCard: React.FC<FunnelCardProps> = ({ deal, onStageChange }) => (
 
     {(deal.vendedor || deal.region || deal.comuna) && (
       <div className="mt-3 space-y-2">
-        {deal.vendedor && (
-          <FunnelFieldRow label="Vendedor" value={deal.vendedor} />
-        )}
+        {deal.vendedor && <FunnelFieldRow label="Vendedor" value={deal.vendedor} />}
 
         {deal.region && <FunnelFieldRow label="Region" value={deal.region} />}
         {deal.comuna && <FunnelFieldRow label="Comuna" value={deal.comuna} />}
       </div>
     )}
 
-    <div className="mt-4 border-t border-slate-100 pt-3 space-y-1.5">
+    <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
       <label
         htmlFor={`etapa-${deal.id}`}
         className="block text-[11px] font-medium uppercase tracking-wide text-slate-500"
@@ -212,10 +217,11 @@ const FunnelCard: React.FC<FunnelCardProps> = ({ deal, onStageChange }) => (
       <select
         id={`etapa-${deal.id}`}
         value={deal.etapa}
+        disabled={!canEditFunnel}
         onChange={(event) =>
           onStageChange(deal.id, event.target.value as FunnelStage)
         }
-        className={inputClassName}
+        className={`${inputClassName} ${disabledInputClassName}`}
       >
         {etapas.map((etapa) => (
           <option key={etapa} value={etapa}>
@@ -223,6 +229,9 @@ const FunnelCard: React.FC<FunnelCardProps> = ({ deal, onStageChange }) => (
           </option>
         ))}
       </select>
+      {!canEditFunnel && (
+        <p className="text-[11px] text-slate-400">Solo lectura</p>
+      )}
     </div>
   </article>
 );
@@ -230,25 +239,31 @@ const FunnelCard: React.FC<FunnelCardProps> = ({ deal, onStageChange }) => (
 const FunnelColumn: React.FC<FunnelColumnProps> = ({
   etapa,
   deals,
+  canEditFunnel,
   onStageChange,
 }) => (
-  <div className="bg-gray-100 rounded-xl p-4 min-h-[420px] flex flex-col">
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="font-semibold text-sm text-slate-800">
+  <div className="flex min-h-[420px] flex-col rounded-xl bg-gray-100 p-4">
+    <div className="mb-3 flex items-center justify-between">
+      <h3 className="text-sm font-semibold text-slate-800">
         {etapasLabel[etapa]}
       </h3>
-      <span className="text-xs bg-white border rounded-full px-2 py-0.5 text-slate-600">
+      <span className="rounded-full border bg-white px-2 py-0.5 text-xs text-slate-600">
         {deals.length}
       </span>
     </div>
 
-    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+    <div className="flex-1 space-y-3 overflow-y-auto pr-1">
       {deals.length ? (
         deals.map((deal) => (
-          <FunnelCard key={deal.id} deal={deal} onStageChange={onStageChange} />
+          <FunnelCard
+            key={deal.id}
+            deal={deal}
+            canEditFunnel={canEditFunnel}
+            onStageChange={onStageChange}
+          />
         ))
       ) : (
-        <p className="text-xs text-gray-400 text-center mt-4">
+        <p className="mt-4 text-center text-xs text-gray-400">
           Sin oportunidades
         </p>
       )}
@@ -338,9 +353,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 id="funnel-empresa"
                 type="text"
                 value={draft.empresa}
-                onChange={(event) =>
-                  onFieldChange("empresa", event.target.value)
-                }
+                onChange={(event) => onFieldChange("empresa", event.target.value)}
                 className={inputClassName}
                 placeholder="Nombre de la empresa"
               />
@@ -411,9 +424,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 id="funnel-vendedor"
                 type="text"
                 value={draft.vendedor}
-                onChange={(event) =>
-                  onFieldChange("vendedor", event.target.value)
-                }
+                onChange={(event) => onFieldChange("vendedor", event.target.value)}
                 className={inputClassName}
                 placeholder="Responsable comercial"
               />
@@ -429,9 +440,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
               <select
                 id="funnel-region"
                 value={draft.region}
-                onChange={(event) =>
-                  onFieldChange("region", event.target.value)
-                }
+                onChange={(event) => onFieldChange("region", event.target.value)}
                 className={inputClassName}
               >
                 <option value="">Selecciona una region</option>
@@ -453,10 +462,8 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
               <select
                 id="funnel-comuna"
                 value={draft.comuna}
-                onChange={(event) =>
-                  onFieldChange("comuna", event.target.value)
-                }
-                className={`${inputClassName} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
+                onChange={(event) => onFieldChange("comuna", event.target.value)}
+                className={`${inputClassName} ${disabledInputClassName}`}
                 disabled={!draft.region}
               >
                 <option value="">
@@ -543,6 +550,13 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
 const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   void themeMode;
 
+  const { user } = useAuth();
+  const canEditFunnel =
+    user?.rol === "Administrador" ||
+    user?.rol === "Vendedor" ||
+    user?.rol === "Terreno" ||
+    user?.rol === "Ingenieria";
+
   const [deals, setDeals] = useState<FunnelDeal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -600,41 +614,37 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             }
           }
 
-          if (draft.moneda === "UF") {
-            if (tieneUf) {
-              const valorClp = parsedDraftValue * ufActual;
+          if (draft.moneda === "UF" && tieneUf) {
+            const valorClp = parsedDraftValue * ufActual;
 
+            referencias.push(
+              `Equivale a ${formatEstimatedValue(valorClp, "CLP")}`
+            );
+
+            if (tieneDolar) {
               referencias.push(
-                `Equivale a ${formatEstimatedValue(valorClp, "CLP")}`
+                `Equivale a ${formatEstimatedValue(
+                  valorClp / dolarActual,
+                  "USD"
+                )}`
               );
-
-              if (tieneDolar) {
-                referencias.push(
-                  `Equivale a ${formatEstimatedValue(
-                    valorClp / dolarActual,
-                    "USD"
-                  )}`
-                );
-              }
             }
           }
 
-          if (draft.moneda === "USD") {
-            if (tieneDolar) {
-              const valorClp = parsedDraftValue * dolarActual;
+          if (draft.moneda === "USD" && tieneDolar) {
+            const valorClp = parsedDraftValue * dolarActual;
 
+            referencias.push(
+              `Equivale a ${formatEstimatedValue(valorClp, "CLP")}`
+            );
+
+            if (tieneUf) {
               referencias.push(
-                `Equivale a ${formatEstimatedValue(valorClp, "CLP")}`
+                `Equivale a ${formatEstimatedValue(
+                  valorClp / ufActual,
+                  "UF"
+                )}`
               );
-
-              if (tieneUf) {
-                referencias.push(
-                  `Equivale a ${formatEstimatedValue(
-                    valorClp / ufActual,
-                    "UF"
-                  )}`
-                );
-              }
             }
           }
 
@@ -782,6 +792,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleOpenModal = () => {
+    if (!canEditFunnel) return;
+
     setDraft(createEmptyDraft());
     setIsModalOpen(true);
   };
@@ -799,6 +811,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   };
 
   const handleFieldChange = (field: keyof FunnelDraft, value: string) => {
+    if (!canEditFunnel) return;
+
     if (field === "etapa") {
       setDraft((current) => ({
         ...current,
@@ -846,6 +860,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       motivoPerdida?: string;
     }
   ) => {
+    if (!canEditFunnel) return;
+
     const response = await fetch(
       `http://localhost:5000/api/funnel-beck/${dealId}/etapa`,
       {
@@ -862,12 +878,14 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
     if (!response.ok || !result.success) {
       throw new Error(
-        result.error || "El backend rechazó la actualización de etapa"
+        result.error || "El backend rechazo la actualizacion de etapa"
       );
     }
   };
 
   const handleStageChange = async (dealId: string, etapa: FunnelStage) => {
+    if (!canEditFunnel) return;
+
     if (etapa === "cerrada") {
       setDealEnCierre(dealId);
       setEstadoCierreModal("");
@@ -894,7 +912,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     estadoCierre: "ganada" | "perdida";
     motivoPerdida?: string;
   }) => {
-    if (!dealEnCierre) {
+    if (!canEditFunnel || !dealEnCierre) {
       return;
     }
 
@@ -923,6 +941,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const handleCreateDeal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (!canEditFunnel) return;
+
     const nombreProyecto = draft.nombreProyecto.trim();
     const empresa = draft.empresa.trim();
     const vendedor = draft.vendedor.trim();
@@ -943,7 +963,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       parsedValor <= 0
     ) {
       console.error(
-        "El valor estimado es obligatorio y debe ser un número mayor a 0."
+        "El valor estimado es obligatorio y debe ser un numero mayor a 0."
       );
       return;
     }
@@ -971,7 +991,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       const result = (await response.json()) as { success: boolean };
 
       if (!response.ok || !result.success) {
-        throw new Error("El backend rechazó la oportunidad");
+        throw new Error("El backend rechazo la oportunidad");
       }
 
       await loadDeals();
@@ -996,19 +1016,22 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             </h1>
 
             <p className="mt-1 max-w-2xl text-xs text-slate-600">
-              Visualiza oportunidades comerciales por etapa, crea nuevas
-              oportunidades y actualiza su avance directamente desde el
-              tablero.
+              Visualiza oportunidades comerciales por etapa.
+              {canEditFunnel
+                ? " Crea nuevas oportunidades y actualiza su avance directamente desde el tablero."
+                : " Tu perfil tiene acceso de solo lectura."}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenModal}
-            className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
-          >
-            Nueva oportunidad
-          </button>
+          {canEditFunnel && (
+            <button
+              type="button"
+              onClick={handleOpenModal}
+              className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+            >
+              Nueva oportunidad
+            </button>
+          )}
         </div>
       </section>
 
@@ -1018,7 +1041,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         </section>
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
+          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
             {etapas.map((etapa) => {
               const dealsForStage = deals.filter((deal) => deal.etapa === etapa);
 
@@ -1027,6 +1050,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                   key={etapa}
                   etapa={etapa}
                   deals={dealsForStage}
+                  canEditFunnel={canEditFunnel}
                   onStageChange={handleStageChange}
                 />
               );
@@ -1036,7 +1060,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       )}
 
       <FunnelModal
-        open={isModalOpen}
+        open={isModalOpen && canEditFunnel}
         draft={draft}
         conversionReferencia={conversionReferencia}
         onClose={handleCloseModal}
@@ -1045,12 +1069,20 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       />
 
       <CierreDeProyecto
-        open={cierreModalOpen}
+        open={cierreModalOpen && canEditFunnel}
         estadoCierre={estadoCierreModal}
         motivoPerdida={motivoPerdidaModal}
-        onChangeEstado={(value) => setEstadoCierreModal(value)}
-        onChangeMotivo={setMotivoPerdidaModal}
+        onChangeEstado={(value) => {
+          if (!canEditFunnel) return;
+          setEstadoCierreModal(value);
+        }}
+        onChangeMotivo={(value) => {
+          if (!canEditFunnel) return;
+          setMotivoPerdidaModal(value);
+        }}
         onConfirm={() => {
+          if (!canEditFunnel) return;
+
           if (
             estadoCierreModal !== "ganada" &&
             estadoCierreModal !== "perdida"

@@ -1,4 +1,3 @@
-// src/components/Sidebar.tsx
 import React from "react";
 import {
   DashboardOutlined,
@@ -17,44 +16,51 @@ import { NavLink } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 import type { RolUsuario } from "../types/usuario";
 
+export type RoleAccess = {
+  dashboard: boolean;
+  funnel: boolean;
+  registro: boolean;
+  ingenieria: boolean;
+  reportes: boolean;
+  juntaEspuma: boolean;
+  cotizaciones: boolean;
+  configuracion: boolean;
+};
+
 type SidebarProps = {
-  themeMode: ThemeMode; // lo recibimos pero el tema es fijo claro
+  themeMode: ThemeMode;
   collapsed: boolean;
   onToggleCollapse: () => void;
   hiddenOnMobile?: boolean;
   user?: { nombre: string; rol: RolUsuario } | null;
+  access: RoleAccess;
   onLogout?: () => void;
 };
 
-// Deben calzar con w-64 / w-20 usadas abajo
-export const SIDEBAR_WIDTH_EXPANDED = 256; // ~ w-64
-export const SIDEBAR_WIDTH_COLLAPSED = 80; // ~ w-20
+export const SIDEBAR_WIDTH_EXPANDED = 256;
+export const SIDEBAR_WIDTH_COLLAPSED = 80;
 
 const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse,
   hiddenOnMobile,
   user,
+  access,
   onLogout,
 }) => {
   const sidebarBase =
     "bg-[#f4f5fb] border-r border-slate-200/80 backdrop-blur-sm";
 
   const linkBase =
-    "flex items-center rounded-xl text-xs transition-all py-2";
+    "flex items-center rounded-xl py-2 text-xs transition-all";
 
   const getLinkClasses = (isActive: boolean) =>
     isActive
-      ? "bg-white text-slate-900 shadow-sm border border-amber-200"
+      ? "border border-amber-200 bg-white text-slate-900 shadow-sm"
       : "text-slate-600 hover:bg-white/80 hover:text-slate-900";
 
   const sectionTitleCls =
-    "text-[10px] font-semibold tracking-wide text-slate-500 uppercase";
-
-  const isAdministrador = user?.rol === "Administrador";
-  const canUsarTerreno =
-    user?.rol === "Administrador" || user?.rol === "Terreno";
-  const isIngenieria = user?.rol === "Ingenieria";
+    "text-[10px] font-semibold uppercase tracking-wide text-slate-500";
 
   return (
     <aside
@@ -63,48 +69,44 @@ const Sidebar: React.FC<SidebarProps> = ({
         ${collapsed ? "w-20" : "w-64"}
         fixed inset-y-0 left-0
         ${hiddenOnMobile ? "hidden md:flex" : "flex"}
-        flex-col
-        z-40
+        z-40 flex-col
       `}
     >
-      {/* HEADER */}
-      <div className="px-3 py-4 border-b border-slate-200/80">
+      <div className="border-b border-slate-200/80 px-3 py-4">
         {collapsed ? (
-          // --- HEADER COLAPSADO ---
           <div className="flex flex-col items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-[#ffcc33] flex items-center justify-center text-xs font-black text-slate-900 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffcc33] text-xs font-black text-slate-900 shadow-sm">
               BECK
             </div>
             <button
               onClick={onToggleCollapse}
-              className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 text-xs"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white/80 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
             >
               <MenuUnfoldOutlined />
             </button>
           </div>
         ) : (
-          // --- HEADER EXPANDIDO ---
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#ffcc33] flex items-center justify-center text-xs font-black text-slate-900 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffcc33] text-xs font-black text-slate-900 shadow-sm">
               BECK
             </div>
 
-            <div className="flex-1 leading-tight min-w-0">
-              <p className="text-xs font-semibold text-slate-900 truncate">
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-xs font-semibold text-slate-900">
                 BECK Soluciones
               </p>
-              <p className="text-[10px] text-slate-500 truncate">
-                Obra demo · CRM BECK
+              <p className="truncate text-[10px] text-slate-500">
+                CRM BECK
               </p>
-              <span className="mt-1 inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-orange-50 border border-orange-100 text-[10px] text-orange-700">
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-100 bg-orange-50 px-2 py-[2px] text-[10px] text-orange-700">
                 <FireOutlined className="text-[10px]" />
-                Protección pasiva
+                Proteccion pasiva
               </span>
             </div>
 
             <button
               onClick={onToggleCollapse}
-              className="ml-auto flex items-center justify-center w-8 h-8 rounded-full border border-slate-300 text-slate-600 hover:bg-white hover:text-slate-900 text-xs flex-shrink-0"
+              className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
             >
               <MenuFoldOutlined />
             </button>
@@ -112,26 +114,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* MÓDULOS DE OBRA */}
-      <div className="flex-1 overflow-y-auto px-2 py-4 space-y-6">
-        {!collapsed && <p className={sectionTitleCls}>Módulos de obra</p>}
+      <div className="flex-1 space-y-6 overflow-y-auto px-2 py-4">
+        {!collapsed && <p className={sectionTitleCls}>Modulos</p>}
 
-        <nav
-          className={`
-            flex flex-col gap-1
-            ${collapsed ? "items-center" : ""}
-          `}
-        >
-          {isAdministrador && (
+        <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
+          {access.dashboard && (
             <NavLink
               to="/dashboard"
               end
               className={({ isActive }) =>
-                `
-                ${linkBase}
-                ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-                ${getLinkClasses(isActive)}
-                `
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
               }
             >
               <DashboardOutlined />
@@ -139,139 +133,128 @@ const Sidebar: React.FC<SidebarProps> = ({
             </NavLink>
           )}
 
-          <NavLink
-            to="/dashboard/funnel"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <ProjectOutlined />
-            {!collapsed && <span>Funnel</span>}
-          </NavLink>
+          {access.funnel && (
+            <NavLink
+              to="/dashboard/funnel"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <ProjectOutlined />
+              {!collapsed && <span>Funnel</span>}
+            </NavLink>
+          )}
 
-          {isIngenieria && (
+          {access.ingenieria && (
             <NavLink
               to="/ingenieria"
               className={({ isActive }) =>
-                `
-                ${linkBase}
-                ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-                ${getLinkClasses(isActive)}
-                `
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
               }
             >
               <FireOutlined />
-              {!collapsed && <span>Procesamiento Ingeniería</span>}
+              {!collapsed && <span>Procesamiento Ingenieria</span>}
             </NavLink>
           )}
 
-          {canUsarTerreno && (
-          <NavLink
-            to="/registro"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <ProfileOutlined />
-            {!collapsed && <span>Registro · BECK / SACYR</span>}
-          </NavLink>
+          {access.registro && (
+            <NavLink
+              to="/registro"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <ProfileOutlined />
+              {!collapsed && <span>Registro</span>}
+            </NavLink>
           )}
 
-          <NavLink
-            to="/reportes"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <BarChartOutlined />
-            {!collapsed && <span>Reportes</span>}
-          </NavLink>
+          {access.reportes && (
+            <NavLink
+              to="/reportes"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <BarChartOutlined />
+              {!collapsed && <span>Reportes</span>}
+            </NavLink>
+          )}
 
-          {/* NUEVO: COTIZACIONES */}
-          <NavLink
-            to="/cotizaciones"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <FileTextOutlined />
-            {!collapsed && <span>Cotizaciones</span>}
-          </NavLink>
+          {access.cotizaciones && (
+            <NavLink
+              to="/cotizaciones"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <FileTextOutlined />
+              {!collapsed && <span>Cotizaciones</span>}
+            </NavLink>
+          )}
 
-          {canUsarTerreno && (
-          <NavLink
-            to="/junta-espuma"
-            className={({ isActive }) =>
-              `
-              ${linkBase}
-              ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-              ${getLinkClasses(isActive)}
-              `
-            }
-          >
-            <ThunderboltOutlined />
-            {!collapsed && <span>Junta lineal · ESPUMA</span>}
-          </NavLink>
+          {access.juntaEspuma && (
+            <NavLink
+              to="/junta-espuma"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <ThunderboltOutlined />
+              {!collapsed && <span>Junta lineal espuma</span>}
+            </NavLink>
           )}
         </nav>
 
-        {/* CONFIGURACIÓN */}
-        {isAdministrador && (
-          <div className="pt-4 border-t border-slate-200/80">
-          {!collapsed && (
-            <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
-          )}
-          <nav className={collapsed ? "flex flex-col items-center" : ""}>
-            <NavLink
-              to="/configuracion"
-              className={({ isActive }) =>
-                `
-                ${linkBase}
-                ${collapsed ? "justify-center px-0 gap-0" : "justify-start px-3 gap-2"}
-                ${getLinkClasses(isActive)}
-                `
-              }
-            >
-              <SettingOutlined />
-              {!collapsed && <span>Usuarios y parámetros</span>}
-            </NavLink>
-          </nav>
+        {access.configuracion && (
+          <div className="border-t border-slate-200/80 pt-4">
+            {!collapsed && (
+              <p className={`${sectionTitleCls} mb-1.5`}>Configuracion</p>
+            )}
+            <nav className={collapsed ? "flex flex-col items-center" : ""}>
+              <NavLink
+                to="/configuracion"
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                <SettingOutlined />
+                {!collapsed && <span>Usuarios y parametros</span>}
+              </NavLink>
+            </nav>
           </div>
         )}
       </div>
 
-      {/* FOOTER VERSIÓN */}
-      <div className="px-3 py-3 border-t border-slate-200/80 text-[10px]">
+      <div className="border-t border-slate-200/80 px-3 py-3 text-[10px]">
         {user && (
           <div
             className={
               collapsed
-                ? "flex items-center justify-center mb-2"
+                ? "mb-2 flex items-center justify-center"
                 : "mb-2 flex items-center justify-between gap-2"
             }
           >
             {!collapsed && (
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-slate-800 truncate">
+                <p className="truncate text-[11px] font-semibold text-slate-800">
                   {user.nombre}
                 </p>
-                <p className="text-[10px] text-slate-500 truncate">{user.rol}</p>
+                <p className="truncate text-[10px] text-slate-500">{user.rol}</p>
               </div>
             )}
 
@@ -279,8 +262,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex items-center justify-center w-9 h-9 rounded-full border border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 text-xs flex-shrink-0"
-                title="Cerrar sesión"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white/80 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
+                title="Cerrar sesion"
               >
                 <LogoutOutlined />
               </button>
@@ -290,7 +273,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {!collapsed && (
           <>
-            <p className="text-slate-400">Versión 0.1 · Demo interactiva</p>
+            <p className="text-slate-400">Version 0.1</p>
             <p className="text-slate-400">© 2025 BECK Soluciones</p>
           </>
         )}

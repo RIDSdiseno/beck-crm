@@ -1,160 +1,223 @@
 import React, { useEffect, useState } from "react";
+import { isAxiosError } from "axios";
 import dayjs from "dayjs";
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  Popconfirm,
-  Select,
-  Switch,
-  Table,
-  Tag,
-  message,
-} from "antd";
+import { Button, Card, Select, Switch, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import {
-  DeleteOutlined,
-  ReloadOutlined,
-  UserAddOutlined,
-} from "@ant-design/icons";
+import { ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
+import { useAuth } from "../context/useAuth";
 import type { ThemeMode } from "../hooks/useSystemTheme";
-import type { RolUsuario, Usuario } from "../types/usuario";
-import { loadUsuarios, resetUsuarios, saveUsuarios } from "../data/usuariosStorage";
+import {
+  usuariosAPI,
+  type UsuarioApi,
+  type UsuarioApiRol,
+} from "../services/api";
 
 type ConfiguracionProps = {
   themeMode: ThemeMode;
 };
 
-type CreateUsuarioFormValues = {
-  nombre: string;
-  email: string;
-  rol: RolUsuario;
-};
-
-const roleOptions: Array<{ label: string; value: RolUsuario }> = [
-  { label: "Terreno", value: "Terreno" },
-  { label: "Visualizador", value: "Visualizador" },
+const roleOptions: Array<{ label: string; value: UsuarioApiRol }> = [
+  { label: "Administrador", value: "administrador" },
+  { label: "Vendedor", value: "vendedor" },
+  { label: "Terreno", value: "terreno" },
+  { label: "Ingenieria", value: "ingenieria" },
+  { label: "Visualizador", value: "visualizador" },
 ];
 
-const roleTagColor: Record<RolUsuario, string> = {
-  Administrador: "volcano",
-  Terreno: "green",
-  Ingenieria: "gold",
-  Visualizador: "geekblue",
-  Vendedor: "purple",
+const roleLabels: Record<UsuarioApiRol, string> = {
+  administrador: "Administrador",
+  vendedor: "Vendedor",
+  terreno: "Terreno",
+  ingenieria: "Ingenieria",
+  visualizador: "Visualizador",
 };
 
-const createId = (): string => {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
+const roleTagColor: Record<UsuarioApiRol, string> = {
+  administrador: "volcano",
+  vendedor: "purple",
+  terreno: "green",
+  ingenieria: "gold",
+  visualizador: "geekblue",
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (isAxiosError(error)) {
+    const data = error.response?.data;
+
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+
+    if (data && typeof data === "object") {
+      const apiError = data as { error?: unknown; message?: unknown };
+
+      if (typeof apiError.error === "string" && apiError.error.trim()) {
+        return apiError.error;
+      }
+
+      if (typeof apiError.message === "string" && apiError.message.trim()) {
+        return apiError.message;
+      }
+    }
   }
-  return `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-};
 
-const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+};
 
 const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
-  // solo para compatibilidad
   void themeMode;
 
-  const [form] = Form.useForm<CreateUsuarioFormValues>();
-  const [usuarios, setUsuarios] = useState<Usuario[]>(() => loadUsuarios());
+  const { user: currentUser, refreshSession } = useAuth();
+  const [usuarios, setUsuarios] = useState<UsuarioApi[]>([]);
+  const [loadingUsuarios, setLoadingUsuarios] = useState(true);
+  const [savingById, setSavingById] = useState<Record<string, boolean>>({});
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    saveUsuarios(usuarios);
-  }, [usuarios]);
+    let isMounted = true;
 
-  const updateUsuario = (id: string, patch: Partial<Usuario>) => {
-    setUsuarios((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, ...patch } : u))
-    );
-  };
+    const fetchUsuarios = async () => {
+      setLoadingUsuarios(true);
 
-  const removeUsuario = (id: string) => {
-    setUsuarios((prev) => prev.filter((u) => u.id !== id));
-    message.success("Usuario eliminado");
-  };
+      try {
+        const response = await usuariosAPI.listar();
 
-  const handleReset = () => {
-    resetUsuarios();
-    setUsuarios(loadUsuarios());
-    message.info("Usuarios restaurados a la demo");
-  };
+        if (!isMounted) {
+          return;
+        }
 
-  const handleCreate = (values: CreateUsuarioFormValues) => {
-    const nombre = values.nombre.trim();
-    const email = normalizeEmail(values.email);
+        setUsuarios(response);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
 
-    if (!nombre) {
-      message.error("Ingresa un nombre");
-      return;
-    }
-
-    if (values.rol === "Administrador") {
-      message.error("Solo puedes asignar rol Terreno o Visualizador");
-      return;
-    }
-
-    if (usuarios.some((u) => normalizeEmail(u.email) === email)) {
-      message.error("Ya existe un usuario con ese correo");
-      return;
-    }
-
-    const nuevo: Usuario = {
-      id: createId(),
-      nombre,
-      email,
-      rol: values.rol,
-      activo: true,
-      creadoEn: new Date().toISOString(),
+        message.error(getErrorMessage(error, "No se pudieron cargar los usuarios"));
+      } finally {
+        if (isMounted) {
+          setLoadingUsuarios(false);
+        }
+      }
     };
 
-    setUsuarios((prev) => [nuevo, ...prev]);
-    form.resetFields();
-    message.success("Usuario creado");
+    void fetchUsuarios();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [reloadKey]);
+
+  const setSavingState = (id: string, saving: boolean) => {
+    setSavingById((prev) => {
+      const next = { ...prev };
+
+      if (saving) {
+        next[id] = true;
+      } else {
+        delete next[id];
+      }
+
+      return next;
+    });
   };
 
-  const columns: ColumnsType<Usuario> = [
+  const isSaving = (id: string) => Boolean(savingById[id]);
+
+  const refreshUsuarios = () => {
+    setReloadKey((prev) => prev + 1);
+  };
+
+  const syncCurrentSessionIfNeeded = async (updatedUsuario: UsuarioApi) => {
+    if (!currentUser || currentUser.id !== updatedUsuario.id) {
+      return;
+    }
+
+    await refreshSession();
+  };
+
+  const updateUsuario = async (
+    id: string,
+    patch: Partial<Pick<UsuarioApi, "rol" | "activo">>,
+    successMessage: string
+  ) => {
+    setSavingState(id, true);
+
+    try {
+      const updatedUsuario = await usuariosAPI.actualizar(id, patch);
+
+      setUsuarios((prev) =>
+        prev.map((usuario) =>
+          usuario.id === updatedUsuario.id ? updatedUsuario : usuario
+        )
+      );
+
+      await syncCurrentSessionIfNeeded(updatedUsuario);
+      message.success(successMessage);
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo actualizar el usuario"));
+    } finally {
+      setSavingState(id, false);
+    }
+  };
+
+  const activos = usuarios.filter((usuario) => usuario.activo).length;
+  const inactivos = usuarios.length - activos;
+
+  const columns: ColumnsType<UsuarioApi> = [
     {
       title: "Nombre",
       dataIndex: "nombre",
       key: "nombre",
       width: 220,
-      render: (value: unknown) => (
-        <span className="text-xs font-medium text-slate-900">
-          {String(value)}
-        </span>
+      render: (value: string) => (
+        <span className="text-xs font-medium text-slate-900">{value}</span>
       ),
     },
     {
       title: "Correo",
       dataIndex: "email",
       key: "email",
-      width: 260,
-      render: (value: unknown) => (
-        <span className="text-xs text-slate-700">{String(value)}</span>
+      width: 320,
+      render: (_value: string, record) => (
+        <div className="leading-tight">
+          <span className="block text-xs text-slate-700">{record.email}</span>
+          <span
+            className="block max-w-[260px] truncate text-[11px] text-slate-400"
+            title={record.azureId ?? undefined}
+          >
+            {record.azureId ? `Azure ID: ${record.azureId}` : "Sin vinculo Microsoft"}
+          </span>
+        </div>
       ),
     },
     {
       title: "Rol",
       dataIndex: "rol",
       key: "rol",
-      width: 220,
-      render: (_value: unknown, record) => (
+      width: 240,
+      render: (_value: UsuarioApiRol, record) => (
         <div className="flex items-center gap-2">
           <Tag color={roleTagColor[record.rol]} style={{ marginInlineEnd: 0 }}>
-            {record.rol}
+            {roleLabels[record.rol]}
           </Tag>
-          {record.rol !== "Administrador" && (
-            <Select<RolUsuario>
-              size="small"
-              value={record.rol}
-              options={roleOptions}
-              onChange={(rol) => updateUsuario(record.id, { rol })}
-              style={{ width: 140 }}
-            />
-          )}
+          <Select<UsuarioApiRol>
+            size="small"
+            value={record.rol}
+            options={roleOptions}
+            disabled={isSaving(record.id)}
+            onChange={(rol) => {
+              if (rol === record.rol) {
+                return;
+              }
+
+              void updateUsuario(record.id, { rol }, "Rol actualizado");
+            }}
+            style={{ width: 150 }}
+          />
         </div>
       ),
     },
@@ -163,39 +226,34 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
       dataIndex: "activo",
       key: "activo",
       width: 110,
-      render: (_value: unknown, record) => (
+      render: (_value: boolean, record) => (
         <Switch
           size="small"
           checked={record.activo}
-          onChange={(activo) => updateUsuario(record.id, { activo })}
+          loading={isSaving(record.id)}
+          onChange={(activo) => {
+            if (activo === record.activo) {
+              return;
+            }
+
+            void updateUsuario(
+              record.id,
+              { activo },
+              activo ? "Usuario activado" : "Usuario desactivado"
+            );
+          }}
         />
       ),
     },
     {
       title: "Creado",
-      dataIndex: "creadoEn",
-      key: "creadoEn",
+      dataIndex: "createdAt",
+      key: "createdAt",
       width: 160,
-      render: (value: unknown) => (
+      render: (value: string) => (
         <span className="text-[11px] text-slate-600">
-          {dayjs(String(value)).format("DD-MM-YYYY HH:mm")}
+          {dayjs(value).format("DD-MM-YYYY HH:mm")}
         </span>
-      ),
-    },
-    {
-      title: "",
-      key: "acciones",
-      width: 70,
-      align: "right",
-      render: (_value: unknown, record) => (
-        <Popconfirm
-          title="¿Eliminar usuario?"
-          okText="Eliminar"
-          cancelText="Cancelar"
-          onConfirm={() => removeUsuario(record.id)}
-        >
-          <Button danger size="small" type="text" icon={<DeleteOutlined />} />
-        </Popconfirm>
       ),
     },
   ];
@@ -204,33 +262,34 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
     <div className="space-y-6 pb-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
-          <h1 className="text-lg sm:text-xl font-semibold tracking-wide text-slate-900">
+          <h1 className="text-lg font-semibold tracking-wide text-slate-900 sm:text-xl">
             Usuarios y roles
           </h1>
-          <p className="text-[11px] sm:text-xs text-slate-600 max-w-2xl">
-            Crea usuarios para el CRM y asigna roles (Terreno o Visualizador).
-            Persistencia demo en localStorage.
+          <p className="max-w-2xl text-[11px] text-slate-600 sm:text-xs">
+            Gestiona usuarios reales del CRM. Los cambios se guardan directo en el
+            backend usando la sesion actual.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
             icon={<ReloadOutlined />}
-            onClick={handleReset}
+            onClick={refreshUsuarios}
+            loading={loadingUsuarios}
             className="border-slate-200"
           >
-            Restaurar demo
+            Recargar
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px,1fr]">
         <Card
           className="border border-amber-200 bg-gradient-to-br from-white via-amber-50/60 to-orange-50/40"
           title={
             <div className="flex items-center gap-2 text-sm">
               <UserAddOutlined className="text-orange-600" />
-              <span>Crear usuario</span>
+              <span>Gestion de usuarios</span>
             </div>
           }
           styles={{
@@ -243,66 +302,36 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
             body: { padding: 14 },
           }}
         >
-          <Form<CreateUsuarioFormValues>
-            form={form}
-            layout="vertical"
-            requiredMark={false}
-            initialValues={{ rol: "Visualizador" }}
-            onFinish={handleCreate}
-          >
-            <Form.Item
-              label={
-                <span className="text-xs font-medium text-slate-700">
-                  Nombre
-                </span>
-              }
-              name="nombre"
-              rules={[{ required: true, message: "Ingresa el nombre" }]}
-            >
-              <Input placeholder="Nombre y apellido" />
-            </Form.Item>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-amber-200 bg-white/80 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Activos
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{activos}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Inactivos
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">
+                  {inactivos}
+                </p>
+              </div>
+            </div>
 
-            <Form.Item
-              label={
-                <span className="text-xs font-medium text-slate-700">
-                  Correo
-                </span>
-              }
-              name="email"
-              rules={[
-                { required: true, message: "Ingresa el correo" },
-                { type: "email", message: "Correo inválido" },
-              ]}
-            >
-              <Input placeholder="usuario@beck.cl" />
-            </Form.Item>
-
-            <Form.Item
-              label={
-                <span className="text-xs font-medium text-slate-700">Rol</span>
-              }
-              name="rol"
-              rules={[{ required: true, message: "Selecciona un rol" }]}
-            >
-              <Select<RolUsuario> options={roleOptions} />
-            </Form.Item>
-
-            <Button
-              type="primary"
-              htmlType="submit"
-              className="bg-beck-primary hover:bg-beck-primary-dark border-none"
-              block
-            >
-              Crear usuario
-            </Button>
-          </Form>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-3 text-[11px] leading-5 text-slate-600">
+              Aqui puedes modificar roles y gestionar el acceso de los integrantes
+              del equipo, asi como activar o desactivar perfiles de la plataforma.
+            </div>
+          </div>
         </Card>
 
         <Card
           className="border border-slate-200 bg-white"
           title={
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span>Usuarios creados</span>
+              <span>Usuarios</span>
               <span className="text-xs text-slate-500">{usuarios.length}</span>
             </div>
           }
@@ -316,13 +345,20 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
             body: { padding: 0 },
           }}
         >
-          <Table<Usuario>
+          <Table<UsuarioApi>
             rowKey="id"
             columns={columns}
             dataSource={usuarios}
+            loading={loadingUsuarios}
             size="small"
             pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: 900 }}
+            scroll={{ x: 980 }}
+            rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+            locale={{
+              emptyText: loadingUsuarios
+                ? "Cargando usuarios..."
+                : "No hay usuarios para mostrar",
+            }}
           />
         </Card>
       </div>
