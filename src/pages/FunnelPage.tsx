@@ -1,6 +1,26 @@
 import React, { type FormEvent, useEffect, useState } from "react";
+import {
+  Button,
+  Descriptions,
+  Modal as AntdModal,
+  Spin,
+  message,
+} from "antd";
+import { EditOutlined, EyeOutlined, FileTextOutlined } from "@ant-design/icons";
+import dayjs, { Dayjs } from "dayjs";
 import CierreDeProyecto from "../components/Cierredeproyecto";
+import CotizacionEditorModal, {
+  type CotizacionEditorValues,
+  type LineaCotizacion,
+} from "../components/CotizacionEditorModal";
 import { useAuth } from "../context/useAuth";
+import {
+  cotizacionesAPI,
+  fetchWithAuth,
+  funnelBeckAPI,
+  type CotizacionApiRecord,
+  type CotizacionUpsertPayload,
+} from "../services/api";
 
 import {
   regionesComunasChile,
@@ -57,10 +77,35 @@ type FunnelDraft = {
   etapa: FunnelStage;
 };
 
+type FunnelCotizacionItem = {
+  id: string;
+  numero: string;
+  codigo: string;
+  funnelBeckId?: string;
+  cliente: string;
+  proyecto: string;
+  origen: string;
+  tipo: string;
+  fecha: string;
+  vigencia: string;
+  estado: string;
+  total: number;
+  moneda: string;
+  responsable: string;
+  notas: string;
+  descuento: number;
+  aplicaImpuesto: boolean;
+  subtotal: number;
+  impuesto: number;
+  lineas: LineaCotizacion[];
+};
+
 type FunnelCardProps = {
   deal: FunnelDeal;
   canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
+  onViewDetail: (deal: FunnelDeal) => void;
+  onCreateCotizacion: (deal: FunnelDeal) => void;
 };
 
 type FunnelColumnProps = {
@@ -68,6 +113,8 @@ type FunnelColumnProps = {
   deals: FunnelDeal[];
   canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
+  onViewDetail: (deal: FunnelDeal) => void;
+  onCreateCotizacion: (deal: FunnelDeal) => void;
 };
 
 type FunnelModalProps = {
@@ -124,6 +171,326 @@ const createEmptyDraft = (): FunnelDraft => ({
   etapa: "prospecto",
 });
 
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const pickValue = (
+  source: Record<string, unknown>,
+  keys: string[]
+): unknown => {
+  for (const key of keys) {
+    const value = source[key];
+
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const toText = (value: unknown, fallback = ""): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || fallback;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return fallback;
+};
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim().replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
+const toBoolean = (value: unknown, fallback = false): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+
+  return fallback;
+};
+
+const normalizeCotizacionEstado = (value: unknown): string => {
+  const raw = toText(value, "Sin estado");
+  const normalized = raw.toLowerCase();
+
+  if (normalized === "borrador") return "Borrador";
+  if (normalized === "enviada" || normalized === "enviado") return "Enviada";
+  if (
+    normalized === "aceptada" ||
+    normalized === "aceptado" ||
+    normalized === "aprobada" ||
+    normalized === "aprobado"
+  ) {
+    return "Aceptada";
+  }
+  if (normalized === "rechazada" || normalized === "rechazado") {
+    return "Rechazada";
+  }
+  if (normalized === "vencida" || normalized === "vencido") {
+    return "Vencida";
+  }
+
+  return raw;
+};
+
+const normalizeMoneda = (value: unknown): "CLP" | "USD" => {
+  const moneda = toText(value, "CLP").toUpperCase();
+  return moneda === "USD" ? "USD" : "CLP";
+};
+
+const normalizeTipoLinea = (value: unknown): "PRODUCTO" | "SERVICIO" => {
+  const normalized = toText(value, "PRODUCTO").trim().toUpperCase();
+  return normalized === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+};
+
+const normalizeTipoCotizacion = (
+  value: string
+): CotizacionEditorValues["tipo"] => {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "interna") return "Interna";
+  if (normalized === "servicio") return "Servicio";
+  if (normalized === "mantencion") return "Mantencion";
+  if (normalized === "otro") return "Otro";
+
+  return "Cliente";
+};
+
+const calculateLineSubtotal = (
+  cantidad: number,
+  precioUnitario: number,
+  gananciaPct = 0
+) => cantidad * precioUnitario * (1 + gananciaPct / 100);
+
+const calculateCotizacionTotals = (
+  lineas: LineaCotizacion[],
+  descuento: number,
+  aplicaImpuesto: boolean
+) => {
+  const subtotal = lineas.reduce((acc, linea) => acc + linea.subtotal, 0);
+  const neto = Math.max(0, subtotal - descuento);
+  const impuesto = aplicaImpuesto ? neto * 0.19 : 0;
+  const total = neto + impuesto;
+
+  return { subtotal, impuesto, total };
+};
+
+const extractCotizacionLineas = (
+  source: Record<string, unknown>
+): LineaCotizacion[] => {
+  const rawLineas = pickValue(source, ["lineas"]);
+
+  if (!Array.isArray(rawLineas)) {
+    return [];
+  }
+
+  return rawLineas.flatMap((linea, index) => {
+    if (!isObjectRecord(linea)) {
+      return [];
+    }
+
+    const cantidad = Math.max(1, toNumber(pickValue(linea, ["cantidad", "qty"])));
+    const precioUnitario = toNumber(
+      pickValue(linea, ["precioUnitario", "precio_unitario"])
+    );
+    const gananciaPct = toNumber(
+      pickValue(linea, ["gananciaPct", "ganancia_pct"])
+    );
+    const subtotal =
+      toNumber(pickValue(linea, ["subtotal"])) ||
+      calculateLineSubtotal(cantidad, precioUnitario, gananciaPct);
+
+    return [
+      {
+        tipoLinea: normalizeTipoLinea(
+          pickValue(linea, ["tipoLinea", "tipo_linea"])
+        ),
+        descripcion: toText(
+          pickValue(linea, ["descripcion", "detalle"]),
+          "Linea cotizacion"
+        ),
+        cantidad,
+        precioUnitario,
+        subtotal,
+        orden: toNumber(pickValue(linea, ["orden"])) || index + 1,
+        gananciaPct,
+      },
+    ];
+  });
+};
+
+const extractCotizacionCliente = (source: Record<string, unknown>): string => {
+  const direct = pickValue(source, [
+    "clienteNombre",
+    "cliente_nombre",
+    "nombreCliente",
+    "cliente",
+  ]);
+
+  if (typeof direct === "string" || typeof direct === "number") {
+    return toText(direct, "Sin cliente");
+  }
+
+  if (isObjectRecord(direct)) {
+    return toText(
+      pickValue(direct, ["nombre", "razonSocial", "razon_social", "empresa"]),
+      "Sin cliente"
+    );
+  }
+
+  return "Sin cliente";
+};
+
+const mapCotizacionRecord = (
+  source: CotizacionApiRecord,
+  index = 0
+): FunnelCotizacionItem => {
+  let lineas = extractCotizacionLineas(source);
+  const numeroValue = pickValue(source, ["numero", "folio", "correlativo"]);
+  const codigo = toText(
+    pickValue(source, ["codigo", "codigoCotizacion", "codigo_cotizacion"])
+  );
+  const fecha = toText(
+    pickValue(source, ["fecha", "fechaEmision", "fecha_emision", "createdAt", "created_at"])
+  );
+  const vigencia = toText(
+    pickValue(source, ["vigencia", "fechaVencimiento", "fecha_vencimiento"])
+  );
+  const descuento = toNumber(pickValue(source, ["descuento"]));
+  const aplicaImpuesto = toBoolean(
+    pickValue(source, ["aplicaImpuesto", "aplica_impuesto"]),
+    true
+  );
+  const subtotal =
+    toNumber(pickValue(source, ["subtotal"])) ||
+    lineas.reduce((acc, linea) => acc + linea.subtotal, 0);
+  const impuesto = toNumber(pickValue(source, ["impuesto"]));
+  const total =
+    toNumber(
+      pickValue(source, ["total", "total_final", "monto_total", "monto", "totalNeto"])
+    ) || calculateCotizacionTotals(lineas, descuento, aplicaImpuesto).total;
+
+  if (!lineas.length && total > 0) {
+    lineas = [
+      {
+        tipoLinea: "PRODUCTO",
+        descripcion: toText(
+          pickValue(source, [
+            "proyecto",
+            "nombreProyecto",
+            "nombre_proyecto",
+            "descripcion",
+          ]),
+          "Item cotizacion"
+        ),
+        cantidad: 1,
+        precioUnitario: total,
+        subtotal: total,
+        orden: 1,
+        gananciaPct: 0,
+      },
+    ];
+  }
+
+  const proyecto = toText(
+    pickValue(source, [
+      "proyecto",
+      "nombreProyecto",
+      "nombre_proyecto",
+      "descripcion",
+    ]),
+    lineas[0]?.descripcion || ""
+  );
+
+  return {
+    id: toText(source.id),
+    numero:
+      numeroValue !== undefined ? toText(numeroValue) : codigo || String(index + 1),
+    codigo,
+    funnelBeckId:
+      toText(pickValue(source, ["funnelBeckId", "funnel_beck_id"]), "") ||
+      undefined,
+    cliente: extractCotizacionCliente(source),
+    proyecto,
+    origen: toText(pickValue(source, ["origen"]), "Sin origen"),
+    tipo: toText(pickValue(source, ["tipo"]), "Sin tipo"),
+    fecha,
+    vigencia,
+    estado: normalizeCotizacionEstado(pickValue(source, ["estado"])),
+    total,
+    moneda: normalizeMoneda(
+      pickValue(source, ["moneda", "moneda_total", "currency"])
+    ),
+    responsable: toText(
+      pickValue(source, ["responsable", "usuarioNombre", "usuario_nombre"])
+    ),
+    notas: toText(pickValue(source, ["notas", "observaciones"])),
+    descuento,
+    aplicaImpuesto,
+    subtotal,
+    impuesto,
+    lineas,
+  };
+};
+
+const formatCotizacionMoney = (value: number, moneda: string): string => {
+  const prefix = moneda === "USD" ? "US$" : "$";
+  return `${prefix} ${value.toLocaleString("es-CL", {
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatCotizacionDate = (value: string): string => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = dayjs(value);
+  return date.isValid() ? date.format("DD-MM-YYYY") : value;
+};
+
+const toDayjsOrFallback = (value: string, fallback: Dayjs): Dayjs => {
+  const date = dayjs(value);
+  return date.isValid() ? date : fallback;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
 const formatEstimatedValue = (
   value: number,
   moneda: FunnelCurrency
@@ -178,6 +545,8 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
   deal,
   canEditFunnel,
   onStageChange,
+  onViewDetail,
+  onCreateCotizacion,
 }) => (
   <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
     <h4 className="text-sm font-semibold text-slate-900">
@@ -233,6 +602,26 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
         <p className="text-[11px] text-slate-400">Solo lectura</p>
       )}
     </div>
+
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <button
+        type="button"
+        onClick={() => onViewDetail(deal)}
+        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+      >
+        Ver detalle
+      </button>
+
+      {canEditFunnel && (
+        <button
+          type="button"
+          onClick={() => onCreateCotizacion(deal)}
+          className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-orange-600"
+        >
+          Crear cotizacion
+        </button>
+      )}
+    </div>
   </article>
 );
 
@@ -241,6 +630,8 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
   deals,
   canEditFunnel,
   onStageChange,
+  onViewDetail,
+  onCreateCotizacion,
 }) => (
   <div className="flex min-h-[420px] flex-col rounded-xl bg-gray-100 p-4">
     <div className="mb-3 flex items-center justify-between">
@@ -260,6 +651,8 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
             deal={deal}
             canEditFunnel={canEditFunnel}
             onStageChange={onStageChange}
+            onViewDetail={onViewDetail}
+            onCreateCotizacion={onCreateCotizacion}
           />
         ))
       ) : (
@@ -570,6 +963,28 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const [ufActual, setUfActual] = useState<number | null>(null);
   const [dolarActual, setDolarActual] = useState<number | null>(null);
   const [ufFecha, setUfFecha] = useState<string | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<FunnelDeal | null>(null);
+  const [relatedCotizaciones, setRelatedCotizaciones] = useState<
+    FunnelCotizacionItem[]
+  >([]);
+  const [relatedCotizacionesLoading, setRelatedCotizacionesLoading] =
+    useState(false);
+  const [selectedCotizacion, setSelectedCotizacion] =
+    useState<FunnelCotizacionItem | null>(null);
+  const [selectedCotizacionLoading, setSelectedCotizacionLoading] =
+    useState(false);
+  const [cotizacionEditorOpen, setCotizacionEditorOpen] = useState(false);
+  const [cotizacionEditorMode, setCotizacionEditorMode] = useState<
+    "create" | "edit"
+  >("create");
+  const [editingCotizacion, setEditingCotizacion] =
+    useState<FunnelCotizacionItem | null>(null);
+  const [cotizacionSaving, setCotizacionSaving] = useState(false);
+  const [cotizacionEditorLockedFunnel, setCotizacionEditorLockedFunnel] =
+    useState(false);
+  const [cotizacionEditorContextDeal, setCotizacionEditorContextDeal] =
+    useState<FunnelDeal | null>(null);
+  const [cotizacionEditorLoading, setCotizacionEditorLoading] = useState(false);
 
   void ufFecha;
 
@@ -681,46 +1096,36 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
   const loadDeals = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/funnel-beck");
-      const result = (await response.json()) as {
-        success: boolean;
-        data: {
-          id: string;
-          nombreProyecto: string;
-          empresa?: string;
-          valorOriginal?: number;
-          monedaOriginal?: string;
-          fechaProbableCierre?: string;
-          vendedor?: string;
-          region?: string;
-          comuna?: string;
-          fuenteLead?: string;
-          etapa: string;
-        }[];
-      };
+      const opportunities = await funnelBeckAPI.listar();
 
-      const mapped: FunnelDeal[] = result.data.map((item) => {
+      const mapped: FunnelDeal[] = opportunities.map((item) => {
+        const monedaOriginalValue = toText(item.monedaOriginal, "CLP");
         const monedaOriginal: FunnelCurrency =
-          item.monedaOriginal === "CLP" ||
-          item.monedaOriginal === "UF" ||
-          item.monedaOriginal === "USD"
-            ? item.monedaOriginal
+          monedaOriginalValue === "CLP" ||
+          monedaOriginalValue === "UF" ||
+          monedaOriginalValue === "USD"
+            ? monedaOriginalValue
             : "CLP";
+        const fuenteLead = toText(item.fuenteLead, "");
+        const valorOriginal = toNumber(item.valorOriginal);
+        const fechaProbableCierre = toText(item.fechaProbableCierre, "");
 
         return {
-          id: item.id,
-          nombreProyecto: item.nombreProyecto,
-          empresa: item.empresa,
-          valorEstimado: item.valorOriginal,
+          id: toText(item.id),
+          nombreProyecto: toText(item.nombreProyecto),
+          empresa: toText(item.empresa, "") || undefined,
+          valorEstimado: valorOriginal > 0 ? valorOriginal : undefined,
           moneda: monedaOriginal,
-          fechaProbableCierre: item.fechaProbableCierre
-            ? item.fechaProbableCierre.slice(0, 10)
+          fechaProbableCierre: fechaProbableCierre
+            ? fechaProbableCierre.slice(0, 10)
             : undefined,
-          vendedor: item.vendedor,
-          region: item.region,
-          comuna: item.comuna,
-          fuenteLead: item.fuenteLead as FunnelLeadSource | undefined,
-          etapa: etapaBackendMap[item.etapa] ?? "prospecto",
+          vendedor: toText(item.vendedor, "") || undefined,
+          region: toText(item.region, "") || undefined,
+          comuna: toText(item.comuna, "") || undefined,
+          fuenteLead: leadSourceOptions.includes(fuenteLead as FunnelLeadSource)
+            ? (fuenteLead as FunnelLeadSource)
+            : undefined,
+          etapa: etapaBackendMap[toText(item.etapa)] ?? "prospecto",
         };
       });
 
@@ -733,9 +1138,189 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     }
   };
 
+  const loadRelatedCotizaciones = async (dealId: string) => {
+    try {
+      setRelatedCotizacionesLoading(true);
+      const response = await funnelBeckAPI.listarCotizaciones(dealId);
+      setRelatedCotizaciones(
+        response.map((item, index) => mapCotizacionRecord(item, index))
+      );
+    } catch (error) {
+      setRelatedCotizaciones([]);
+      message.error(
+        getErrorMessage(error, "No se pudieron cargar las cotizaciones")
+      );
+    } finally {
+      setRelatedCotizacionesLoading(false);
+    }
+  };
+
+  const openDealDetail = async (deal: FunnelDeal) => {
+    setSelectedDeal(deal);
+    setRelatedCotizaciones([]);
+    void loadRelatedCotizaciones(deal.id);
+  };
+
+  const closeDealDetail = () => {
+    setSelectedDeal(null);
+    setRelatedCotizaciones([]);
+    setSelectedCotizacion(null);
+    setSelectedCotizacionLoading(false);
+  };
+
+  const openCreateCotizacion = (deal: FunnelDeal) => {
+    setCotizacionEditorMode("create");
+    setEditingCotizacion(null);
+    setCotizacionEditorContextDeal(deal);
+    setCotizacionEditorLockedFunnel(true);
+    setCotizacionEditorOpen(true);
+  };
+
+  const openEditCotizacion = async (cotizacion: FunnelCotizacionItem) => {
+    try {
+      setCotizacionEditorLoading(true);
+      const response = await cotizacionesAPI.getById(cotizacion.id);
+
+      setCotizacionEditorMode("edit");
+      setEditingCotizacion(mapCotizacionRecord(response));
+      setCotizacionEditorContextDeal(selectedDeal);
+      setCotizacionEditorLockedFunnel(
+        Boolean(cotizacion.funnelBeckId || selectedDeal?.id)
+      );
+      setCotizacionEditorOpen(true);
+    } catch (error) {
+      message.error(
+        getErrorMessage(error, "No se pudo cargar la cotizacion para editar")
+      );
+    } finally {
+      setCotizacionEditorLoading(false);
+    }
+  };
+
+  const openCotizacionDetail = async (cotizacionId: string) => {
+    try {
+      setSelectedCotizacionLoading(true);
+      setSelectedCotizacion(null);
+      const response = await cotizacionesAPI.getById(cotizacionId);
+      setSelectedCotizacion(mapCotizacionRecord(response));
+    } catch (error) {
+      message.error(
+        getErrorMessage(error, "No se pudo cargar el detalle de la cotizacion")
+      );
+    } finally {
+      setSelectedCotizacionLoading(false);
+    }
+  };
+
+  const closeCotizacionDetail = () => {
+    setSelectedCotizacion(null);
+    setSelectedCotizacionLoading(false);
+  };
+
+  const handleSaveCotizacion = async (values: CotizacionEditorValues) => {
+    if (cotizacionSaving || cotizacionEditorLoading) {
+      return;
+    }
+
+    try {
+      setCotizacionSaving(true);
+
+      const normalizedLineas: CotizacionUpsertPayload["lineas"] = (
+        values.lineas ?? []
+      )
+        .map((linea, index) => {
+          const cantidad = Math.max(1, Number(linea.cantidad || 0));
+          const precioUnitario = Number(linea.precioUnitario || 0);
+          const gananciaPct = Number(linea.gananciaPct || 0);
+          const tipoLinea: CotizacionUpsertPayload["lineas"][number]["tipoLinea"] =
+            linea.tipoLinea === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+          const subtotal = calculateLineSubtotal(
+            cantidad,
+            precioUnitario,
+            gananciaPct
+          );
+
+          return {
+            tipoLinea,
+            descripcion: linea.descripcion.trim(),
+            cantidad,
+            precioUnitario,
+            subtotal,
+            orden: index + 1,
+            gananciaPct,
+          };
+        })
+        .filter((linea) => linea.descripcion);
+
+      if (!normalizedLineas.length) {
+        message.error("Debes agregar al menos una linea a la cotizacion");
+        return;
+      }
+
+      const descuento = Number(values.descuento || 0);
+      const aplicaImpuesto = Boolean(values.aplicaImpuesto);
+      const { subtotal, impuesto, total } = calculateCotizacionTotals(
+        normalizedLineas,
+        descuento,
+        aplicaImpuesto
+      );
+
+      const payload: CotizacionUpsertPayload = {
+        numero: values.numero || undefined,
+        clienteNombre: values.cliente,
+        funnelBeckId: values.funnelBeckId || null,
+        subtotal,
+        impuesto,
+        total,
+        vigencia: values.vigencia.toISOString(),
+        observaciones: values.notas || "",
+        descuento,
+        aplicaImpuesto,
+        estado: values.estado.toUpperCase(),
+        lineas: normalizedLineas,
+      };
+
+      let savedCotizacion: CotizacionApiRecord | null = null;
+
+      if (cotizacionEditorMode === "create") {
+        savedCotizacion = await cotizacionesAPI.create(payload);
+      } else if (editingCotizacion) {
+        savedCotizacion = await cotizacionesAPI.update(
+          editingCotizacion.id,
+          payload
+        );
+      }
+
+      if (savedCotizacion) {
+        const mappedCotizacion = mapCotizacionRecord(savedCotizacion);
+        setSelectedCotizacion((current) =>
+          current?.id === mappedCotizacion.id ? mappedCotizacion : current
+        );
+      }
+
+      if (selectedDeal?.id) {
+        await loadRelatedCotizaciones(selectedDeal.id);
+      }
+
+      setCotizacionEditorOpen(false);
+      setEditingCotizacion(null);
+      setCotizacionEditorContextDeal(null);
+      setCotizacionEditorLockedFunnel(false);
+      message.success(
+        cotizacionEditorMode === "create"
+          ? "Cotizacion creada"
+          : "Cotizacion actualizada"
+      );
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo guardar la cotizacion"));
+    } finally {
+      setCotizacionSaving(false);
+    }
+  };
+
   const loadUfActual = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/indicadores/uf");
+      const response = await fetchWithAuth("/indicadores/uf");
       const result = (await response.json()) as {
         success: boolean;
         data?: {
@@ -760,9 +1345,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
   const loadDolarActual = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/indicadores/dolar-mercado"
-      );
+      const response = await fetchWithAuth("/indicadores/dolar-mercado");
       const result = (await response.json()) as {
         success: boolean;
         data?: {
@@ -862,14 +1445,11 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   ) => {
     if (!canEditFunnel) return;
 
-    const response = await fetch(
-      `http://localhost:5000/api/funnel-beck/${dealId}/etapa`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
+    const response = await fetchWithAuth(`/funnel-beck/${dealId}/etapa`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
     const result = (await response.json()) as {
       success: boolean;
@@ -969,7 +1549,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/funnel-beck", {
+      const response = await fetchWithAuth("/funnel-beck", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1000,6 +1580,52 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       console.error("Error al guardar la oportunidad:", error);
     }
   };
+
+  const cotizacionEditorInitialValues: Partial<CotizacionEditorValues> =
+    editingCotizacion
+      ? {
+          numero: Number(editingCotizacion.numero) || undefined,
+          funnelBeckId:
+            editingCotizacion.funnelBeckId ||
+            cotizacionEditorContextDeal?.id ||
+            undefined,
+          cliente: editingCotizacion.cliente,
+          proyecto: editingCotizacion.proyecto,
+          origen: editingCotizacion.origen === "FIREMAT" ? "FIREMAT" : "BECK",
+          tipo: normalizeTipoCotizacion(editingCotizacion.tipo),
+          fecha: toDayjsOrFallback(editingCotizacion.fecha, dayjs()),
+          vigencia: toDayjsOrFallback(
+            editingCotizacion.vigencia,
+            dayjs().add(15, "day")
+          ),
+          estado:
+            editingCotizacion.estado === "Enviada" ||
+            editingCotizacion.estado === "Aceptada" ||
+            editingCotizacion.estado === "Rechazada" ||
+            editingCotizacion.estado === "Vencida"
+              ? editingCotizacion.estado
+              : "Borrador",
+          moneda: editingCotizacion.moneda === "USD" ? "USD" : "CLP",
+          responsable: editingCotizacion.responsable,
+          notas: editingCotizacion.notas,
+          descuento: editingCotizacion.descuento,
+          aplicaImpuesto: editingCotizacion.aplicaImpuesto,
+          lineas: editingCotizacion.lineas,
+        }
+      : {
+          fecha: dayjs(),
+          vigencia: dayjs().add(15, "day"),
+          estado: "Borrador",
+          moneda: "CLP",
+          origen: "BECK",
+          tipo: "Cliente",
+          funnelBeckId: cotizacionEditorContextDeal?.id,
+          cliente: cotizacionEditorContextDeal?.empresa || "",
+          proyecto: cotizacionEditorContextDeal?.nombreProyecto || "",
+          descuento: 0,
+          aplicaImpuesto: true,
+          lineas: [],
+        };
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -1052,6 +1678,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                   deals={dealsForStage}
                   canEditFunnel={canEditFunnel}
                   onStageChange={handleStageChange}
+                  onViewDetail={openDealDetail}
+                  onCreateCotizacion={openCreateCotizacion}
                 />
               );
             })}
@@ -1067,6 +1695,212 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         onSubmit={handleCreateDeal}
         onFieldChange={handleFieldChange}
       />
+
+      <AntdModal
+        open={Boolean(selectedDeal)}
+        onCancel={closeDealDetail}
+        footer={null}
+        width={960}
+        title={selectedDeal ? `Oportunidad: ${selectedDeal.nombreProyecto}` : "Oportunidad"}
+      >
+        {selectedDeal && (
+          <div className="space-y-5">
+            <Descriptions size="small" column={2} bordered>
+              <Descriptions.Item label="Empresa">
+                {selectedDeal.empresa || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Etapa">
+                {etapasLabel[selectedDeal.etapa]}
+              </Descriptions.Item>
+              <Descriptions.Item label="Valor estimado">
+                {typeof selectedDeal.valorEstimado === "number"
+                  ? formatEstimatedValue(selectedDeal.valorEstimado, selectedDeal.moneda)
+                  : "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Fecha cierre">
+                {selectedDeal.fechaProbableCierre
+                  ? formatDisplayDate(selectedDeal.fechaProbableCierre)
+                  : "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Vendedor">
+                {selectedDeal.vendedor || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Region / Comuna">
+                {[selectedDeal.region, selectedDeal.comuna].filter(Boolean).join(" / ") || "-"}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Cotizaciones vinculadas
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Cotizaciones Beck asociadas a esta oportunidad del funnel.
+                </p>
+              </div>
+
+              {canEditFunnel && (
+                <Button
+                  type="primary"
+                  icon={<FileTextOutlined />}
+                  className="border-none bg-orange-500 hover:bg-orange-600"
+                  onClick={() => openCreateCotizacion(selectedDeal)}
+                >
+                  Crear cotizacion
+                </Button>
+              )}
+            </div>
+
+            {relatedCotizacionesLoading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : relatedCotizaciones.length ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-slate-500">
+                        Numero
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-500">
+                        Estado
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-500">
+                        Total
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-500">
+                        Fecha
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium text-slate-500">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {relatedCotizaciones.map((cotizacion) => (
+                      <tr key={cotizacion.id}>
+                        <td className="px-3 py-2 text-slate-700">
+                          {cotizacion.numero}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {cotizacion.estado}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatCotizacionMoney(cotizacion.total, cotizacion.moneda)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatCotizacionDate(cotizacion.fecha)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => {
+                                void openCotizacionDetail(cotizacion.id);
+                              }}
+                            >
+                              Ver
+                            </Button>
+                            {canEditFunnel && (
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => {
+                                  void openEditCotizacion(cotizacion);
+                                }}
+                              >
+                                Editar
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                Esta oportunidad aun no tiene cotizaciones vinculadas.
+              </div>
+            )}
+          </div>
+        )}
+      </AntdModal>
+
+      <AntdModal
+        open={Boolean(selectedCotizacion) || selectedCotizacionLoading}
+        onCancel={closeCotizacionDetail}
+        footer={null}
+        width={720}
+        title="Detalle de cotizacion"
+      >
+        {selectedCotizacionLoading ? (
+          <div className="flex justify-center py-8">
+            <Spin />
+          </div>
+        ) : selectedCotizacion ? (
+          <Descriptions size="small" column={1} bordered>
+            <Descriptions.Item label="Numero">
+              {selectedCotizacion.numero}
+            </Descriptions.Item>
+            <Descriptions.Item label="Codigo">
+              {selectedCotizacion.codigo || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Cliente">
+              {selectedCotizacion.cliente}
+            </Descriptions.Item>
+            <Descriptions.Item label="Proyecto">
+              {selectedCotizacion.proyecto || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Estado">
+              {selectedCotizacion.estado}
+            </Descriptions.Item>
+            <Descriptions.Item label="Total">
+              {formatCotizacionMoney(
+                selectedCotizacion.total,
+                selectedCotizacion.moneda
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha">
+              {formatCotizacionDate(selectedCotizacion.fecha)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Vigencia">
+              {formatCotizacionDate(selectedCotizacion.vigencia)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Notas">
+              {selectedCotizacion.notas || "-"}
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </AntdModal>
+
+      {cotizacionEditorOpen && (
+        <CotizacionEditorModal
+          key={`${cotizacionEditorMode}-${editingCotizacion?.id ?? cotizacionEditorContextDeal?.id ?? "new"}`}
+          open={cotizacionEditorOpen}
+          mode={cotizacionEditorMode}
+          initialValues={cotizacionEditorInitialValues}
+          submitting={cotizacionSaving}
+          lockFunnelSelection={cotizacionEditorLockedFunnel}
+          onClose={() => {
+            if (cotizacionSaving) {
+              return;
+            }
+
+            setCotizacionEditorOpen(false);
+            setEditingCotizacion(null);
+            setCotizacionEditorContextDeal(null);
+            setCotizacionEditorLockedFunnel(false);
+          }}
+          onSubmit={(values) => {
+            void handleSaveCotizacion(values);
+          }}
+        />
+      )}
 
       <CierreDeProyecto
         open={cierreModalOpen && canEditFunnel}

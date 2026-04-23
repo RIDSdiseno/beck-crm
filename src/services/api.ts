@@ -5,7 +5,102 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+export const TOKEN_STORAGE_KEY = "beck_token";
+export const SESSION_STORAGE_KEY = "beck_crm_session_v1";
+
+let isRedirectingToLogin = false;
+
+const isBrowser = () => typeof window !== "undefined";
+
+export const getStoredToken = (): string | null => {
+  if (!isBrowser()) {
+    return null;
+  }
+
+  const token = window.localStorage.getItem(TOKEN_STORAGE_KEY)?.trim();
+  return token ? token : null;
+};
+
+export const clearStoredSession = (): void => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+};
+
+const redirectToLogin = (): void => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  const { pathname } = window.location;
+  const isAuthRoute = pathname === "/login" || pathname === "/auth/callback";
+
+  if (isAuthRoute || isRedirectingToLogin) {
+    return;
+  }
+
+  isRedirectingToLogin = true;
+  window.location.replace("/login");
+};
+
+const isUnauthorizedStatus = (status?: number): status is 401 | 403 =>
+  status === 401 || status === 403;
+
+export const handleUnauthorizedSession = (status?: number): void => {
+  if (!isUnauthorizedStatus(status)) {
+    return;
+  }
+
+  clearStoredSession();
+  redirectToLogin();
+};
+
+const withAuthHeaders = (headers?: HeadersInit): Headers => {
+  const requestHeaders = new Headers(headers);
+  const token = getStoredToken();
+
+  if (token) {
+    requestHeaders.set("Authorization", `Bearer ${token}`);
+  } else {
+    requestHeaders.delete("Authorization");
+  }
+
+  return requestHeaders;
+};
+
+const resolveRequestInput = (input: RequestInfo | URL): RequestInfo | URL => {
+  if (typeof input !== "string") {
+    return input;
+  }
+
+  if (/^https?:\/\//i.test(input)) {
+    return input;
+  }
+
+  if (input.startsWith("/")) {
+    return `${API_URL}${input}`;
+  }
+
+  return `${API_URL}/${input}`;
+};
+
+export const fetchWithAuth = async (
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+): Promise<Response> => {
+  const response = await fetch(resolveRequestInput(input), {
+    ...init,
+    headers: withAuthHeaders(init.headers),
+  });
+
+  handleUnauthorizedSession(response.status);
+
+  return response;
+};
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_URL,
@@ -17,18 +112,19 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem("beck_token");
+    const headers =
+      config.headers instanceof AxiosHeaders
+        ? config.headers
+        : new AxiosHeaders(config.headers);
+    const token = getStoredToken();
 
     if (token) {
-      const headers =
-        config.headers instanceof AxiosHeaders
-          ? config.headers
-          : new AxiosHeaders(config.headers);
-
       headers.set("Authorization", `Bearer ${token}`);
-      config.headers = headers;
+    } else {
+      headers.delete("Authorization");
     }
 
+    config.headers = headers;
     return config;
   },
   (error) => Promise.reject(error)
@@ -38,23 +134,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     const status = error.response?.status;
-    const data = error.response?.data as { error?: string } | undefined;
-    const message = data?.error;
-
-    if (
-      status === 401 ||
-      (status === 403 && message === "Usuario desactivado")
-    ) {
-      localStorage.removeItem("beck_token");
-      localStorage.removeItem("beck_crm_session_v1");
-
-      if (
-        window.location.pathname !== "/login" &&
-        window.location.pathname !== "/auth/callback"
-      ) {
-        window.location.replace("/login");
-      }
-    }
+    handleUnauthorizedSession(status);
 
     return Promise.reject(error);
   }
@@ -80,6 +160,76 @@ export interface ApiError {
   details?: unknown;
 }
 
+interface ApiResponseEnvelope<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+  error?: string;
+}
+
+export interface CotizacionApiRecord {
+  id: string;
+  [key: string]: unknown;
+}
+
+export interface CotizacionLineaPayload {
+  tipoLinea: "PRODUCTO" | "SERVICIO";
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  orden: number;
+  gananciaPct: number;
+}
+
+export interface CotizacionUpsertPayload {
+  numero?: number;
+  clienteNombre: string;
+  obraId?: string;
+  funnelBeckId?: string | null;
+  subtotal: number;
+  impuesto: number;
+  total: number;
+  vigencia: string;
+  observaciones: string;
+  descuento: number;
+  aplicaImpuesto: boolean;
+  estado: string;
+  lineas: CotizacionLineaPayload[];
+}
+
+const unwrapApiResponse = <T>(payload: ApiResponseEnvelope<T>): T => {
+  if (!payload.success) {
+    throw new Error(payload.error || payload.message || "Error en la solicitud");
+  }
+
+  return payload.data;
+};
+
+export interface FunnelBeckOpportunity {
+  id: string;
+  nombreProyecto: string;
+  empresa?: string | null;
+  etapa?: string;
+  [key: string]: unknown;
+}
+
+export const funnelBeckAPI = {
+  listar: async (): Promise<FunnelBeckOpportunity[]> => {
+    const response = await api.get<ApiResponseEnvelope<FunnelBeckOpportunity[]>>(
+      "/funnel-beck"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  listarCotizaciones: async (id: string): Promise<CotizacionApiRecord[]> => {
+    const response = await api.get<ApiResponseEnvelope<CotizacionApiRecord[]>>(
+      `/funnel-beck/${id}/cotizaciones`
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
 export const authAPI = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>("/auth/login", {
@@ -100,6 +250,50 @@ export const authAPI = {
       newPassword,
     });
     return response.data;
+  },
+};
+
+export const cotizacionesAPI = {
+  getAll: async (): Promise<CotizacionApiRecord[]> => {
+    const response = await api.get<ApiResponseEnvelope<CotizacionApiRecord[]>>(
+      "/cotizaciones"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  getById: async (id: string): Promise<CotizacionApiRecord> => {
+    const response = await api.get<ApiResponseEnvelope<CotizacionApiRecord>>(
+      `/cotizaciones/${id}`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  getPDF: async (id: string): Promise<Blob> => {
+    const response = await api.get<Blob>(`/cotizaciones/${id}/pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  create: async (
+    payload: CotizacionUpsertPayload
+  ): Promise<CotizacionApiRecord> => {
+    const response = await api.post<ApiResponseEnvelope<CotizacionApiRecord>>(
+      "/cotizaciones",
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  update: async (
+    id: string,
+    payload: CotizacionUpsertPayload
+  ): Promise<CotizacionApiRecord> => {
+    const response = await api.put<ApiResponseEnvelope<CotizacionApiRecord>>(
+      `/cotizaciones/${id}`,
+      payload
+    );
+    return unwrapApiResponse(response.data);
   },
 };
 

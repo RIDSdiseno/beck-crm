@@ -1,10 +1,13 @@
 import React, { useEffect } from "react";
 import type { AuthUser } from "../context/authContext";
-import { authAPI } from "../services/api";
+import {
+  authAPI,
+  clearStoredSession,
+  SESSION_STORAGE_KEY,
+  TOKEN_STORAGE_KEY,
+} from "../services/api";
 import type { RolUsuario } from "../types/usuario";
 
-const TOKEN_KEY = "beck_token";
-const SESSION_KEY = "beck_crm_session_v1";
 const POST_LOGIN_REDIRECT = "/dashboard";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
@@ -52,11 +55,6 @@ const parseAuthUser = (value: unknown): AuthUser | null => {
   };
 };
 
-const clearSession = () => {
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(SESSION_KEY);
-};
-
 const redirectTo = (path: string) => {
   window.location.replace(path);
 };
@@ -80,13 +78,13 @@ const AuthCallback: React.FC = () => {
       const token = hashParams.get("token") || searchParams.get("token");
 
       if (error || !token) {
-        clearSession();
+        clearStoredSession();
         redirectTo("/login");
         return;
       }
 
       try {
-        window.localStorage.setItem(TOKEN_KEY, token);
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
 
         const meResponse = await authAPI.me();
         const authUser = parseAuthUser(meResponse);
@@ -95,10 +93,10 @@ const AuthCallback: React.FC = () => {
           throw new Error("No se pudo obtener el usuario autenticado");
         }
 
-        window.localStorage.setItem(SESSION_KEY, JSON.stringify(authUser));
+        window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
         redirectTo(POST_LOGIN_REDIRECT);
       } catch {
-        clearSession();
+        clearStoredSession();
         redirectTo("/login");
       }
     };

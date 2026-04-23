@@ -13,6 +13,7 @@ import Sidebar, {
   SIDEBAR_WIDTH_EXPANDED,
   type RoleAccess,
 } from "./components/Sidebar";
+import SessionWatcher from "./components/SessionWatcher";
 import FunnelPage from "./pages/FunnelPage";
 import Configuracion from "./pages/Configuracion";
 import Cotizaciones from "./pages/Cotizaciones";
@@ -138,7 +139,7 @@ const AppShell: React.FC = () => {
   );
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login, logout, refreshSession } = useAuth();
+  const { user, login, logout } = useAuth();
 
   const access = useMemo(
     () => (user ? getRoleAccess(user.rol) : null),
@@ -173,20 +174,6 @@ const AppShell: React.FC = () => {
   }, [homeRoute, location.pathname, navigate, user]);
 
   useEffect(() => {
-    if (!user) return;
-
-    const interval = window.setInterval(async () => {
-      try {
-        await refreshSession();
-      } catch {
-        // El interceptor y el provider resuelven la sesión inválida.
-      }
-    }, 5000);
-
-    return () => window.clearInterval(interval);
-  }, [refreshSession, user]);
-
-  useEffect(() => {
     if (!user || !access) return;
 
     if (!canAccessPath(location.pathname, access)) {
@@ -217,14 +204,17 @@ const AppShell: React.FC = () => {
 
   if (!user || !access) {
     return (
-      <Routes>
-        <Route
-          path="/login"
-          element={<Login themeMode={themeMode} onLogin={handleLogin} />}
-        />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <>
+        <SessionWatcher />
+        <Routes>
+          <Route
+            path="/login"
+            element={<Login themeMode={themeMode} onLogin={handleLogin} />}
+          />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </>
     );
   }
 
@@ -233,136 +223,139 @@ const AppShell: React.FC = () => {
   }
 
   return (
-    <Layout
-      className="bg-slate-100 text-slate-900"
-      style={{ minHeight: "100vh" }}
-    >
-      {isMobile && collapsed && (
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          className="fixed top-3 left-3 z-50 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 shadow"
-        >
-          Menu
-        </button>
-      )}
-
-      <Sidebar
-        themeMode={themeMode}
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed((prev) => !prev)}
-        hiddenOnMobile={isMobile && collapsed}
-        user={user}
-        access={access}
-        onLogout={handleLogout}
-      />
-
+    <>
+      <SessionWatcher />
       <Layout
-        style={{
-          marginLeft: isMobile ? 0 : currentSidebarWidth,
-          transition: "margin-left 0.2s ease",
-          minHeight: "100vh",
-        }}
+        className="bg-slate-100 text-slate-900"
+        style={{ minHeight: "100vh" }}
       >
-        <Content
-          className="bg-slate-100"
+        {isMobile && collapsed && (
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            className="fixed top-3 left-3 z-50 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 shadow"
+          >
+            Menu
+          </button>
+        )}
+
+        <Sidebar
+          themeMode={themeMode}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((prev) => !prev)}
+          hiddenOnMobile={isMobile && collapsed}
+          user={user}
+          access={access}
+          onLogout={handleLogout}
+        />
+
+        <Layout
           style={{
-            padding: 16,
-            paddingTop: isMobile && collapsed ? 56 : 16,
+            marginLeft: isMobile ? 0 : currentSidebarWidth,
+            transition: "margin-left 0.2s ease",
+            minHeight: "100vh",
           }}
         >
-          <div className="mx-auto max-w-6xl">
-            <Routes>
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/" element={<Navigate to={homeRoute} replace />} />
+          <Content
+            className="bg-slate-100"
+            style={{
+              padding: 16,
+              paddingTop: isMobile && collapsed ? 56 : 16,
+            }}
+          >
+            <div className="mx-auto max-w-6xl">
+              <Routes>
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/" element={<Navigate to={homeRoute} replace />} />
 
-              <Route
-                path="/dashboard"
-                element={
-                  access.dashboard ? (
-                    <Dashboard themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/dashboard/funnel"
-                element={
-                  access.funnel ? (
-                    <FunnelPage themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/registro"
-                element={
-                  access.registro ? (
-                    <RegistroSellos themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/ingenieria"
-                element={
-                  access.ingenieria ? (
-                    <Ingenieria themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/reportes"
-                element={
-                  access.reportes ? (
-                    <Reportes themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/junta-espuma"
-                element={
-                  access.juntaEspuma ? (
-                    <JuntaLinealEspuma themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/cotizaciones"
-                element={
-                  access.cotizaciones ? (
-                    <Cotizaciones themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
-              <Route
-                path="/configuracion"
-                element={
-                  access.configuracion ? (
-                    <Configuracion themeMode={themeMode} />
-                  ) : (
-                    <Navigate to={homeRoute} replace />
-                  )
-                }
-              />
+                <Route
+                  path="/dashboard"
+                  element={
+                    access.dashboard ? (
+                      <Dashboard themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/dashboard/funnel"
+                  element={
+                    access.funnel ? (
+                      <FunnelPage themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/registro"
+                  element={
+                    access.registro ? (
+                      <RegistroSellos themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/ingenieria"
+                  element={
+                    access.ingenieria ? (
+                      <Ingenieria themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/reportes"
+                  element={
+                    access.reportes ? (
+                      <Reportes themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/junta-espuma"
+                  element={
+                    access.juntaEspuma ? (
+                      <JuntaLinealEspuma themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/cotizaciones"
+                  element={
+                    access.cotizaciones ? (
+                      <Cotizaciones themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/configuracion"
+                  element={
+                    access.configuracion ? (
+                      <Configuracion themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
 
-              <Route path="*" element={<Navigate to={homeRoute} replace />} />
-            </Routes>
-          </div>
-        </Content>
+                <Route path="*" element={<Navigate to={homeRoute} replace />} />
+              </Routes>
+            </div>
+          </Content>
+        </Layout>
       </Layout>
-    </Layout>
+    </>
   );
 };
 

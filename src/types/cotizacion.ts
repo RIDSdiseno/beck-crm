@@ -1,23 +1,45 @@
-// src/types/cotizacion.ts
+export type EstadoCotizacion =
+  | "Borrador"
+  | "Enviada"
+  | "Aceptada"
+  | "Rechazada"
+  | "Vencida";
 
-export type EstadoCotizacion = "Borrador" | "Enviada" | "Aceptada" | "Rechazada";
+export type TipoCotizacion =
+  | "Cliente"
+  | "Interna"
+  | "Servicio"
+  | "Mantencion"
+  | "Otro";
+
+export type TipoLineaCotizacion = "PRODUCTO" | "SERVICIO";
+
+export type CotizacionLinea = {
+  id?: string | number;
+  tipoLinea: TipoLineaCotizacion;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  orden: number;
+  gananciaPct: number;
+};
 
 export type Cotizacion = {
-  id: number;
-  numero: number; // N° correlativo en la tabla
-  codigo: string; // Ej: BECK-COT-2025-001
-  cliente: string;
-  proyecto: string;
-  origen: string; // Ej: ECONNET, Directo, Referido, etc.
-  tipo: "Cliente" | "Interna" | "Servicio" | "Mantención" | "Otro";
-
-  fecha: string;   // YYYY-MM-DD
-  vigencia: string; // YYYY-MM-DD
+  id: string | number;
+  numero?: number;
+  codigo?: string;
+  clienteNombre: string;
+  funnelBeckId?: string | number | null;
+  obraId?: string | number;
+  vigencia: string;
+  observaciones?: string;
+  descuento: number;
+  aplicaImpuesto: boolean;
+  subtotal: number;
+  impuesto: number;
+  total: number;
   estado: EstadoCotizacion;
-
-  monto: number;
-  moneda: "CLP" | "USD";
-
-  responsable: string;
-  notas?: string;
+  tipo?: TipoCotizacion;
+  lineas?: CotizacionLinea[];
 };

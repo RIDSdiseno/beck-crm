@@ -1,13 +1,16 @@
-// src/pages/Cotizaciones.tsx
-import React, { useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { isAxiosError } from "axios";
 import {
   Button,
   Card,
   DatePicker,
+  Descriptions,
   Input,
+  Modal,
   Select,
   Table,
   Tooltip,
+  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { RangePickerProps } from "antd/es/date-picker";
@@ -21,16 +24,20 @@ import {
   ReloadOutlined,
   EyeOutlined,
   EditOutlined,
-  DeleteOutlined,
   DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import * as XLSX from "xlsx";
 
 import type { ThemeMode } from "../hooks/useSystemTheme";
-import type { Cotizacion, EstadoCotizacion } from "../types/cotizacion";
+import {
+  cotizacionesAPI,
+  type CotizacionUpsertPayload,
+  type CotizacionApiRecord,
+} from "../services/api";
 import CotizacionEditorModal, {
   type CotizacionEditorValues,
+  type LineaCotizacion,
 } from "../components/CotizacionEditorModal";
 
 const { RangePicker } = DatePicker;
@@ -39,161 +46,823 @@ type CotizacionesProps = {
   themeMode: ThemeMode;
 };
 
-const estadosOptions: EstadoCotizacion[] = [
+type RangeValue = [Dayjs, Dayjs] | null;
+
+type CotizacionListItem = {
+  id: string;
+  numero: string;
+  codigo: string;
+  funnelBeckId?: string;
+  cliente: string;
+  proyecto: string;
+  origen: string;
+  tipo: string;
+  fecha: string;
+  vigencia: string;
+  estado: string;
+  total: number;
+  moneda: string;
+  responsable: string;
+  notas: string;
+  descuento: number;
+  aplicaImpuesto: boolean;
+  subtotal: number;
+  impuesto: number;
+  lineas: LineaCotizacion[];
+};
+
+const estadosOptions = [
   "Borrador",
   "Enviada",
   "Aceptada",
   "Rechazada",
+  "Vencida",
 ];
 
-// 🔹 alias para el rango de fechas
-type RangeValue = [Dayjs, Dayjs] | null;
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const pickValue = (
+  source: Record<string, unknown>,
+  keys: string[]
+): unknown => {
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const toText = (value: unknown, fallback = ""): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || fallback;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return fallback;
+};
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim().replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
+const toBoolean = (value: unknown, fallback = false): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+
+  return fallback;
+};
+
+const normalizeEstado = (value: unknown): string => {
+  const raw = toText(value, "Sin estado");
+  const normalized = raw.toLowerCase();
+
+  if (normalized === "borrador") return "Borrador";
+  if (normalized === "enviada" || normalized === "enviado") return "Enviada";
+  if (
+    normalized === "aceptada" ||
+    normalized === "aceptado" ||
+    normalized === "aprobada" ||
+    normalized === "aprobado"
+  ) {
+    return "Aceptada";
+  }
+  if (normalized === "rechazada" || normalized === "rechazado") {
+    return "Rechazada";
+  }
+  if (normalized === "vencida" || normalized === "vencido") {
+    return "Vencida";
+  }
+
+  return raw;
+};
+
+const normalizeMoneda = (value: unknown): string => {
+  const moneda = toText(value, "CLP").toUpperCase();
+  return moneda || "CLP";
+};
+
+const normalizeTipoLinea = (value: unknown): "PRODUCTO" | "SERVICIO" => {
+  const normalized = toText(value, "PRODUCTO").trim().toUpperCase();
+  return normalized === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+};
+
+const normalizeTipoCotizacion = (
+  value: string
+): CotizacionEditorValues["tipo"] => {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "interna") return "Interna";
+  if (normalized === "servicio") return "Servicio";
+  if (normalized === "mantencion") return "Mantencion";
+  if (normalized === "otro") return "Otro";
+
+  return "Cliente";
+};
+
+const calculateLineSubtotal = (
+  cantidad: number,
+  precioUnitario: number,
+  gananciaPct = 0
+) => cantidad * precioUnitario * (1 + gananciaPct / 100);
+
+const calculateCotizacionTotals = (
+  lineas: LineaCotizacion[],
+  descuento: number,
+  aplicaImpuesto: boolean
+) => {
+  const subtotal = lineas.reduce((acc, linea) => acc + linea.subtotal, 0);
+  const descuentoSafe = Number.isFinite(descuento) ? descuento : 0;
+  const descuentoPct = Math.min(100, Math.max(0, descuentoSafe));
+  const descuentoMonto = subtotal * (descuentoPct / 100);
+  const neto = Math.max(0, subtotal - descuentoMonto);
+  const impuesto = aplicaImpuesto ? neto * 0.19 : 0;
+  const total = neto + impuesto;
+
+  return { subtotal, descuentoMonto, impuesto, total };
+};
+
+const extractLineas = (source: Record<string, unknown>): LineaCotizacion[] => {
+  const rawLineas = pickValue(source, ["lineas"]);
+  if (!Array.isArray(rawLineas)) {
+    return [];
+  }
+
+  return rawLineas.flatMap((linea, index) => {
+    if (!isObjectRecord(linea)) {
+      return [];
+    }
+
+    const cantidad = Math.max(
+      1,
+      toNumber(pickValue(linea, ["cantidad", "qty"]))
+    );
+    const precioUnitario = toNumber(
+      pickValue(linea, ["precioUnitario", "precio_unitario"])
+    );
+    const gananciaPct = toNumber(
+      pickValue(linea, ["gananciaPct", "ganancia_pct"])
+    );
+    const subtotal =
+      toNumber(pickValue(linea, ["subtotal"])) ||
+      calculateLineSubtotal(cantidad, precioUnitario, gananciaPct);
+
+    return [
+      {
+        tipoLinea: normalizeTipoLinea(
+          pickValue(linea, ["tipoLinea", "tipo_linea"])
+        ),
+        descripcion: toText(
+          pickValue(linea, ["descripcion", "detalle"]),
+          "Linea cotizacion"
+        ),
+        cantidad,
+        precioUnitario,
+        subtotal,
+        orden: toNumber(pickValue(linea, ["orden"])) || index + 1,
+        gananciaPct: Number(gananciaPct ?? 0),
+      },
+    ];
+  });
+};
+
+const extractCliente = (source: Record<string, unknown>): string => {
+  const direct = pickValue(source, [
+    "clienteNombre",
+    "cliente_nombre",
+    "nombreCliente",
+    "cliente",
+  ]);
+
+  if (typeof direct === "string" || typeof direct === "number") {
+    return toText(direct, "Sin cliente");
+  }
+
+  if (isObjectRecord(direct)) {
+    return toText(
+      pickValue(direct, ["nombre", "razonSocial", "razon_social", "empresa"]),
+      "Sin cliente"
+    );
+  }
+
+  const nestedClient = pickValue(source, ["clienteData", "cliente_data"]);
+  if (isObjectRecord(nestedClient)) {
+    return toText(
+      pickValue(nestedClient, ["nombre", "razonSocial", "razon_social", "empresa"]),
+      "Sin cliente"
+    );
+  }
+
+  return "Sin cliente";
+};
+
+const mapCotizacion = (
+  source: CotizacionApiRecord,
+  index = 0
+): CotizacionListItem => {
+  let lineas = extractLineas(source);
+  const numeroValue = pickValue(source, ["numero", "folio", "correlativo"]);
+  const codigo = toText(
+    pickValue(source, ["codigo", "codigoCotizacion", "codigo_cotizacion"])
+  );
+  const fecha = toText(
+    pickValue(source, ["fecha", "fechaEmision", "fecha_emision", "createdAt", "created_at"])
+  );
+  const vigencia = toText(
+    pickValue(source, ["vigencia", "fechaVencimiento", "fecha_vencimiento"])
+  );
+  const descuento = toNumber(pickValue(source, ["descuento"]));
+  const aplicaImpuesto = toBoolean(
+    pickValue(source, ["aplicaImpuesto", "aplica_impuesto"]),
+    true
+  );
+  const subtotal =
+    toNumber(pickValue(source, ["subtotal"])) ||
+    lineas.reduce((acc, linea) => acc + linea.subtotal, 0);
+  const impuesto = toNumber(pickValue(source, ["impuesto"]));
+  const total =
+    toNumber(
+      pickValue(source, ["total", "total_final", "monto_total", "monto", "totalNeto"])
+    ) || calculateCotizacionTotals(lineas, descuento, aplicaImpuesto).total;
+
+  if (!lineas.length && total > 0) {
+    lineas = [
+      {
+        tipoLinea: "PRODUCTO",
+        descripcion: toText(
+          pickValue(source, [
+            "proyecto",
+            "nombreProyecto",
+            "nombre_proyecto",
+            "descripcion",
+          ]),
+          "Item cotizacion"
+        ),
+        cantidad: 1,
+        precioUnitario: total,
+        subtotal: total,
+        orden: 1,
+        gananciaPct: 0,
+      },
+    ];
+  }
+
+  const proyecto = toText(
+    pickValue(source, [
+      "proyecto",
+      "nombreProyecto",
+      "nombre_proyecto",
+      "descripcion",
+    ]),
+    lineas[0]?.descripcion || ""
+  );
+
+  return {
+    id: toText(source.id),
+    numero: numeroValue !== undefined ? toText(numeroValue) : codigo || String(index + 1),
+    codigo,
+    funnelBeckId:
+      toText(pickValue(source, ["funnelBeckId", "funnel_beck_id"]), "") ||
+      undefined,
+    cliente: extractCliente(source),
+    proyecto,
+    origen: toText(pickValue(source, ["origen"]), "Sin origen"),
+    tipo: toText(pickValue(source, ["tipo"]), "Sin tipo"),
+    fecha,
+    vigencia,
+    estado: normalizeEstado(pickValue(source, ["estado"])),
+    total,
+    moneda: normalizeMoneda(
+      pickValue(source, ["moneda", "moneda_total", "currency"])
+    ),
+    responsable: toText(pickValue(source, ["responsable", "usuarioNombre", "usuario_nombre"])),
+    notas: toText(pickValue(source, ["notas", "observaciones"])),
+    descuento,
+    aplicaImpuesto,
+    subtotal,
+    impuesto,
+    lineas,
+  };
+};
+
+const getEstadoColors = (estado: string) => {
+  if (estado === "Borrador") {
+    return { backgroundColor: "#fef3c7", color: "#92400e" };
+  }
+  if (estado === "Enviada") {
+    return { backgroundColor: "#dbeafe", color: "#1d4ed8" };
+  }
+  if (estado === "Aceptada") {
+    return { backgroundColor: "#dcfce7", color: "#166534" };
+  }
+  if (estado === "Rechazada") {
+    return { backgroundColor: "#fee2e2", color: "#b91c1c" };
+  }
+  if (estado === "Vencida") {
+    return { backgroundColor: "#ffedd5", color: "#9a3412" };
+  }
+
+  return { backgroundColor: "#E5E7EB", color: "#4B5563" };
+};
+
+const formatMoney = (value: number, moneda: string): string => {
+  const prefix = moneda === "USD" ? "US$" : "$";
+  return `${prefix} ${value.toLocaleString("es-CL", {
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatDate = (value: string): string => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = dayjs(value);
+  return date.isValid() ? date.format("DD-MM-YYYY") : value;
+};
+
+const toDayjsOrFallback = (value: string, fallback: Dayjs): Dayjs => {
+  const date = dayjs(value);
+  return date.isValid() ? date : fallback;
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (isAxiosError(error)) {
+    const data = error.response?.data;
+
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+
+    if (isObjectRecord(data)) {
+      const apiError = data as { error?: unknown; message?: unknown };
+
+      if (typeof apiError.error === "string" && apiError.error.trim()) {
+        return apiError.error;
+      }
+
+      if (typeof apiError.message === "string" && apiError.message.trim()) {
+        return apiError.message;
+      }
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+};
 
 const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   void themeMode;
 
-  const [data, setData] = useState<Cotizacion[]>([
-    {
-      id: 1,
-      numero: 20,
-      codigo: "BECK-COT-2025-020",
-      cliente: "3DENTAL SPA",
-      proyecto: "Sellos cortafuego clínica dental",
-      origen: "BECK",
-      tipo: "Cliente",
-      fecha: dayjs("2025-11-26").format("YYYY-MM-DD"),
-      vigencia: dayjs("2025-12-26").format("YYYY-MM-DD"),
-      estado: "Borrador",
-      monto: 65405,
-      moneda: "CLP",
-      responsable: "Equipo Beck",
-      notas: "Incluye salas de procedimiento y subterráneo -1.",
-    },
-  ]);
-
-  // --------- estado modal ----------
+  const [cotizaciones, setCotizaciones] = useState<CotizacionListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [detalleOpen, setDetalleOpen] = useState(false);
+  const [detalleLoading, setDetalleLoading] = useState(false);
+  const [selectedCotizacion, setSelectedCotizacion] =
+    useState<CotizacionListItem | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
-  const [editingRecord, setEditingRecord] = useState<Cotizacion | null>(null);
+  const [editingRecord, setEditingRecord] =
+    useState<CotizacionListItem | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editorLoading, setEditorLoading] = useState(false);
 
-  // --------- filtros ----------
-  const [filtroEstado, setFiltroEstado] =
-    useState<EstadoCotizacion | undefined>();
+  const [filtroEstado, setFiltroEstado] = useState<string | undefined>();
   const [filtroOrigen, setFiltroOrigen] = useState<string | undefined>();
-  const [filtroTipo, setFiltroTipo] = useState<Cotizacion["tipo"] | undefined>();
+  const [filtroTipo, setFiltroTipo] = useState<string | undefined>();
   const [filtroFechas, setFiltroFechas] = useState<RangeValue>(null);
-  const [searchText, setSearchText] = useState<string>("");
+  const [searchText, setSearchText] = useState("");
+
+  const loadCotizaciones = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const response = await cotizacionesAPI.getAll();
+      setCotizaciones(response.map((item, index) => mapCotizacion(item, index)));
+    } catch (error) {
+      setCotizaciones([]);
+      message.error(getErrorMessage(error, "No se pudieron cargar las cotizaciones"));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCotizaciones();
+  }, [loadCotizaciones]);
 
   const origenes = useMemo(
-    () => Array.from(new Set(data.map((c) => c.origen))).sort(),
-    [data]
+    () =>
+      Array.from(
+        new Set(cotizaciones.map((cotizacion) => cotizacion.origen).filter(Boolean))
+      ).sort(),
+    [cotizaciones]
   );
 
-  const tipos = useMemo<Cotizacion["tipo"][]>(
-    () => Array.from(new Set(data.map((c) => c.tipo))).sort(),
-    [data]
+  const tipos = useMemo(
+    () =>
+      Array.from(
+        new Set(cotizaciones.map((cotizacion) => cotizacion.tipo).filter(Boolean))
+      ).sort(),
+    [cotizaciones]
   );
 
   const filteredData = useMemo(
     () =>
-      data.filter((c) => {
+      cotizaciones.filter((cotizacion) => {
         let ok = true;
 
-        if (filtroEstado) ok = ok && c.estado === filtroEstado;
-        if (filtroOrigen) ok = ok && c.origen === filtroOrigen;
-        if (filtroTipo) ok = ok && c.tipo === filtroTipo;
+        if (filtroEstado) ok = ok && cotizacion.estado === filtroEstado;
+        if (filtroOrigen) ok = ok && cotizacion.origen === filtroOrigen;
+        if (filtroTipo) ok = ok && cotizacion.tipo === filtroTipo;
 
         if (filtroFechas) {
-          const d = dayjs(c.fecha);
+          if (!cotizacion.fecha) {
+            return false;
+          }
+
+          const date = dayjs(cotizacion.fecha);
+          if (!date.isValid()) {
+            return false;
+          }
+
           const [start, end] = filtroFechas;
           ok =
             ok &&
-            !d.isBefore(start, "day") &&
-            !d.isAfter(end, "day");
+            !date.isBefore(start, "day") &&
+            !date.isAfter(end, "day");
         }
 
         if (searchText.trim()) {
-          const q = searchText.toLowerCase();
+          const query = searchText.toLowerCase();
           ok =
             ok &&
-            (c.codigo.toLowerCase().includes(q) ||
-              c.cliente.toLowerCase().includes(q) ||
-              c.proyecto.toLowerCase().includes(q) ||
-              c.origen.toLowerCase().includes(q));
+            (cotizacion.numero.toLowerCase().includes(query) ||
+              cotizacion.codigo.toLowerCase().includes(query) ||
+              cotizacion.cliente.toLowerCase().includes(query) ||
+              cotizacion.proyecto.toLowerCase().includes(query) ||
+              cotizacion.origen.toLowerCase().includes(query));
         }
 
         return ok;
       }),
-    [data, filtroEstado, filtroOrigen, filtroTipo, filtroFechas, searchText]
+    [
+      cotizaciones,
+      filtroEstado,
+      filtroOrigen,
+      filtroTipo,
+      filtroFechas,
+      searchText,
+    ]
   );
 
-  // --------- KPIs ----------
   const resumen = useMemo(() => {
     const totalCot = filteredData.length;
-    const totalMonto = filteredData.reduce((acc, c) => acc + c.monto, 0);
-
-    const aceptadas = filteredData.filter((c) => c.estado === "Aceptada").length;
-    const enviadas = filteredData.filter((c) => c.estado === "Enviada").length;
+    const totalMonto = filteredData.reduce(
+      (acc, cotizacion) => acc + cotizacion.total,
+      0
+    );
+    const aceptadas = filteredData.filter(
+      (cotizacion) => cotizacion.estado === "Aceptada"
+    ).length;
+    const enviadas = filteredData.filter(
+      (cotizacion) => cotizacion.estado === "Enviada"
+    ).length;
     const base = aceptadas + enviadas;
     const tasaExito = base > 0 ? (aceptadas / base) * 100 : 0;
+    const vencen7dias = filteredData.filter((cotizacion) => {
+      if (!cotizacion.vigencia) {
+        return false;
+      }
 
-    const hoy = dayjs();
-    const vencen7dias = filteredData.filter((c) => {
-      const diff = dayjs(c.vigencia).diff(hoy, "day");
+      const diff = dayjs(cotizacion.vigencia).diff(dayjs(), "day");
       return diff >= 0 && diff <= 7;
     }).length;
 
     return { totalCot, totalMonto, tasaExito, vencen7dias };
   }, [filteredData]);
 
-  // --------- columnas tabla ----------
-  const columnas: ColumnsType<Cotizacion> = [
+  const handleRecargar = () => {
+    void loadCotizaciones();
+  };
+
+  const openNuevo = () => {
+    setEditorMode("create");
+    setEditingRecord(null);
+    setEditorOpen(true);
+  };
+
+  const openEditar = async (record: CotizacionListItem) => {
+    try {
+      setEditorLoading(true);
+      const response = await cotizacionesAPI.getById(record.id);
+      setEditorMode("edit");
+      setEditingRecord(mapCotizacion(response));
+      setEditorOpen(true);
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo cargar la cotizacion"));
+    } finally {
+      setEditorLoading(false);
+    }
+  };
+
+  const handleVerDetalle = async (id: string) => {
+    setDetalleOpen(true);
+    setDetalleLoading(true);
+    setSelectedCotizacion(null);
+
+    try {
+      const response = await cotizacionesAPI.getById(id);
+      setSelectedCotizacion(mapCotizacion(response));
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo cargar la cotizacion"));
+      setDetalleOpen(false);
+    } finally {
+      setDetalleLoading(false);
+    }
+  };
+
+  const handleVerPDF = async (id: string, numero?: string) => {
+    try {
+      const blob = await cotizacionesAPI.getPDF(id);
+      const pdfBlob =
+        blob instanceof Blob ? blob : new Blob([blob], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(pdfBlob);
+      const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
+
+      if (!openedWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `cotizacion-${numero || id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60000);
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo abrir el PDF"));
+    }
+  };
+
+  const handleSaveFromModal = async (values: CotizacionEditorValues) => {
+    if (saving || editorLoading) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const normalizedLineas: CotizacionUpsertPayload["lineas"] = (
+        values.lineas ?? []
+      )
+        .map((linea, index) => {
+          const cantidad = Math.max(1, Number(linea.cantidad || 0));
+          const precioUnitario = Number(linea.precioUnitario || 0);
+          const gananciaPct = Number(linea.gananciaPct || 0);
+          const tipoLinea: CotizacionUpsertPayload["lineas"][number]["tipoLinea"] =
+            linea.tipoLinea === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+          const subtotal = calculateLineSubtotal(
+            cantidad,
+            precioUnitario,
+            gananciaPct
+          );
+
+          return {
+            tipoLinea,
+            descripcion: linea.descripcion.trim(),
+            cantidad,
+            precioUnitario,
+            subtotal,
+            orden: index + 1,
+            gananciaPct,
+          };
+        })
+        .filter((linea) => linea.descripcion);
+
+      if (!normalizedLineas.length) {
+        message.error("Debes agregar al menos una linea a la cotizacion");
+        return;
+      }
+
+      const descuentoRaw = Number(values.descuento ?? 0);
+      const descuento = Number.isFinite(descuentoRaw)
+        ? Math.min(100, Math.max(0, descuentoRaw))
+        : 0;
+      const aplicaImpuesto = Boolean(values.aplicaImpuesto);
+      const { subtotal, impuesto, total } = calculateCotizacionTotals(
+        normalizedLineas,
+        descuento,
+        aplicaImpuesto
+      );
+
+      const payload: CotizacionUpsertPayload = {
+        numero: values.numero || undefined,
+        clienteNombre: values.cliente,
+        funnelBeckId: values.funnelBeckId || null,
+        subtotal,
+        impuesto,
+        total,
+        vigencia: values.vigencia.toISOString(),
+        observaciones: values.notas || "",
+        descuento,
+        aplicaImpuesto,
+        estado: values.estado.toUpperCase(),
+        lineas: normalizedLineas,
+      };
+
+      let savedCotizacion: CotizacionApiRecord | null = null;
+
+      if (editorMode === "create") {
+        savedCotizacion = await cotizacionesAPI.create(payload);
+      } else if (editingRecord) {
+        savedCotizacion = await cotizacionesAPI.update(editingRecord.id, payload);
+      }
+
+      if (savedCotizacion) {
+        const mappedSavedCotizacion = mapCotizacion(savedCotizacion);
+        setSelectedCotizacion((current) =>
+          current?.id === mappedSavedCotizacion.id ? mappedSavedCotizacion : current
+        );
+      }
+
+      setEditorOpen(false);
+      setEditingRecord(null);
+      await loadCotizaciones();
+      message.success(
+        editorMode === "create"
+          ? "Cotizacion creada"
+          : "Cotizacion actualizada"
+      );
+    } catch (error) {
+      message.error(getErrorMessage(error, "Error al guardar cotizacion"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (!filteredData.length) {
+      return;
+    }
+
+    const headers = [
+      "Nro.",
+      "Codigo",
+      "Cliente",
+      "Proyecto",
+      "Origen",
+      "Tipo",
+      "Fecha",
+      "Vigencia",
+      "Estado",
+      "Total",
+      "Moneda",
+      "Responsable",
+      "Notas",
+    ];
+
+    const rows = filteredData.map((cotizacion) => [
+      cotizacion.numero,
+      cotizacion.codigo,
+      cotizacion.cliente,
+      cotizacion.proyecto,
+      cotizacion.origen,
+      cotizacion.tipo,
+      formatDate(cotizacion.fecha),
+      formatDate(cotizacion.vigencia),
+      cotizacion.estado,
+      cotizacion.total,
+      cotizacion.moneda,
+      cotizacion.responsable,
+      cotizacion.notas,
+    ]);
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cotizaciones");
+
+    const fileName = `BECK_cotizaciones_${dayjs().format(
+      "YYYYMMDD_HHmm"
+    )}_vista_actual.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  const handleRangeChange: RangePickerProps["onChange"] = (value) => {
+    if (!value || !value[0] || !value[1]) {
+      setFiltroFechas(null);
+      return;
+    }
+
+    setFiltroFechas([value[0], value[1]] as [Dayjs, Dayjs]);
+  };
+
+  const editorInitialValues: Partial<CotizacionEditorValues> = editingRecord
+    ? {
+        numero: Number(editingRecord.numero) || undefined,
+        funnelBeckId: editingRecord.funnelBeckId,
+        cliente: editingRecord.cliente,
+        proyecto: editingRecord.proyecto,
+        origen: editingRecord.origen === "FIREMAT" ? "FIREMAT" : "BECK",
+        tipo: normalizeTipoCotizacion(editingRecord.tipo),
+        fecha: toDayjsOrFallback(editingRecord.fecha, dayjs()),
+        vigencia: toDayjsOrFallback(
+          editingRecord.vigencia,
+          dayjs().add(15, "day")
+        ),
+        estado:
+          editingRecord.estado === "Enviada" ||
+          editingRecord.estado === "Aceptada" ||
+          editingRecord.estado === "Rechazada" ||
+          editingRecord.estado === "Vencida"
+            ? editingRecord.estado
+            : "Borrador",
+        moneda: editingRecord.moneda === "USD" ? "USD" : "CLP",
+        responsable: editingRecord.responsable,
+        notas: editingRecord.notas,
+        descuento: editingRecord.descuento,
+        aplicaImpuesto: editingRecord.aplicaImpuesto,
+        lineas: editingRecord.lineas,
+      }
+    : {
+        fecha: dayjs(),
+        vigencia: dayjs().add(15, "day"),
+        estado: "Borrador",
+        moneda: "CLP",
+        origen: "BECK",
+        tipo: "Cliente",
+        funnelBeckId: undefined,
+        cliente: "",
+        descuento: 0,
+        aplicaImpuesto: true,
+        lineas: [],
+      };
+
+  const columnas: ColumnsType<CotizacionListItem> = [
     {
-      title: "N°",
+      title: "Nro.",
       dataIndex: "numero",
       key: "numero",
-      width: 70,
+      width: 90,
       fixed: "left",
-      render: (value) => (
+      render: (value: string) => (
         <span className="text-slate-500 text-xs">{value}</span>
       ),
     },
     {
-      title: "Fecha cotización",
+      title: "Fecha cotizacion",
       dataIndex: "fecha",
       key: "fecha",
-      width: 130,
-      render: (value) => dayjs(value).format("DD-MM-YYYY"),
+      width: 140,
+      render: (value: string) => formatDate(value),
     },
     {
       title: "Estado",
       dataIndex: "estado",
       key: "estado",
       width: 120,
-      render: (estado: EstadoCotizacion) => {
-        let color = "#E5E7EB";
-        let text = "#4B5563";
-
-        if (estado === "Borrador") {
-          color = "#fef3c7";
-          text = "#92400e";
-        }
-        if (estado === "Enviada") {
-          color = "#dbeafe";
-          text = "#1d4ed8";
-        }
-        if (estado === "Aceptada") {
-          color = "#dcfce7";
-          text = "#166534";
-        }
-        if (estado === "Rechazada") {
-          color = "#fee2e2";
-          text = "#b91c1c";
-        }
+      render: (estado: string) => {
+        const colors = getEstadoColors(estado);
 
         return (
           <span
-            style={{ backgroundColor: color, color: text }}
+            style={colors}
             className="inline-flex items-center rounded-full px-3 py-0.5 text-[11px] font-medium"
           >
             {estado}
@@ -221,21 +890,20 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
     },
     {
       title: "Total",
-      dataIndex: "monto",
-      key: "monto",
-      width: 130,
+      dataIndex: "total",
+      key: "total",
+      width: 150,
       align: "right",
       render: (value: number, record) => (
         <span className="font-semibold text-slate-900">
-          {record.moneda === "CLP" ? "$" : "US$"}{" "}
-          {value.toLocaleString("es-CL")}
+          {formatMoney(value, record.moneda)}
         </span>
       ),
     },
     {
       title: "Acciones",
       key: "acciones",
-      width: 120,
+      width: 130,
       align: "center",
       render: (_, record) => (
         <div className="flex items-center justify-center gap-2 text-slate-500 text-xs">
@@ -245,7 +913,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               size="small"
               icon={<EyeOutlined />}
               onClick={() => {
-                console.log("Ver", record.id);
+                void handleVerDetalle(record.id);
               }}
             />
           </Tooltip>
@@ -254,21 +922,19 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               type="text"
               size="small"
               icon={<EditOutlined />}
+              disabled={saving || editorLoading}
               onClick={() => {
-                setEditorMode("edit");
-                setEditingRecord(record);
-                setEditorOpen(true);
+                void openEditar(record);
               }}
             />
           </Tooltip>
-          <Tooltip title="Eliminar">
+          <Tooltip title="Ver PDF">
             <Button
               type="text"
               size="small"
-              danger
-              icon={<DeleteOutlined />}
+              icon={<DownloadOutlined />}
               onClick={() => {
-                setData((prev) => prev.filter((c) => c.id !== record.id));
+                void handleVerPDF(record.id, record.numero);
               }}
             />
           </Tooltip>
@@ -277,147 +943,8 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
     },
   ];
 
-  // --------- acciones ----------
-  const openNuevo = () => {
-    setEditorMode("create");
-    setEditingRecord(null);
-    setEditorOpen(true);
-  };
-
-  const handleExportExcel = () => {
-    if (!filteredData.length) return;
-
-    const headers = [
-      "N°",
-      "Código",
-      "Cliente",
-      "Proyecto",
-      "Origen",
-      "Tipo",
-      "Fecha",
-      "Vigencia",
-      "Estado",
-      "Monto",
-      "Moneda",
-      "Responsable",
-      "Notas",
-    ];
-
-    const rows = filteredData.map((c) => [
-      c.numero,
-      c.codigo,
-      c.cliente,
-      c.proyecto,
-      c.origen,
-      c.tipo,
-      dayjs(c.fecha).format("DD-MM-YYYY"),
-      dayjs(c.vigencia).format("DD-MM-YYYY"),
-      c.estado,
-      c.monto,
-      c.moneda,
-      c.responsable,
-      c.notas || "",
-    ]);
-
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Cotizaciones");
-
-    const fileName = `BECK_cotizaciones_${dayjs().format(
-      "YYYYMMDD_HHmm"
-    )}_vista_actual.xlsx`;
-    XLSX.writeFile(wb, fileName);
-  };
-
-  const handleRecargar = () => {
-    console.log("Recargar cotizaciones mock");
-  };
-
-  const editorInitialValues: CotizacionEditorValues | undefined =
-    editingRecord
-      ? {
-          id: editingRecord.id,
-          numero: editingRecord.numero,
-          codigo: editingRecord.codigo,
-          cliente: editingRecord.cliente,
-          proyecto: editingRecord.proyecto,
-          origen: editingRecord.origen as CotizacionEditorValues["origen"],
-          tipo: editingRecord.tipo,
-          fecha: dayjs(editingRecord.fecha),
-          vigencia: dayjs(editingRecord.vigencia),
-          estado: editingRecord.estado,
-          monto: editingRecord.monto,
-          moneda: editingRecord.moneda as "CLP" | "USD",
-          responsable: editingRecord.responsable,
-          notas: editingRecord.notas,
-        }
-      : undefined;
-
-  const handleSaveFromModal = (values: CotizacionEditorValues) => {
-    const isEdit = editorMode === "edit" && editingRecord;
-
-    const nextNumero =
-      isEdit && editingRecord
-        ? editingRecord.numero
-        : data.length > 0
-        ? Math.max(...data.map((c) => c.numero)) + 1
-        : 1;
-
-    const id =
-      isEdit && editingRecord
-        ? editingRecord.id
-        : data.length > 0
-        ? Math.max(...data.map((c) => c.id)) + 1
-        : 1;
-
-    const numero = values.numero ?? nextNumero;
-
-    const base: Cotizacion = {
-      id,
-      numero,
-      codigo:
-        values.codigo ||
-        `BECK-COT-${values.fecha.format("YYYY")}-${String(numero).padStart(
-          3,
-          "0"
-        )}`,
-      cliente: values.cliente,
-      proyecto: values.proyecto || "",
-      origen: values.origen,
-      tipo: values.tipo,
-      fecha: values.fecha.format("YYYY-MM-DD"),
-      vigencia: values.vigencia.format("YYYY-MM-DD"),
-      estado: values.estado,
-      monto: Number(values.monto || 0),
-      moneda: values.moneda,
-      responsable: values.responsable || "",
-      notas: values.notas,
-    };
-
-    setData((prev) => {
-      if (isEdit && editingRecord) {
-        return prev.map((c) => (c.id === editingRecord.id ? base : c));
-      }
-      return [base, ...prev];
-    });
-
-    setEditorOpen(false);
-    setEditingRecord(null);
-  };
-
-  // handler tipado para RangePicker (sin any, sin genéricos)
-  const handleRangeChange: RangePickerProps["onChange"] = (val) => {
-    if (!val || !val[0] || !val[1]) {
-      setFiltroFechas(null);
-      return;
-    }
-    setFiltroFechas([val[0], val[1]] as [Dayjs, Dayjs]);
-  };
-
-  // --------- render ----------
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Panel principal */}
       <Card
         className="border border-slate-100 shadow-sm rounded-2xl bg-gradient-to-b from-white via-white to-[#f9fafb]"
         styles={{ body: { padding: 18 } }}
@@ -426,15 +953,14 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-orange-700">
               <FileTextOutlined className="text-[12px]" />
-              <span>Gestión y seguimiento de cotizaciones</span>
+              <span>Gestion y seguimiento de cotizaciones</span>
             </div>
             <h1 className="mt-2 text-lg font-semibold tracking-wide text-slate-900">
               Cotizaciones
             </h1>
             <p className="mt-1 text-xs text-slate-600">
               Gestiona propuestas de sellos cortafuego por cliente, origen y
-              estado. Vista pensada para Beck / Firemat y cubicaciones de
-              protección pasiva.
+              estado. Vista conectada al backend real del CRM.
             </p>
           </div>
 
@@ -443,6 +969,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               icon={<ReloadOutlined />}
               className="text-xs"
               onClick={handleRecargar}
+              loading={loading}
             >
               Recargar
             </Button>
@@ -451,13 +978,13 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               icon={<PlusOutlined />}
               className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
               onClick={openNuevo}
+              disabled={saving || editorLoading}
             >
               Crear
             </Button>
           </div>
         </div>
 
-        {/* búsqueda */}
         <div className="mt-4">
           <Input
             allowClear
@@ -466,24 +993,26 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               <SearchOutlined className="text-slate-400 text-[13px] mr-1" />
             }
             className="rounded-full max-w-xl text-xs"
-            placeholder="Buscar cotización, cliente, proyecto u origen..."
+            placeholder="Buscar cotizacion, cliente, proyecto u origen..."
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(event) => setSearchText(event.target.value)}
           />
         </div>
 
-        {/* filtros */}
         <div className="mt-4 grid gap-2 md:grid-cols-3 lg:grid-cols-4">
           <div className="flex flex-col gap-1">
             <span className="text-[11px] text-slate-500">Filtrar por origen</span>
             <Select
               allowClear
               size="small"
-              placeholder="Todos los orígenes"
+              placeholder="Todos los origenes"
               className="w-full"
               value={filtroOrigen}
               onChange={(value) => setFiltroOrigen(value)}
-              options={origenes.map((o) => ({ label: o, value: o }))}
+              options={origenes.map((origen) => ({
+                label: origen,
+                value: origen,
+              }))}
             />
           </div>
 
@@ -495,10 +1024,11 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               placeholder="Todos los estados"
               className="w-full"
               value={filtroEstado}
-              onChange={(value) =>
-                setFiltroEstado(value as EstadoCotizacion)
-              }
-              options={estadosOptions.map((e) => ({ label: e, value: e }))}
+              onChange={(value) => setFiltroEstado(value)}
+              options={estadosOptions.map((estado) => ({
+                label: estado,
+                value: estado,
+              }))}
             />
           </div>
 
@@ -510,10 +1040,8 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               placeholder="Todos los tipos"
               className="w-full"
               value={filtroTipo}
-              onChange={(value) =>
-                setFiltroTipo(value as Cotizacion["tipo"])
-              }
-              options={tipos.map((t) => ({ label: t, value: t }))}
+              onChange={(value) => setFiltroTipo(value)}
+              options={tipos.map((tipo) => ({ label: tipo, value: tipo }))}
             />
           </div>
 
@@ -530,7 +1058,6 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         </div>
       </Card>
 
-      {/* KPIs */}
       <div className="grid gap-3 md:grid-cols-4">
         <Card
           className="border border-amber-100 bg-[#fffbeb] rounded-xl shadow-sm"
@@ -561,7 +1088,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
                 $ {resumen.totalMonto.toLocaleString("es-CL")}
               </p>
               <p className="text-[11px] text-slate-500">
-                Solo CLP (mock de prueba)
+                Valores cargados desde backend
               </p>
             </div>
             <DollarOutlined className="text-lg text-emerald-600" />
@@ -574,7 +1101,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         >
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] text-emerald-700">Tasa de éxito</p>
+              <p className="text-[11px] text-emerald-700">Tasa de exito</p>
               <p className="text-xl font-semibold text-emerald-700">
                 {resumen.tasaExito.toFixed(0)}%
               </p>
@@ -592,9 +1119,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         >
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] text-sky-700">
-                Vencen en los próximos 7 días
-              </p>
+              <p className="text-[11px] text-sky-700">Vencen en los proximos 7 dias</p>
               <p className="text-xl font-semibold text-slate-900">
                 {resumen.vencen7dias}
               </p>
@@ -607,7 +1132,6 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         </Card>
       </div>
 
-      {/* tabla */}
       <Card
         className="border border-slate-100 bg-white rounded-2xl shadow-sm"
         styles={{ body: { padding: 0 } }}
@@ -623,6 +1147,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
             icon={<DownloadOutlined />}
             className="text-[11px]"
             onClick={handleExportExcel}
+            disabled={!filteredData.length}
           >
             Exportar Excel
           </Button>
@@ -633,27 +1158,130 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           dataSource={filteredData}
           rowKey="id"
           size="small"
+          loading={loading}
           pagination={{ pageSize: 10 }}
           scroll={{ x: 900 }}
         />
         <div className="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-100">
-          Mostrando {filteredData.length} de {data.length} cotizaciones.
+          Mostrando {filteredData.length} de {cotizaciones.length} cotizaciones.
         </div>
       </Card>
 
-      {/* modal editor */}
-      <CotizacionEditorModal
-        open={editorOpen}
-        mode={editorMode}
-        initialValues={editorInitialValues}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditingRecord(null);
+      <Modal
+        open={detalleOpen}
+        onCancel={() => {
+          setDetalleOpen(false);
+          setSelectedCotizacion(null);
         }}
-        onSubmit={handleSaveFromModal}
-      />
+        title="Detalle de cotizacion"
+        footer={[
+          <Button
+            key="cerrar"
+            onClick={() => {
+              setDetalleOpen(false);
+              setSelectedCotizacion(null);
+            }}
+          >
+            Cerrar
+          </Button>,
+          <Button
+            key="pdf"
+            type="primary"
+            icon={<DownloadOutlined />}
+            className="bg-sky-500 hover:bg-sky-600 border-none"
+            disabled={!selectedCotizacion}
+            onClick={() => {
+              if (selectedCotizacion) {
+                void handleVerPDF(
+                  selectedCotizacion.id,
+                  selectedCotizacion.numero
+                );
+              }
+            }}
+          >
+            Ver PDF
+          </Button>,
+        ]}
+      >
+        {detalleLoading ? (
+          <div className="py-10 text-center text-sm text-slate-500">
+            Cargando detalle...
+          </div>
+        ) : selectedCotizacion ? (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Nro.">
+              {selectedCotizacion.numero}
+            </Descriptions.Item>
+            <Descriptions.Item label="Codigo">
+              {selectedCotizacion.codigo || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Cliente">
+              {selectedCotizacion.cliente}
+            </Descriptions.Item>
+            <Descriptions.Item label="Proyecto">
+              {selectedCotizacion.proyecto || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Estado">
+              {selectedCotizacion.estado}
+            </Descriptions.Item>
+            <Descriptions.Item label="Total">
+              {formatMoney(
+                selectedCotizacion.total,
+                selectedCotizacion.moneda
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha">
+              {formatDate(selectedCotizacion.fecha)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Vigencia">
+              {formatDate(selectedCotizacion.vigencia)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Origen">
+              {selectedCotizacion.origen || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tipo">
+              {selectedCotizacion.tipo || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Responsable">
+              {selectedCotizacion.responsable || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Notas">
+              {selectedCotizacion.notas || "-"}
+            </Descriptions.Item>
+          </Descriptions>
+        ) : (
+          <div className="py-10 text-center text-sm text-slate-500">
+            No se pudo cargar el detalle.
+          </div>
+        )}
+      </Modal>
+
+      {editorOpen && (
+        <CotizacionEditorModal
+          key={`${editorMode}-${editingRecord?.id ?? "new"}`}
+          open={editorOpen}
+          mode={editorMode}
+          initialValues={editorInitialValues}
+          submitting={saving}
+          lockFunnelSelection={false}
+          onClose={() => {
+            if (saving) {
+              return;
+            }
+
+            setEditorOpen(false);
+            setEditingRecord(null);
+          }}
+          onSubmit={(values) => {
+            void handleSaveFromModal(values);
+          }}
+        />
+      )}
     </div>
   );
 };
 
 export default Cotizaciones;
+
+
+

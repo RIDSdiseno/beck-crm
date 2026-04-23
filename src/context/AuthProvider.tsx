@@ -1,20 +1,24 @@
 import React, {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import type { LoginResponse } from "../services/api";
-import { authAPI } from "../services/api";
+import {
+  authAPI,
+  clearStoredSession,
+  getStoredToken,
+  SESSION_STORAGE_KEY,
+  TOKEN_STORAGE_KEY,
+  type LoginResponse,
+} from "../services/api";
 import type { RolUsuario } from "../types/usuario";
 import {
   AuthContext,
   type AuthUser,
   type LoginParams,
 } from "./authContext";
-
-const SESSION_KEY = "beck_crm_session_v1";
-const TOKEN_KEY = "beck_token";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
   administrador: "Administrador",
@@ -105,21 +109,14 @@ const buildAuthUserFromBackend = (value: unknown): AuthUser | null => {
 const persistStoredUser = (user: AuthUser) => {
   if (typeof window === "undefined") return;
 
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
 };
 
 const persistSession = (user: AuthUser, token: string) => {
   if (typeof window === "undefined") return;
 
-  window.localStorage.setItem(TOKEN_KEY, token);
+  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
   persistStoredUser(user);
-};
-
-const clearSession = () => {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(SESSION_KEY);
 };
 
 type AuthProviderProps = {
@@ -131,7 +128,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (typeof window === "undefined") return null;
 
     try {
-      const raw = window.localStorage.getItem(SESSION_KEY);
+      const token = getStoredToken();
+      if (!token) {
+        return null;
+      }
+
+      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
       if (!raw) return null;
       return parseStoredAuthUser(JSON.parse(raw));
     } catch {
@@ -150,7 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         return authUser;
       } catch (error: unknown) {
-        clearSession();
+        clearStoredSession();
 
         const errorMessage =
           error instanceof Error ? error.message : "Error al iniciar sesion";
@@ -163,7 +165,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = useCallback(() => {
     setUser(null);
-    clearSession();
+    clearStoredSession();
   }, []);
 
   const refreshSession = useCallback(async (): Promise<AuthUser> => {
@@ -174,13 +176,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       throw new Error("No se pudo obtener el usuario autenticado");
     }
 
-    if (!isSameAuthUser(user, authUser)) {
-      persistStoredUser(authUser);
-      setUser(authUser);
-    }
+    persistStoredUser(authUser);
+    setUser((current) => (isSameAuthUser(current, authUser) ? current : authUser));
 
     return authUser;
-  }, [user]);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const token = getStoredToken();
+    if (!token) {
+      clearStoredSession();
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const syncStoredSession = async () => {
+      try {
+        await refreshSession();
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        if (!getStoredToken()) {
+          setUser(null);
+          clearStoredSession();
+        }
+      }
+    };
+
+    void syncStoredSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshSession]);
 
   const value = useMemo(
     () => ({ user, login, logout, refreshSession }),
