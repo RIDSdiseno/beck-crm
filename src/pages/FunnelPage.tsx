@@ -15,6 +15,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import CierreDeProyecto from "../components/Cierredeproyecto";
+import FunnelCalendario from "../components/FunnelCalendario";
 import CotizacionEditorModal, {
   type CotizacionEditorValues,
   type LineaCotizacion,
@@ -33,41 +34,15 @@ import {
   type RegionChile,
 } from "../data/regionesComunasChile";
 import type { ThemeMode } from "../hooks/useSystemTheme";
+import type {
+  FunnelCurrency,
+  FunnelDeal,
+  FunnelLeadSource,
+  FunnelStage,
+} from "../types/funnel";
 
 type FunnelPageProps = {
   themeMode: ThemeMode;
-};
-
-type FunnelCurrency = "CLP" | "UF" | "USD";
-
-type FunnelLeadSource =
-  | "Web"
-  | "Referido"
-  | "Llamada"
-  | "Cliente recurrente"
-  | "Prospeccion"
-  | "Otro";
-
-type FunnelStage =
-  | "prospecto"
-  | "visita"
-  | "cotizacion"
-  | "enviada"
-  | "negociacion"
-  | "cerrada";
-
-type FunnelDeal = {
-  id: string;
-  etapa: FunnelStage;
-  nombreProyecto: string;
-  moneda: FunnelCurrency;
-  empresa?: string;
-  valorEstimado?: number;
-  fechaProbableCierre?: string;
-  vendedor?: string;
-  region?: string;
-  comuna?: string;
-  fuenteLead?: FunnelLeadSource;
 };
 
 type FunnelDraft = {
@@ -112,7 +87,7 @@ type FunnelCardProps = {
   deal: FunnelDeal;
   canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
-  onViewDetail: (deal: FunnelDeal) => void;
+  onViewDetail: (deal: FunnelDeal) => Promise<void> | void;
   onCreateCotizacion: (deal: FunnelDeal) => void;
 };
 
@@ -121,7 +96,7 @@ type FunnelColumnProps = {
   deals: FunnelDeal[];
   canEditFunnel: boolean;
   onStageChange: (dealId: string, etapa: FunnelStage) => void;
-  onViewDetail: (deal: FunnelDeal) => void;
+  onViewDetail: (deal: FunnelDeal) => Promise<void> | void;
   onCreateCotizacion: (deal: FunnelDeal) => void;
 };
 
@@ -693,7 +668,9 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <button
         type="button"
-        onClick={() => onViewDetail(deal)}
+        onClick={() => {
+          void onViewDetail(deal);
+        }}
         className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
       >
         Ver detalle
@@ -1152,6 +1129,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
   const [deals, setDeals] = useState<FunnelDeal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [funnelModalMode, setFunnelModalMode] = useState<"create" | "edit">("create");
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -1309,6 +1287,15 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     Otro: "otro",
   };
 
+  const fuenteLeadBackendToFrontendMap: Record<string, FunnelLeadSource> = {
+    web: "Web",
+    referido: "Referido",
+    llamada: "Llamada",
+    cliente_recurrente: "Cliente recurrente",
+    prospeccion: "Prospeccion",
+    otro: "Otro",
+  };
+
   const mapOpportunityToDeal = (item: Record<string, unknown>): FunnelDeal => {
     const monedaOriginalValue = toText(item.monedaOriginal, "CLP");
     const monedaOriginal: FunnelCurrency =
@@ -1318,6 +1305,11 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         ? monedaOriginalValue
         : "CLP";
     const fuenteLead = toText(item.fuenteLead, "");
+    const fuenteLeadNormalizada =
+      fuenteLeadBackendToFrontendMap[fuenteLead] ??
+      (leadSourceOptions.includes(fuenteLead as FunnelLeadSource)
+        ? (fuenteLead as FunnelLeadSource)
+        : undefined);
     const valorOriginal = toNumber(item.valorOriginal);
     const fechaProbableCierre = toText(item.fechaProbableCierre, "");
 
@@ -1333,9 +1325,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       vendedor: toText(item.vendedor, "") || undefined,
       region: toText(item.region, "") || undefined,
       comuna: toText(item.comuna, "") || undefined,
-      fuenteLead: leadSourceOptions.includes(fuenteLead as FunnelLeadSource)
-        ? (fuenteLead as FunnelLeadSource)
-        : undefined,
+      fuenteLead: fuenteLeadNormalizada,
       etapa: etapaBackendMap[toText(item.etapa)] ?? "prospecto",
     };
   };
@@ -1953,16 +1943,43 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             </p>
           </div>
 
-          {canEditFunnel && (
-            <button
-              type="button"
-              onClick={handleOpenModal}
-              disabled={dealSaving}
-              className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
-            >
-              Nueva oportunidad
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode("kanban")}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  viewMode === "kanban"
+                    ? "bg-orange-500 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                Kanban
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("calendar")}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  viewMode === "calendar"
+                    ? "bg-orange-500 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                Calendario
+              </button>
+            </div>
+
+            {canEditFunnel && (
+              <button
+                type="button"
+                onClick={handleOpenModal}
+                disabled={dealSaving}
+                className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
+              >
+                Nueva oportunidad
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -1970,7 +1987,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         <section className="rounded-2xl border border-slate-200 bg-white px-5 py-6 text-sm text-slate-600 shadow-sm">
           Cargando funnel...
         </section>
-      ) : (
+      ) : viewMode === "kanban" ? (
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
             {etapas.map((etapa) => {
@@ -1990,6 +2007,11 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             })}
           </div>
         </section>
+      ) : (
+        <FunnelCalendario
+          deals={deals}
+          onOpenDetail={openDealDetail}
+        />
       )}
 
       <FunnelModal
