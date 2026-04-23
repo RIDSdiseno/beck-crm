@@ -190,9 +190,36 @@ const AppShell: React.FC = () => {
     try {
       const authUser = await login(values);
       navigate(getHomeRouteForRole(authUser.rol), { replace: true });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "No se pudo iniciar sesion";
+    } catch (error: unknown) {
+      let errorMessage = "No se pudo iniciar sesión";
+
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error
+      ) {
+        const axiosError = error as {
+          response?: {
+            status?: number;
+            data?: {
+              error?: string;
+              message?: string;
+            };
+          };
+          message?: string;
+        };
+
+        errorMessage =
+          axiosError.response?.data?.error ||
+          axiosError.response?.data?.message ||
+          (axiosError.response?.status === 401
+            ? "Usuario o contraseña inválidos"
+            : axiosError.message) ||
+          "No se pudo iniciar sesión";
+      } else if (error instanceof Error) {
+        errorMessage = error.message || "No se pudo iniciar sesión";
+      }
+
       message.error(errorMessage);
     }
   };

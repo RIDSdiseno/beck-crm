@@ -1,4 +1,4 @@
-import React, { type FormEvent, useEffect, useState } from "react";
+﻿import React, { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   Button,
   Descriptions,
@@ -6,7 +6,13 @@ import {
   Spin,
   message,
 } from "antd";
-import { EditOutlined, EyeOutlined, FileTextOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  EyeOutlined,
+  FileTextOutlined,
+} from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import CierreDeProyecto from "../components/Cierredeproyecto";
 import CotizacionEditorModal, {
@@ -77,6 +83,8 @@ type FunnelDraft = {
   etapa: FunnelStage;
 };
 
+type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
+
 type FunnelCotizacionItem = {
   id: string;
   numero: string;
@@ -119,8 +127,12 @@ type FunnelColumnProps = {
 
 type FunnelModalProps = {
   open: boolean;
+  mode: "create" | "edit";
   draft: FunnelDraft;
+  fieldErrors: FunnelFieldErrors;
+  validationMessage: string | null;
   conversionReferencia: string | null;
+  submitting: boolean;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: (field: keyof FunnelDraft, value: string) => void;
@@ -170,6 +182,75 @@ const createEmptyDraft = (): FunnelDraft => ({
   fuenteLead: "",
   etapa: "prospecto",
 });
+
+const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
+
+const validateFunnelDraft = (draft: FunnelDraft): FunnelFieldErrors => {
+  const errors: FunnelFieldErrors = {};
+  const nombreProyecto = draft.nombreProyecto.trim();
+  const empresa = draft.empresa.trim();
+  const valorEstimado = draft.valorEstimado.trim();
+  const parsedValorEstimado = valorEstimado
+    ? Number(valorEstimado.replace(",", "."))
+    : Number.NaN;
+  const fechaProbableCierre = draft.fechaProbableCierre.trim();
+  const vendedor = draft.vendedor.trim();
+  const region = draft.region.trim();
+  const comuna = draft.comuna.trim();
+  const fuenteLead = draft.fuenteLead.trim();
+  const etapa = draft.etapa.trim();
+  const selectedRegionData = region
+    ? regionesComunasChile.find((item) => item.nombre === region)
+    : undefined;
+
+  if (!nombreProyecto) {
+    errors.nombreProyecto = "El nombre del proyecto es obligatorio";
+  }
+
+  if (!empresa) {
+    errors.empresa = "La empresa es obligatoria";
+  }
+
+  if (!valorEstimado) {
+    errors.valorEstimado = "El valor estimado es obligatorio";
+  } else if (
+    !Number.isFinite(parsedValorEstimado) ||
+    parsedValorEstimado <= 0
+  ) {
+    errors.valorEstimado = "El valor estimado debe ser mayor a 0";
+  }
+
+  if (!fechaProbableCierre) {
+    errors.fechaProbableCierre = "La fecha probable de cierre es obligatoria";
+  }
+
+  if (!vendedor) {
+    errors.vendedor = "El vendedor es obligatorio";
+  }
+
+  if (!region) {
+    errors.region = "La region es obligatoria";
+  }
+
+  if (!comuna) {
+    errors.comuna = "La comuna es obligatoria";
+  } else if (
+    selectedRegionData &&
+    !selectedRegionData.comunas.includes(comuna)
+  ) {
+    errors.comuna = "La comuna no corresponde a la region seleccionada";
+  }
+
+  if (!fuenteLead) {
+    errors.fuenteLead = "La fuente del lead es obligatoria";
+  }
+
+  if (!etapa) {
+    errors.etapa = "La etapa inicial es obligatoria";
+  }
+
+  return errors;
+};
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -297,7 +378,10 @@ const calculateCotizacionTotals = (
   aplicaImpuesto: boolean
 ) => {
   const subtotal = lineas.reduce((acc, linea) => acc + linea.subtotal, 0);
-  const neto = Math.max(0, subtotal - descuento);
+  const descuentoSafe = Number.isFinite(descuento) ? descuento : 0;
+  const descuentoPct = Math.min(100, Math.max(0, descuentoSafe));
+  const descuentoMonto = subtotal * (descuentoPct / 100);
+  const neto = Math.max(0, subtotal - descuentoMonto);
   const impuesto = aplicaImpuesto ? neto * 0.19 : 0;
   const total = neto + impuesto;
 
@@ -534,6 +618,9 @@ const inputClassName =
 const disabledInputClassName =
   "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
+const inputErrorClassName =
+  "border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100";
+
 const FunnelFieldRow: React.FC<FunnelFieldRowProps> = ({ label, value }) => (
   <div className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs">
     <span className="font-medium text-slate-500">{label}</span>
@@ -666,8 +753,12 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
 
 const FunnelModal: React.FC<FunnelModalProps> = ({
   open,
+  mode,
   draft,
+  fieldErrors,
+  validationMessage,
   conversionReferencia,
+  submitting,
   onClose,
   onSubmit,
   onFieldChange,
@@ -680,6 +771,26 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
     (region) => region.nombre === draft.region
   );
   const comunasDisponibles = selectedRegionData?.comunas ?? [];
+  const getFieldClassName = (field: keyof FunnelDraft) =>
+    `${inputClassName} ${disabledInputClassName} ${
+      fieldErrors[field] ? inputErrorClassName : ""
+    }`;
+  const renderFieldError = (field: keyof FunnelDraft) => {
+    const error = fieldErrors[field];
+
+    if (!error) {
+      return null;
+    }
+
+    return (
+      <p
+        id={`funnel-${field}-error`}
+        className="mt-1.5 text-xs font-medium text-red-600"
+      >
+        {error}
+      </p>
+    );
+  };
 
   return (
     <div
@@ -696,24 +807,35 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
               Funnel
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-900">
-              Nueva oportunidad
+              {mode === "create" ? "Nueva oportunidad" : "Editar oportunidad"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Completa la informacion para registrar una nueva oportunidad
-              comercial.
+              {mode === "create"
+                ? "Completa la informacion para registrar una nueva oportunidad comercial."
+                : "Actualiza la informacion de la oportunidad comercial seleccionada."}
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
+            disabled={submitting}
             className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
           >
             Cerrar
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5 px-5 py-5">
+        <form noValidate onSubmit={onSubmit} className="space-y-5 px-5 py-5">
+          {validationMessage && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700"
+            >
+              {validationMessage}
+            </div>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <label
@@ -721,6 +843,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Nombre del proyecto
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <input
                 id="funnel-nombre-proyecto"
@@ -729,10 +852,17 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 onChange={(event) =>
                   onFieldChange("nombreProyecto", event.target.value)
                 }
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("nombreProyecto")}
                 placeholder="Ingresa el nombre del proyecto"
-                required
+                aria-invalid={Boolean(fieldErrors.nombreProyecto)}
+                aria-describedby={
+                  fieldErrors.nombreProyecto
+                    ? "funnel-nombreProyecto-error"
+                    : undefined
+                }
               />
+              {renderFieldError("nombreProyecto")}
             </div>
 
             <div>
@@ -741,15 +871,22 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Empresa
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <input
                 id="funnel-empresa"
                 type="text"
                 value={draft.empresa}
                 onChange={(event) => onFieldChange("empresa", event.target.value)}
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("empresa")}
                 placeholder="Nombre de la empresa"
+                aria-invalid={Boolean(fieldErrors.empresa)}
+                aria-describedby={
+                  fieldErrors.empresa ? "funnel-empresa-error" : undefined
+                }
               />
+              {renderFieldError("empresa")}
             </div>
 
             <div>
@@ -758,6 +895,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Valor estimado
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <div className="grid grid-cols-[minmax(0,1fr),96px] gap-2">
                 <input
@@ -768,19 +906,28 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                   onChange={(event) =>
                     onFieldChange("valorEstimado", event.target.value)
                   }
-                  className={inputClassName}
+                  disabled={submitting}
+                  className={getFieldClassName("valorEstimado")}
                   placeholder="Ej: 1500000"
+                  aria-invalid={Boolean(fieldErrors.valorEstimado)}
+                  aria-describedby={
+                    fieldErrors.valorEstimado
+                      ? "funnel-valorEstimado-error"
+                      : undefined
+                  }
                 />
                 <select
                   value={draft.moneda}
                   onChange={(event) => onFieldChange("moneda", event.target.value)}
-                  className={inputClassName}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
                 >
                   <option value="CLP">CLP</option>
                   <option value="UF">UF</option>
                   <option value="USD">USD</option>
                 </select>
               </div>
+              {renderFieldError("valorEstimado")}
               {conversionReferencia && (
                 <p className="mt-1.5 text-xs text-slate-500">
                   {conversionReferencia}
@@ -794,6 +941,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Fecha probable de cierre
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <input
                 id="funnel-fecha-cierre"
@@ -802,8 +950,16 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 onChange={(event) =>
                   onFieldChange("fechaProbableCierre", event.target.value)
                 }
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("fechaProbableCierre")}
+                aria-invalid={Boolean(fieldErrors.fechaProbableCierre)}
+                aria-describedby={
+                  fieldErrors.fechaProbableCierre
+                    ? "funnel-fechaProbableCierre-error"
+                    : undefined
+                }
               />
+              {renderFieldError("fechaProbableCierre")}
             </div>
 
             <div>
@@ -812,15 +968,22 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Vendedor
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <input
                 id="funnel-vendedor"
                 type="text"
                 value={draft.vendedor}
                 onChange={(event) => onFieldChange("vendedor", event.target.value)}
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("vendedor")}
                 placeholder="Responsable comercial"
+                aria-invalid={Boolean(fieldErrors.vendedor)}
+                aria-describedby={
+                  fieldErrors.vendedor ? "funnel-vendedor-error" : undefined
+                }
               />
+              {renderFieldError("vendedor")}
             </div>
 
             <div>
@@ -829,12 +992,18 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Region
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <select
                 id="funnel-region"
                 value={draft.region}
                 onChange={(event) => onFieldChange("region", event.target.value)}
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("region")}
+                aria-invalid={Boolean(fieldErrors.region)}
+                aria-describedby={
+                  fieldErrors.region ? "funnel-region-error" : undefined
+                }
               >
                 <option value="">Selecciona una region</option>
                 {regionesComunasChile.map((region) => (
@@ -843,6 +1012,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                   </option>
                 ))}
               </select>
+              {renderFieldError("region")}
             </div>
 
             <div>
@@ -851,13 +1021,18 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Comuna
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <select
                 id="funnel-comuna"
                 value={draft.comuna}
                 onChange={(event) => onFieldChange("comuna", event.target.value)}
-                className={`${inputClassName} ${disabledInputClassName}`}
-                disabled={!draft.region}
+                className={getFieldClassName("comuna")}
+                disabled={submitting || !draft.region}
+                aria-invalid={Boolean(fieldErrors.comuna)}
+                aria-describedby={
+                  fieldErrors.comuna ? "funnel-comuna-error" : undefined
+                }
               >
                 <option value="">
                   {draft.region
@@ -870,6 +1045,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                   </option>
                 ))}
               </select>
+              {renderFieldError("comuna")}
             </div>
 
             <div className="md:col-span-2">
@@ -878,6 +1054,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Fuente del lead
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <select
                 id="funnel-fuente-lead"
@@ -885,7 +1062,14 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 onChange={(event) =>
                   onFieldChange("fuenteLead", event.target.value)
                 }
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("fuenteLead")}
+                aria-invalid={Boolean(fieldErrors.fuenteLead)}
+                aria-describedby={
+                  fieldErrors.fuenteLead
+                    ? "funnel-fuenteLead-error"
+                    : undefined
+                }
               >
                 <option value="">Selecciona una fuente</option>
                 {leadSourceOptions.map((option) => (
@@ -894,6 +1078,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                   </option>
                 ))}
               </select>
+              {renderFieldError("fuenteLead")}
             </div>
 
             <div className="md:col-span-2">
@@ -902,12 +1087,18 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                 className="mb-1.5 block text-xs font-medium text-slate-600"
               >
                 Etapa inicial
+                <span className="ml-1 text-red-500">*</span>
               </label>
               <select
                 id="funnel-etapa"
                 value={draft.etapa}
                 onChange={(event) => onFieldChange("etapa", event.target.value)}
-                className={inputClassName}
+                disabled={submitting}
+                className={getFieldClassName("etapa")}
+                aria-invalid={Boolean(fieldErrors.etapa)}
+                aria-describedby={
+                  fieldErrors.etapa ? "funnel-etapa-error" : undefined
+                }
               >
                 {etapas.map((etapa) => (
                   <option key={etapa} value={etapa}>
@@ -915,6 +1106,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
                   </option>
                 ))}
               </select>
+              {renderFieldError("etapa")}
             </div>
           </div>
 
@@ -922,16 +1114,24 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+            disabled={submitting}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancelar
             </button>
 
             <button
               type="submit"
-              className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+              disabled={submitting}
+              className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
             >
-              Guardar oportunidad
+              {submitting
+                ? mode === "create"
+                  ? "Creando..."
+                  : "Guardando..."
+                : mode === "create"
+                  ? "Crear oportunidad"
+                  : "Guardar cambios"}
             </button>
           </div>
         </form>
@@ -953,7 +1153,14 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const [deals, setDeals] = useState<FunnelDeal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [funnelModalMode, setFunnelModalMode] = useState<"create" | "edit">("create");
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+  const [dealSaving, setDealSaving] = useState(false);
+  const [dealDeletingId, setDealDeletingId] = useState<string | null>(null);
+  const submitLockRef = useRef(false);
   const [draft, setDraft] = useState<FunnelDraft>(createEmptyDraft);
+  const [fieldErrors, setFieldErrors] = useState<FunnelFieldErrors>({});
+  const [showValidationSummary, setShowValidationSummary] = useState(false);
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
   const [dealEnCierre, setDealEnCierre] = useState<string | null>(null);
   const [estadoCierreModal, setEstadoCierreModal] = useState<
@@ -1067,6 +1274,14 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         })()
       : null;
 
+  useEffect(() => {
+    if (!showValidationSummary) {
+      return;
+    }
+
+    setFieldErrors(validateFunnelDraft(draft));
+  }, [draft, showValidationSummary]);
+
   const etapaBackendMap: Record<string, FunnelStage> = {
     prospecto_identificado: "prospecto",
     visita_levantamiento: "visita",
@@ -1094,40 +1309,59 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     Otro: "otro",
   };
 
+  const mapOpportunityToDeal = (item: Record<string, unknown>): FunnelDeal => {
+    const monedaOriginalValue = toText(item.monedaOriginal, "CLP");
+    const monedaOriginal: FunnelCurrency =
+      monedaOriginalValue === "CLP" ||
+      monedaOriginalValue === "UF" ||
+      monedaOriginalValue === "USD"
+        ? monedaOriginalValue
+        : "CLP";
+    const fuenteLead = toText(item.fuenteLead, "");
+    const valorOriginal = toNumber(item.valorOriginal);
+    const fechaProbableCierre = toText(item.fechaProbableCierre, "");
+
+    return {
+      id: toText(item.id),
+      nombreProyecto: toText(item.nombreProyecto),
+      empresa: toText(item.empresa, "") || undefined,
+      valorEstimado: valorOriginal > 0 ? valorOriginal : undefined,
+      moneda: monedaOriginal,
+      fechaProbableCierre: fechaProbableCierre
+        ? fechaProbableCierre.slice(0, 10)
+        : undefined,
+      vendedor: toText(item.vendedor, "") || undefined,
+      region: toText(item.region, "") || undefined,
+      comuna: toText(item.comuna, "") || undefined,
+      fuenteLead: leadSourceOptions.includes(fuenteLead as FunnelLeadSource)
+        ? (fuenteLead as FunnelLeadSource)
+        : undefined,
+      etapa: etapaBackendMap[toText(item.etapa)] ?? "prospecto",
+    };
+  };
+
+  const dealToDraft = (deal: FunnelDeal): FunnelDraft => ({
+    nombreProyecto: deal.nombreProyecto,
+    empresa: deal.empresa || "",
+    valorEstimado:
+      typeof deal.valorEstimado === "number" && Number.isFinite(deal.valorEstimado)
+        ? String(deal.valorEstimado)
+        : "",
+    moneda: deal.moneda,
+    fechaProbableCierre: deal.fechaProbableCierre || "",
+    vendedor: deal.vendedor || "",
+    region: deal.region || "",
+    comuna: deal.comuna || "",
+    fuenteLead: deal.fuenteLead || "",
+    etapa: deal.etapa,
+  });
+
   const loadDeals = async () => {
     try {
       const opportunities = await funnelBeckAPI.listar();
-
-      const mapped: FunnelDeal[] = opportunities.map((item) => {
-        const monedaOriginalValue = toText(item.monedaOriginal, "CLP");
-        const monedaOriginal: FunnelCurrency =
-          monedaOriginalValue === "CLP" ||
-          monedaOriginalValue === "UF" ||
-          monedaOriginalValue === "USD"
-            ? monedaOriginalValue
-            : "CLP";
-        const fuenteLead = toText(item.fuenteLead, "");
-        const valorOriginal = toNumber(item.valorOriginal);
-        const fechaProbableCierre = toText(item.fechaProbableCierre, "");
-
-        return {
-          id: toText(item.id),
-          nombreProyecto: toText(item.nombreProyecto),
-          empresa: toText(item.empresa, "") || undefined,
-          valorEstimado: valorOriginal > 0 ? valorOriginal : undefined,
-          moneda: monedaOriginal,
-          fechaProbableCierre: fechaProbableCierre
-            ? fechaProbableCierre.slice(0, 10)
-            : undefined,
-          vendedor: toText(item.vendedor, "") || undefined,
-          region: toText(item.region, "") || undefined,
-          comuna: toText(item.comuna, "") || undefined,
-          fuenteLead: leadSourceOptions.includes(fuenteLead as FunnelLeadSource)
-            ? (fuenteLead as FunnelLeadSource)
-            : undefined,
-          etapa: etapaBackendMap[toText(item.etapa)] ?? "prospecto",
-        };
-      });
+      const mapped: FunnelDeal[] = opportunities.map((item) =>
+        mapOpportunityToDeal(item as Record<string, unknown>)
+      );
 
       setDeals(mapped);
     } catch (error) {
@@ -1217,6 +1451,31 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     setSelectedCotizacionLoading(false);
   };
 
+  const handleVerCotizacionPDF = async (id: string, numero?: string) => {
+    try {
+      const blob = await cotizacionesAPI.getPDF(id);
+      const pdfBlob =
+        blob instanceof Blob ? blob : new Blob([blob], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(pdfBlob);
+      const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
+
+      if (!openedWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `cotizacion-${numero || id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60000);
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo abrir el PDF"));
+    }
+  };
+
   const handleSaveCotizacion = async (values: CotizacionEditorValues) => {
     if (cotizacionSaving || cotizacionEditorLoading) {
       return;
@@ -1257,7 +1516,10 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         return;
       }
 
-      const descuento = Number(values.descuento || 0);
+      const descuentoRaw = Number(values.descuento ?? 0);
+      const descuento = Number.isFinite(descuentoRaw)
+        ? Math.min(100, Math.max(0, descuentoRaw))
+        : 0;
       const aplicaImpuesto = Boolean(values.aplicaImpuesto);
       const { subtotal, impuesto, total } = calculateCotizacionTotals(
         normalizedLineas,
@@ -1375,15 +1637,42 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleOpenModal = () => {
-    if (!canEditFunnel) return;
+    if (!canEditFunnel || dealSaving) return;
 
+    setFunnelModalMode("create");
+    setEditingDealId(null);
     setDraft(createEmptyDraft());
+    setFieldErrors({});
+    setShowValidationSummary(false);
     setIsModalOpen(true);
   };
 
+  const handleEditDeal = (deal: FunnelDeal) => {
+    if (!canEditFunnel || dealSaving) return;
+
+    closeDealDetail();
+
+    window.setTimeout(() => {
+      setFunnelModalMode("edit");
+      setEditingDealId(deal.id);
+      setDraft(dealToDraft(deal));
+      setFieldErrors({});
+      setShowValidationSummary(false);
+      setIsModalOpen(true);
+    }, 0);
+  };
+
   const handleCloseModal = () => {
+    if (dealSaving) {
+      return;
+    }
+
     setIsModalOpen(false);
+    setFunnelModalMode("create");
+    setEditingDealId(null);
     setDraft(createEmptyDraft());
+    setFieldErrors({});
+    setShowValidationSummary(false);
   };
 
   const handleCloseCierreModal = () => {
@@ -1394,7 +1683,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   };
 
   const handleFieldChange = (field: keyof FunnelDraft, value: string) => {
-    if (!canEditFunnel) return;
+    if (!canEditFunnel || dealSaving) return;
 
     if (field === "etapa") {
       setDraft((current) => ({
@@ -1443,7 +1732,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       motivoPerdida?: string;
     }
   ) => {
-    if (!canEditFunnel) return;
+    if (!canEditFunnel || dealSaving) return;
 
     const response = await fetchWithAuth(`/funnel-beck/${dealId}/etapa`, {
       method: "PATCH",
@@ -1464,7 +1753,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   };
 
   const handleStageChange = async (dealId: string, etapa: FunnelStage) => {
-    if (!canEditFunnel) return;
+    if (!canEditFunnel || dealSaving) return;
 
     if (etapa === "cerrada") {
       setDealEnCierre(dealId);
@@ -1521,63 +1810,78 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const handleCreateDeal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!canEditFunnel) return;
+    if (!canEditFunnel || dealSaving || submitLockRef.current) return;
 
     const nombreProyecto = draft.nombreProyecto.trim();
     const empresa = draft.empresa.trim();
+    const fechaProbableCierre = draft.fechaProbableCierre.trim();
     const vendedor = draft.vendedor.trim();
     const region = draft.region.trim();
     const comuna = draft.comuna.trim();
-    const parsedValor = draft.valorEstimado.trim()
-      ? Number(draft.valorEstimado)
-      : undefined;
+    const validationErrors = validateFunnelDraft(draft);
+    const parsedValor = Number(draft.valorEstimado.replace(",", "."));
 
-    if (!nombreProyecto) {
+    setShowValidationSummary(true);
+
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
       return;
     }
 
-    if (
-      !draft.valorEstimado.trim() ||
-      typeof parsedValor !== "number" ||
-      !Number.isFinite(parsedValor) ||
-      parsedValor <= 0
-    ) {
-      console.error(
-        "El valor estimado es obligatorio y debe ser un numero mayor a 0."
-      );
-      return;
-    }
+    submitLockRef.current = true;
+    setFieldErrors({});
 
     try {
-      const response = await fetchWithAuth("/funnel-beck", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombreProyecto,
-          empresa: empresa || undefined,
-          valorOriginal: parsedValor,
-          monedaOriginal: draft.moneda,
-          fechaProbableCierre: draft.fechaProbableCierre || undefined,
-          vendedor: vendedor || undefined,
-          region: region || undefined,
-          comuna: comuna || undefined,
-          fuenteLead: draft.fuenteLead
-            ? fuenteLeadFrontendToBackendMap[draft.fuenteLead]
-            : undefined,
-          etapa: etapaFrontendToBackendMap[draft.etapa],
-        }),
-      });
+      setDealSaving(true);
 
-      const result = (await response.json()) as { success: boolean };
+      const payload = {
+        nombreProyecto,
+        empresa,
+        valorOriginal: parsedValor,
+        monedaOriginal: draft.moneda,
+        fechaProbableCierre,
+        vendedor,
+        region,
+        comuna,
+        fuenteLead: draft.fuenteLead
+          ? fuenteLeadFrontendToBackendMap[draft.fuenteLead]
+          : undefined,
+        etapa: etapaFrontendToBackendMap[draft.etapa],
+      };
 
-      if (!response.ok || !result.success) {
-        throw new Error("El backend rechazo la oportunidad");
+      const savedOpportunity =
+        funnelModalMode === "create"
+          ? await funnelBeckAPI.crear(payload)
+          : await funnelBeckAPI.actualizar(editingDealId as string, payload);
+
+      const mappedSavedOpportunity = mapOpportunityToDeal(
+        savedOpportunity as Record<string, unknown>
+      );
+
+      if (selectedDeal?.id === mappedSavedOpportunity.id) {
+        setSelectedDeal(mappedSavedOpportunity);
       }
 
       await loadDeals();
-      handleCloseModal();
+      setIsModalOpen(false);
+      setFunnelModalMode("create");
+      setEditingDealId(null);
+      setDraft(createEmptyDraft());
+      setFieldErrors({});
+      setShowValidationSummary(false);
+      message.success(
+        funnelModalMode === "create"
+          ? "Oportunidad creada"
+          : "Oportunidad actualizada"
+      );
     } catch (error) {
+      message.error(
+        getErrorMessage(error, "Error al guardar la oportunidad")
+      );
       console.error("Error al guardar la oportunidad:", error);
+    } finally {
+      setDealSaving(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -1653,7 +1957,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             <button
               type="button"
               onClick={handleOpenModal}
-              className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+              disabled={dealSaving}
+              className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
             >
               Nueva oportunidad
             </button>
@@ -1689,8 +1994,16 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
       <FunnelModal
         open={isModalOpen && canEditFunnel}
+        mode={funnelModalMode}
         draft={draft}
+        fieldErrors={fieldErrors}
+        validationMessage={
+          showValidationSummary && Object.keys(fieldErrors).length > 0
+            ? REQUIRED_FIELDS_MESSAGE
+            : null
+        }
         conversionReferencia={conversionReferencia}
+        submitting={dealSaving}
         onClose={handleCloseModal}
         onSubmit={handleCreateDeal}
         onFieldChange={handleFieldChange}
@@ -1741,14 +2054,55 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
               </div>
 
               {canEditFunnel && (
-                <Button
-                  type="primary"
-                  icon={<FileTextOutlined />}
-                  className="border-none bg-orange-500 hover:bg-orange-600"
-                  onClick={() => openCreateCotizacion(selectedDeal)}
-                >
-                  Crear cotizacion
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => handleEditDeal(selectedDeal)}
+                    disabled={dealSaving}
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={dealDeletingId === selectedDeal.id}
+                    onClick={() => {
+                      AntdModal.confirm({
+                        title: "Eliminar oportunidad",
+                        content:
+                          "Esta accion eliminara la oportunidad seleccionada. ¿Deseas continuar?",
+                        okText: "Eliminar",
+                        okButtonProps: { danger: true },
+                        cancelText: "Cancelar",
+                        onOk: async () => {
+                          try {
+                            setDealDeletingId(selectedDeal.id);
+                            await funnelBeckAPI.eliminar(selectedDeal.id);
+                            message.success("Oportunidad eliminada");
+                            closeDealDetail();
+                            await loadDeals();
+                          } catch (error) {
+                            message.error(
+                              getErrorMessage(error, "No se pudo eliminar la oportunidad")
+                            );
+                          } finally {
+                            setDealDeletingId(null);
+                          }
+                        },
+                      });
+                    }}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<FileTextOutlined />}
+                    className="border-none bg-orange-500 hover:bg-orange-600"
+                    onClick={() => openCreateCotizacion(selectedDeal)}
+                  >
+                    Crear cotizacion
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -1803,6 +2157,18 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                               }}
                             >
                               Ver
+                            </Button>
+                            <Button
+                              size="small"
+                              icon={<DownloadOutlined />}
+                              onClick={() => {
+                                void handleVerCotizacionPDF(
+                                  cotizacion.id,
+                                  cotizacion.numero
+                                );
+                              }}
+                            >
+                              PDF
                             </Button>
                             {canEditFunnel && (
                               <Button
@@ -1907,15 +2273,15 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         estadoCierre={estadoCierreModal}
         motivoPerdida={motivoPerdidaModal}
         onChangeEstado={(value) => {
-          if (!canEditFunnel) return;
+          if (!canEditFunnel || dealSaving) return;
           setEstadoCierreModal(value);
         }}
         onChangeMotivo={(value) => {
-          if (!canEditFunnel) return;
+          if (!canEditFunnel || dealSaving) return;
           setMotivoPerdidaModal(value);
         }}
         onConfirm={() => {
-          if (!canEditFunnel) return;
+          if (!canEditFunnel || dealSaving) return;
 
           if (
             estadoCierreModal !== "ganada" &&
@@ -1954,3 +2320,6 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 };
 
 export default FunnelPage;
+
+
+

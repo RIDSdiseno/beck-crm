@@ -1,4 +1,4 @@
-import axios, {
+﻿import axios, {
   AxiosError,
   AxiosHeaders,
   type AxiosInstance,
@@ -214,12 +214,53 @@ export interface FunnelBeckOpportunity {
   [key: string]: unknown;
 }
 
+export interface FunnelBeckUpsertPayload {
+  nombreProyecto: string;
+  empresa?: string;
+  valorOriginal: number;
+  monedaOriginal: "CLP" | "UF" | "USD";
+  fechaProbableCierre?: string;
+  vendedor?: string;
+  region?: string;
+  comuna?: string;
+  fuenteLead?: string;
+  etapa?: string;
+}
+
 export const funnelBeckAPI = {
   listar: async (): Promise<FunnelBeckOpportunity[]> => {
     const response = await api.get<ApiResponseEnvelope<FunnelBeckOpportunity[]>>(
       "/funnel-beck"
     );
     return unwrapApiResponse(response.data);
+  },
+
+  crear: async (
+    payload: FunnelBeckUpsertPayload
+  ): Promise<FunnelBeckOpportunity> => {
+    const response = await api.post<ApiResponseEnvelope<FunnelBeckOpportunity>>(
+      "/funnel-beck",
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  actualizar: async (
+    id: string,
+    payload: FunnelBeckUpsertPayload
+  ): Promise<FunnelBeckOpportunity> => {
+    const response = await api.put<ApiResponseEnvelope<FunnelBeckOpportunity>>(
+      `/funnel-beck/${id}`,
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    const response = await api.delete<ApiResponseEnvelope<{ message?: string }>>(
+      `/funnel-beck/${id}`
+    );
+    unwrapApiResponse(response.data);
   },
 
   listarCotizaciones: async (id: string): Promise<CotizacionApiRecord[]> => {
@@ -597,3 +638,4 @@ export const statsAPI = {
 };
 
 export default api;
+
