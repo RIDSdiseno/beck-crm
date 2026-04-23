@@ -153,11 +153,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return authUser;
       } catch (error: unknown) {
         clearStoredSession();
-
-        const errorMessage =
-          error instanceof Error ? error.message : "Error al iniciar sesion";
-
-        throw new Error(errorMessage);
+        throw error;
       }
     },
     []

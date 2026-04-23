@@ -128,6 +128,34 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   return true;
 };
 
+const getLoginErrorMessage = (error: unknown): string => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const axiosError = error as {
+      response?: {
+        status?: number;
+        data?: {
+          error?: string;
+          message?: string;
+        };
+      };
+    };
+
+    return (
+      axiosError.response?.data?.error ||
+      axiosError.response?.data?.message ||
+      (axiosError.response?.status === 401
+        ? "Usuario o contraseña inválidos"
+        : "No se pudo iniciar sesión")
+    );
+  }
+
+  return "No se pudo iniciar sesión";
+};
+
 const AppShell: React.FC = () => {
   const themeMode: ThemeMode = "light";
 
@@ -191,36 +219,7 @@ const AppShell: React.FC = () => {
       const authUser = await login(values);
       navigate(getHomeRouteForRole(authUser.rol), { replace: true });
     } catch (error: unknown) {
-      let errorMessage = "No se pudo iniciar sesión";
-
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "response" in error
-      ) {
-        const axiosError = error as {
-          response?: {
-            status?: number;
-            data?: {
-              error?: string;
-              message?: string;
-            };
-          };
-          message?: string;
-        };
-
-        errorMessage =
-          axiosError.response?.data?.error ||
-          axiosError.response?.data?.message ||
-          (axiosError.response?.status === 401
-            ? "Usuario o contraseña inválidos"
-            : axiosError.message) ||
-          "No se pudo iniciar sesión";
-      } else if (error instanceof Error) {
-        errorMessage = error.message || "No se pudo iniciar sesión";
-      }
-
-      message.error(errorMessage);
+      message.error(getLoginErrorMessage(error));
     }
   };
 
