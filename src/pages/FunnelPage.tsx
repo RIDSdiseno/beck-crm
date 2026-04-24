@@ -13,6 +13,17 @@ import {
   EyeOutlined,
   FileTextOutlined,
 } from "@ant-design/icons";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  type DragEndEvent,
+  type DragStartEvent,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import dayjs, { Dayjs } from "dayjs";
 import CierreDeProyecto from "../components/Cierredeproyecto";
 import FunnelCalendario from "../components/FunnelCalendario";
@@ -603,11 +614,25 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
   void canEditFunnel;
   void onStageChange;
   void onCreateCotizacion;
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: deal.id,
+    });
 
   return (
     <article
-      className="group cursor-pointer rounded-lg border border-beck-border-light bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:border-yellow-400 hover:z-20"
-      onClick={() => onViewDetail(deal)}
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`group cursor-pointer rounded-lg border border-beck-border-light bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:border-yellow-400 hover:z-20 ${
+        isDragging ? "opacity-30" : ""
+      }`}
+      style={{
+        transform: transform
+          ? `translate(${transform.x}px, ${transform.y}px)`
+          : undefined,
+      }}
+      onClick={() => void onViewDetail(deal)}
     >
       <h4 className="font-semibold leading-tight text-beck-ink">
         {deal.nombreProyecto}
@@ -639,37 +664,46 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
   onStageChange,
   onViewDetail,
   onCreateCotizacion,
-}) => (
-  <div className="flex min-h-[420px] w-[220px] flex-shrink-0 flex-col rounded-xl border border-[#ece8d8] bg-[#f7f6ef] p-3">
-    <div className="mb-3 flex items-center justify-between">
-      <h3 className="text-sm font-semibold text-beck-ink">
-        {etapasLabel[etapa]}
-      </h3>
-      <span className="rounded-full border border-beck-border-light bg-white px-2 py-0.5 text-xs text-beck-ink-soft">
-        {deals.length}
-      </span>
-    </div>
+}) => {
+  const { setNodeRef } = useDroppable({
+    id: etapa,
+  });
 
-    <div className="flex-1 space-y-3 overflow-y-auto pr-1 overflow-visible">
-      {deals.length ? (
-        deals.map((deal) => (
-          <FunnelCard
-            key={deal.id}
-            deal={deal}
-            canEditFunnel={canEditFunnel}
-            onStageChange={onStageChange}
-            onViewDetail={onViewDetail}
-            onCreateCotizacion={onCreateCotizacion}
-          />
-        ))
-      ) : (
-        <p className="mt-4 text-center text-xs text-beck-muted">
-          Sin oportunidades
-        </p>
-      )}
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex min-h-[420px] w-[220px] flex-shrink-0 flex-col rounded-xl border border-[#ece8d8] bg-[#f7f6ef] p-3"
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-beck-ink">
+          {etapasLabel[etapa]}
+        </h3>
+        <span className="rounded-full border border-beck-border-light bg-white px-2 py-0.5 text-xs text-beck-ink-soft">
+          {deals.length}
+        </span>
+      </div>
+
+      <div className="flex-1 space-y-3 overflow-y-auto pr-1 overflow-visible">
+        {deals.length ? (
+          deals.map((deal) => (
+            <FunnelCard
+              key={deal.id}
+              deal={deal}
+              canEditFunnel={canEditFunnel}
+              onStageChange={onStageChange}
+              onViewDetail={onViewDetail}
+              onCreateCotizacion={onCreateCotizacion}
+            />
+          ))
+        ) : (
+          <p className="mt-4 text-center text-xs text-beck-muted">
+            Sin oportunidades
+          </p>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const FunnelModal: React.FC<FunnelModalProps> = ({
   open,
@@ -1069,8 +1103,16 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     user?.rol === "Vendedor" ||
     user?.rol === "Terreno" ||
     user?.rol === "Ingenieria";
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   const [deals, setDeals] = useState<FunnelDeal[]>([]);
+  const [activeDragDeal, setActiveDragDeal] = useState<FunnelDeal | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1696,15 +1738,58 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       return;
     }
 
+    const previousDeals = deals;
+
+    setDeals((current) => {
+      const movedDeal = current.find((deal) => deal.id === dealId);
+      if (!movedDeal) return current;
+
+      return [
+        { ...movedDeal, etapa },
+        ...current.filter((deal) => deal.id !== dealId),
+      ];
+    });
+
     try {
       await updateDealStage(dealId, {
         etapa: etapaFrontendToBackendMap[etapa],
       });
 
-      await loadDeals();
+      void loadDeals();
     } catch (error) {
+      setDeals(previousDeals);
+      message.error("No se pudo actualizar la etapa");
       console.error("Error al actualizar etapa:", error);
     }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const dealId = String(event.active.id);
+    const deal = deals.find((item) => item.id === dealId) ?? null;
+    setActiveDragDeal(deal);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const dealId = String(event.active.id);
+    const nuevaEtapa = event.over?.id as FunnelStage | undefined;
+
+    if (!nuevaEtapa) {
+      setActiveDragDeal(null);
+      return;
+    }
+
+    const deal = deals.find((item) => item.id === dealId);
+    if (!deal || deal.etapa === nuevaEtapa) {
+      setActiveDragDeal(null);
+      return;
+    }
+
+    void handleStageChange(dealId, nuevaEtapa);
+    setActiveDragDeal(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragDeal(null);
   };
 
   const handleConfirmarCierre = async ({
@@ -1942,23 +2027,54 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         </section>
       ) : viewMode === "kanban" ? (
         <section className="beck-panel">
-          <div className="flex gap-4 overflow-x-auto p-4 scrollbar-thin">
-            {etapas.map((etapa) => {
-              const dealsForStage = deals.filter((deal) => deal.etapa === etapa);
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <div className="flex gap-4 overflow-x-auto p-4 scrollbar-thin">
+              {etapas.map((etapa) => {
+                const dealsForStage = deals.filter((deal) => deal.etapa === etapa);
 
-              return (
-                <FunnelColumn
-                  key={etapa}
-                  etapa={etapa}
-                  deals={dealsForStage}
-                  canEditFunnel={canEditFunnel}
-                  onStageChange={handleStageChange}
-                  onViewDetail={openDealDetail}
-                  onCreateCotizacion={openCreateCotizacion}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <FunnelColumn
+                    key={etapa}
+                    etapa={etapa}
+                    deals={dealsForStage}
+                    canEditFunnel={canEditFunnel}
+                    onStageChange={handleStageChange}
+                    onViewDetail={openDealDetail}
+                    onCreateCotizacion={openCreateCotizacion}
+                  />
+                );
+              })}
+            </div>
+            <DragOverlay>
+              {activeDragDeal ? (
+                <div className="w-[190px] rounded-lg border border-yellow-400 bg-white p-2 text-xs shadow-2xl">
+                  <h4 className="font-semibold leading-tight text-beck-ink">
+                    {activeDragDeal.nombreProyecto}
+                  </h4>
+
+                  {typeof activeDragDeal.valorEstimado === "number" && (
+                    <p className="mt-1 font-medium text-beck-ink-soft">
+                      {formatEstimatedValue(
+                        activeDragDeal.valorEstimado,
+                        activeDragDeal.moneda
+                      )}
+                    </p>
+                  )}
+
+                  {activeDragDeal.fechaProbableCierre && (
+                    <p className="mt-0.5 text-beck-muted">
+                      Cierre: {formatDisplayDate(activeDragDeal.fechaProbableCierre)}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </section>
       ) : (
         <FunnelCalendario
