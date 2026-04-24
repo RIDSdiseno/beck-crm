@@ -252,7 +252,7 @@ const AppShell: React.FC = () => {
     <>
       <SessionWatcher />
       <Layout
-        className="bg-slate-100 text-slate-900"
+        className="bg-beck-bg-light text-beck-ink"
         style={{ minHeight: "100vh" }}
       >
         {isMobile && collapsed && (
@@ -283,7 +283,7 @@ const AppShell: React.FC = () => {
           }}
         >
           <Content
-            className="bg-slate-100"
+            className="bg-beck-bg-light"
             style={{
               padding: 16,
               paddingTop: isMobile && collapsed ? 56 : 16,

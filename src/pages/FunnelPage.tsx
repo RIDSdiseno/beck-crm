@@ -113,10 +113,6 @@ type FunnelModalProps = {
   onFieldChange: (field: keyof FunnelDraft, value: string) => void;
 };
 
-type FunnelFieldRowProps = {
-  label: string;
-  value: string;
-};
 
 const etapas: FunnelStage[] = [
   "prospecto",
@@ -588,7 +584,7 @@ const formatDisplayDate = (value: string): string => {
 };
 
 const inputClassName =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100";
+  "w-full rounded-xl border border-beck-border-light bg-white px-3 py-2.5 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]";
 
 const disabledInputClassName =
   "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
@@ -596,12 +592,6 @@ const disabledInputClassName =
 const inputErrorClassName =
   "border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100";
 
-const FunnelFieldRow: React.FC<FunnelFieldRowProps> = ({ label, value }) => (
-  <div className="grid grid-cols-[auto,1fr] items-start gap-2 text-xs">
-    <span className="font-medium text-slate-500">{label}</span>
-    <span className="break-words text-right text-slate-700">{value}</span>
-  </div>
-);
 
 const FunnelCard: React.FC<FunnelCardProps> = ({
   deal,
@@ -609,85 +599,38 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
   onStageChange,
   onViewDetail,
   onCreateCotizacion,
-}) => (
-  <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
-    <h4 className="text-sm font-semibold text-slate-900">
-      {deal.nombreProyecto}
-    </h4>
+}) => {
+  void canEditFunnel;
+  void onStageChange;
+  void onCreateCotizacion;
 
-    {deal.empresa && <p className="mt-1 text-xs text-slate-500">{deal.empresa}</p>}
+  return (
+    <article
+      className="group cursor-pointer rounded-lg border border-beck-border-light bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:border-yellow-400 hover:z-20"
+      onClick={() => onViewDetail(deal)}
+    >
+      <h4 className="font-semibold leading-tight text-beck-ink">
+        {deal.nombreProyecto}
+      </h4>
 
-    {typeof deal.valorEstimado === "number" && (
-      <p className="mt-2 text-xs font-medium text-slate-600">
-        {formatEstimatedValue(deal.valorEstimado, deal.moneda)}
-      </p>
-    )}
-
-    {deal.fechaProbableCierre && (
-      <p className="text-xs text-slate-500">
-        Cierre: {formatDisplayDate(deal.fechaProbableCierre)}
-      </p>
-    )}
-
-    {(deal.vendedor || deal.region || deal.comuna) && (
-      <div className="mt-3 space-y-2">
-        {deal.vendedor && <FunnelFieldRow label="Vendedor" value={deal.vendedor} />}
-
-        {deal.region && <FunnelFieldRow label="Region" value={deal.region} />}
-        {deal.comuna && <FunnelFieldRow label="Comuna" value={deal.comuna} />}
-      </div>
-    )}
-
-    <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
-      <label
-        htmlFor={`etapa-${deal.id}`}
-        className="block text-[11px] font-medium uppercase tracking-wide text-slate-500"
-      >
-        Etapa
-      </label>
-      <select
-        id={`etapa-${deal.id}`}
-        value={deal.etapa}
-        disabled={!canEditFunnel}
-        onChange={(event) =>
-          onStageChange(deal.id, event.target.value as FunnelStage)
-        }
-        className={`${inputClassName} ${disabledInputClassName}`}
-      >
-        {etapas.map((etapa) => (
-          <option key={etapa} value={etapa}>
-            {etapasLabel[etapa]}
-          </option>
-        ))}
-      </select>
-      {!canEditFunnel && (
-        <p className="text-[11px] text-slate-400">Solo lectura</p>
+      {typeof deal.valorEstimado === "number" && (
+        <p className="mt-1 font-medium text-beck-ink-soft">
+          {formatEstimatedValue(deal.valorEstimado, deal.moneda)}
+        </p>
       )}
-    </div>
 
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      <button
-        type="button"
-        onClick={() => {
-          void onViewDetail(deal);
-        }}
-        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-      >
-        Ver detalle
-      </button>
-
-      {canEditFunnel && (
-        <button
-          type="button"
-          onClick={() => onCreateCotizacion(deal)}
-          className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-orange-600"
-        >
-          Crear cotizacion
-        </button>
+      {deal.fechaProbableCierre && (
+        <p className="mt-0.5 text-beck-muted">
+          Cierre: {formatDisplayDate(deal.fechaProbableCierre)}
+        </p>
       )}
-    </div>
-  </article>
-);
+
+      <p className="mt-1 hidden text-[11px] text-beck-muted group-hover:block">
+        Click para ver detalle
+      </p>
+    </article>
+  );
+};
 
 const FunnelColumn: React.FC<FunnelColumnProps> = ({
   etapa,
@@ -697,17 +640,17 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
   onViewDetail,
   onCreateCotizacion,
 }) => (
-  <div className="flex min-h-[420px] flex-col rounded-xl bg-gray-100 p-4">
+  <div className="flex min-h-[420px] w-[220px] flex-shrink-0 flex-col rounded-xl border border-[#ece8d8] bg-[#f7f6ef] p-3">
     <div className="mb-3 flex items-center justify-between">
-      <h3 className="text-sm font-semibold text-slate-800">
+      <h3 className="text-sm font-semibold text-beck-ink">
         {etapasLabel[etapa]}
       </h3>
-      <span className="rounded-full border bg-white px-2 py-0.5 text-xs text-slate-600">
+      <span className="rounded-full border border-beck-border-light bg-white px-2 py-0.5 text-xs text-beck-ink-soft">
         {deals.length}
       </span>
     </div>
 
-    <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+    <div className="flex-1 space-y-3 overflow-y-auto pr-1 overflow-visible">
       {deals.length ? (
         deals.map((deal) => (
           <FunnelCard
@@ -720,7 +663,7 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
           />
         ))
       ) : (
-        <p className="mt-4 text-center text-xs text-gray-400">
+        <p className="mt-4 text-center text-xs text-beck-muted">
           Sin oportunidades
         </p>
       )}
@@ -778,15 +721,15 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
         className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-beck-border-light px-5 py-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-orange-700">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[#a8860f]">
               Funnel
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-900">
+            <h2 className="mt-1 text-lg font-semibold text-beck-ink">
               {mode === "create" ? "Nueva oportunidad" : "Editar oportunidad"}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-beck-muted">
               {mode === "create"
                 ? "Completa la informacion para registrar una nueva oportunidad comercial."
                 : "Actualiza la informacion de la oportunidad comercial seleccionada."}
@@ -797,7 +740,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+            className="beck-btn-secondary rounded-full px-3 py-1.5"
           >
             Cerrar
           </button>
@@ -1087,12 +1030,12 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-beck-border-light pt-4 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={onClose}
-            disabled={submitting}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting}
+              className="beck-btn-secondary"
             >
               Cancelar
             </button>
@@ -1100,7 +1043,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
+              className="beck-btn-primary"
             >
               {submitting
                 ? mode === "create"
@@ -1923,19 +1866,19 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white via-white to-[#f9fafb] shadow-sm">
+      <section className="beck-panel-soft">
         <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-orange-700">
-              <span className="inline-flex h-2 w-2 rounded-full bg-orange-500" />
+            <div className="beck-badge">
+              <span className="inline-flex h-2 w-2 rounded-full bg-beck-primary" />
               <span>Seguimiento comercial</span>
             </div>
 
-            <h1 className="mt-2 text-lg font-semibold tracking-wide text-slate-900">
+            <h1 className="mt-2 text-lg font-semibold tracking-wide text-beck-ink">
               Funnel
             </h1>
 
-            <p className="mt-1 max-w-2xl text-xs text-slate-600">
+            <p className="mt-1 max-w-2xl text-xs text-beck-ink-soft">
               Visualiza oportunidades comerciales por etapa.
               {canEditFunnel
                 ? " Crea nuevas oportunidades y actualiza su avance directamente desde el tablero."
@@ -1944,25 +1887,25 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="beck-tab-group">
               <button
                 type="button"
                 onClick={() => setViewMode("kanban")}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`beck-tab-button ${
                   viewMode === "kanban"
-                    ? "bg-orange-500 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "beck-tab-button-active"
+                    : ""
                 }`}
               >
-                Kanban
+                Funnel
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("calendar")}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`beck-tab-button ${
                   viewMode === "calendar"
-                    ? "bg-orange-500 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "beck-tab-button-active"
+                    : ""
                 }`}
               >
                 Calendario
@@ -1974,7 +1917,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                 type="button"
                 onClick={handleOpenModal}
                 disabled={dealSaving}
-                className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
+                className="beck-btn-primary"
               >
                 Nueva oportunidad
               </button>
@@ -1984,12 +1927,12 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       </section>
 
       {isLoading ? (
-        <section className="rounded-2xl border border-slate-200 bg-white px-5 py-6 text-sm text-slate-600 shadow-sm">
+        <section className="beck-panel px-5 py-6 text-sm text-beck-ink-soft">
           Cargando funnel...
         </section>
       ) : viewMode === "kanban" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="beck-panel">
+          <div className="flex gap-4 overflow-x-auto p-4 scrollbar-thin">
             {etapas.map((etapa) => {
               const dealsForStage = deals.filter((deal) => deal.etapa === etapa);
 
@@ -2119,7 +2062,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                   <Button
                     type="primary"
                     icon={<FileTextOutlined />}
-                    className="border-none bg-orange-500 hover:bg-orange-600"
+                    className="border-none"
                     onClick={() => openCreateCotizacion(selectedDeal)}
                   >
                     Crear cotizacion

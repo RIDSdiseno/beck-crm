@@ -41,6 +41,7 @@ export const SIDEBAR_WIDTH_EXPANDED = 256;
 export const SIDEBAR_WIDTH_COLLAPSED = 80;
 
 const Sidebar: React.FC<SidebarProps> = ({
+  themeMode,
   collapsed,
   onToggleCollapse,
   hiddenOnMobile,
@@ -48,19 +49,20 @@ const Sidebar: React.FC<SidebarProps> = ({
   access,
   onLogout,
 }) => {
-  const sidebarBase =
-    "bg-[#f4f5fb] border-r border-slate-200/80 backdrop-blur-sm";
+  void themeMode;
 
-  const linkBase =
-    "flex items-center rounded-xl py-2 text-xs transition-all";
+  const sidebarBase =
+    "bg-[#f6f5ee]/95 border-r border-beck-border-light backdrop-blur-sm";
+
+  const linkBase = "flex items-center rounded-xl py-2 text-xs transition-all";
 
   const getLinkClasses = (isActive: boolean) =>
     isActive
-      ? "border border-amber-200 bg-white text-slate-900 shadow-sm"
-      : "text-slate-600 hover:bg-white/80 hover:text-slate-900";
+      ? "border border-[#decb7e] bg-[#fff7d6] text-beck-ink shadow-sm"
+      : "text-beck-ink-soft hover:bg-white/80 hover:text-beck-ink";
 
   const sectionTitleCls =
-    "text-[10px] font-semibold uppercase tracking-wide text-slate-500";
+    "text-[10px] font-semibold uppercase tracking-wide text-beck-muted";
 
   return (
     <aside
@@ -72,41 +74,45 @@ const Sidebar: React.FC<SidebarProps> = ({
         z-40 flex-col
       `}
     >
-      <div className="border-b border-slate-200/80 px-3 py-4">
+      <div className="border-b border-beck-border-light px-3 py-4">
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffcc33] text-xs font-black text-slate-900 shadow-sm">
-              BECK
-            </div>
+            <img
+              src="/logo.png"
+              alt="BECK Soluciones"
+              className="h-8 w-auto object-contain"
+            />
             <button
+              type="button"
               onClick={onToggleCollapse}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white/80 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
+              className="beck-icon-button h-8 w-8 text-xs"
             >
               <MenuUnfoldOutlined />
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffcc33] text-xs font-black text-slate-900 shadow-sm">
-              BECK
-            </div>
+            <img
+              src="/logo.png"
+              alt="BECK Soluciones"
+              className="h-8 w-auto object-contain"
+            />
 
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-xs font-semibold text-slate-900">
+              <p className="truncate text-xs font-semibold text-beck-ink">
                 BECK Soluciones
               </p>
-              <p className="truncate text-[10px] text-slate-500">
-                CRM BECK
-              </p>
-              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-100 bg-orange-50 px-2 py-[2px] text-[10px] text-orange-700">
+              <p className="truncate text-[10px] text-beck-muted">CRM BECK</p>
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-[#decb7e] bg-[#fff7d6] px-2 py-[2px] text-[10px] text-beck-ink">
                 <FireOutlined className="text-[10px]" />
                 Proteccion pasiva
               </span>
             </div>
 
             <button
+              type="button"
               onClick={onToggleCollapse}
-              className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
+              className="beck-icon-button ml-auto h-8 w-8 flex-shrink-0 text-xs"
             >
               <MenuFoldOutlined />
             </button>
@@ -130,20 +136,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <DashboardOutlined />
               {!collapsed && <span>Dashboard</span>}
-            </NavLink>
-          )}
-
-          {access.funnel && (
-            <NavLink
-              to="/dashboard/funnel"
-              className={({ isActive }) =>
-                `${linkBase} ${
-                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
-                } ${getLinkClasses(isActive)}`
-              }
-            >
-              <ProjectOutlined />
-              {!collapsed && <span>Funnel</span>}
             </NavLink>
           )}
 
@@ -189,6 +181,20 @@ const Sidebar: React.FC<SidebarProps> = ({
             </NavLink>
           )}
 
+          {access.juntaEspuma && (
+            <NavLink
+              to="/junta-espuma"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <ThunderboltOutlined />
+              {!collapsed && <span>Junta lineal espuma</span>}
+            </NavLink>
+          )}
+
           {access.cotizaciones && (
             <NavLink
               to="/cotizaciones"
@@ -203,23 +209,24 @@ const Sidebar: React.FC<SidebarProps> = ({
             </NavLink>
           )}
 
-          {access.juntaEspuma && (
+
+          {access.funnel && (
             <NavLink
-              to="/junta-espuma"
+              to="/dashboard/funnel"
               className={({ isActive }) =>
                 `${linkBase} ${
                   collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
                 } ${getLinkClasses(isActive)}`
               }
             >
-              <ThunderboltOutlined />
-              {!collapsed && <span>Junta lineal espuma</span>}
+              <ProjectOutlined />
+              {!collapsed && <span>Funnel</span>}
             </NavLink>
           )}
         </nav>
 
         {access.configuracion && (
-          <div className="border-t border-slate-200/80 pt-4">
+          <div className="border-t border-beck-border-light pt-4">
             {!collapsed && (
               <p className={`${sectionTitleCls} mb-1.5`}>Configuracion</p>
             )}
@@ -240,7 +247,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      <div className="border-t border-slate-200/80 px-3 py-3 text-[10px]">
+      <div className="border-t border-beck-border-light px-3 py-3 text-[10px]">
         {user && (
           <div
             className={
@@ -251,10 +258,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             {!collapsed && (
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-semibold text-slate-800">
+                <p className="truncate text-[11px] font-semibold text-beck-ink">
                   {user.nombre}
                 </p>
-                <p className="truncate text-[10px] text-slate-500">{user.rol}</p>
+                <p className="truncate text-[10px] text-beck-muted">{user.rol}</p>
               </div>
             )}
 
@@ -262,7 +269,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white/80 text-xs text-slate-600 hover:bg-white hover:text-slate-900"
+                className="beck-icon-button h-9 w-9 flex-shrink-0 text-xs"
                 title="Cerrar sesion"
               >
                 <LogoutOutlined />
@@ -273,8 +280,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {!collapsed && (
           <>
-            <p className="text-slate-400">Version 0.1</p>
-            <p className="text-slate-400">© 2025 BECK Soluciones</p>
+            <p className="text-beck-muted/80">Version 0.1</p>
+            <p className="text-beck-muted/80">Copyright 2025 BECK Soluciones</p>
           </>
         )}
       </div>

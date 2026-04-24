@@ -87,20 +87,20 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
       {/* Header + selector de rango */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
-          <h1 className="text-lg sm:text-xl font-semibold tracking-wide text-slate-900">
+          <h1 className="text-lg sm:text-xl font-semibold tracking-wide text-beck-ink">
             Centro de mando de la obra
           </h1>
-          <p className="text-[11px] sm:text-xs text-slate-600 max-w-xl">
+          <p className="max-w-xl text-[11px] sm:text-xs text-beck-ink-soft">
             Controla el avance de los sellos cortafuego y juntas de protección
             pasiva por rango de tiempo, piso y equipo. Datos mock listos para
             microservicios.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
-          <span className="text-[11px] text-slate-600">Vista</span>
+          <span className="text-[11px] text-beck-ink-soft">Vista</span>
           <Segmented
             size="small"
-            className="bg-amber-50/70 text-xs border border-amber-100 rounded-full w-full sm:w-auto"
+            className="beck-segmented w-full text-xs sm:w-auto"
             options={timeRangeOptions}
             value={timeRange}
             onChange={(value) => setTimeRange(value as TimeRange)}
@@ -119,8 +119,8 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
               timeRange === "Obra completa"
                 ? "Total acumulado en la obra"
                 : `Acumulado en la vista: ${timeRange.toLowerCase()}`,
-            accent: "text-orange-700",
-            iconBg: "bg-amber-100",
+            accent: "text-beck-ink",
+            iconBg: "bg-[#fff1b8]",
             barWidth: "w-4/5",
             icon: <FireOutlined />,
           },
@@ -129,8 +129,8 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
             label: "Sellos ponderados",
             value: kpis.ponderados,
             helper: "Incluye factores por holgura y tipo de cielo",
-            accent: "text-red-700",
-            iconBg: "bg-rose-100",
+            accent: "text-beck-ink-soft",
+            iconBg: "bg-[#f1f0e6]",
             barWidth: "w-full",
             icon: <DeploymentUnitOutlined />,
           },
@@ -139,8 +139,8 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
             label: "Producción de la vista",
             value: kpis.hoy,
             helper: `Sellos registrados en la vista: ${timeRange.toLowerCase()}`,
-            accent: "text-amber-700",
-            iconBg: "bg-amber-100",
+            accent: "text-[#a8860f]",
+            iconBg: "bg-[#fff1b8]",
             barWidth: "w-2/5",
             icon: <ThunderboltOutlined />,
           },
@@ -149,8 +149,8 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
             label: "Frentes activos",
             value: kpis.frentes,
             helper: "Equipos ejecutando sellos actualmente",
-            accent: "text-sky-800", // azul tipo BECK
-            iconBg: "bg-sky-100",
+            accent: "text-beck-ink",
+            iconBg: "bg-[#ece8d8]",
             barWidth: "w-1/3",
             icon: <TeamOutlined />,
           },
@@ -162,24 +162,22 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
             transition={{ delay: idx * 0.06, duration: 0.25 }}
             whileHover={{
               y: -4,
-              boxShadow: "0 20px 45px rgba(15,23,42,0.18)", // glow azul/fuego
+              boxShadow: "0 20px 45px rgba(23,24,26,0.14)",
             }}
           >
             <Card
-              className="relative overflow-hidden border bg-gradient-to-br from-[#fefce8] via-[#fffbeb] to-[#fef9c3] border-amber-200/80"
+              className="beck-kpi-card"
               styles={{
                 body: { padding: 14 },
               }}
             >
-              {/* franja superior azul/fuego tipo BECK */}
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#0f172a] via-[#f97316] to-[#facc15]" />
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1c1d20] via-[#b89413] to-[#f2c230]" />
 
-              {/* Glow tipo brasa */}
-              <div className="pointer-events-none absolute -top-10 -right-8 h-24 w-24 rounded-full blur-2xl bg-orange-300/35" />
+              <div className="pointer-events-none absolute -top-10 -right-8 h-24 w-24 rounded-full bg-[#f2c230]/25 blur-2xl" />
 
               <div className="flex items-start justify-between gap-2 pt-1.5 relative z-10">
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-amber-700/90 truncate">
+                  <p className="truncate text-[11px] uppercase tracking-wide text-[#8a7418]">
                     {kpi.label}
                   </p>
                   <motion.p
@@ -193,27 +191,26 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                   </motion.p>
                 </div>
                 <div
-                  className={`h-9 w-9 rounded-full ${kpi.iconBg} flex items-center justify-center text-sm text-orange-700 shadow-inner flex-shrink-0`}
+                  className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${kpi.iconBg} text-sm text-beck-ink shadow-inner`}
                 >
                   {kpi.icon}
                 </div>
               </div>
 
-              <p className="text-[11px] mt-1 relative z-10 text-slate-700 line-clamp-2">
+              <p className="relative z-10 mt-1 line-clamp-2 text-[11px] text-beck-ink-soft">
                 {kpi.helper}
               </p>
 
-              {/* mini barra */}
-              <div className="mt-2.5 h-1 w-full rounded-full bg-slate-200/80 overflow-hidden relative z-10">
+              <div className="relative z-10 mt-2.5 h-1 w-full overflow-hidden rounded-full bg-[#d9dcd6]">
                 <div
                   className={`h-full rounded-full ${kpi.barWidth} ${
                     kpi.id === "total"
-                      ? "bg-gradient-to-r from-orange-500 to-red-500"
+                      ? "bg-gradient-to-r from-[#17181a] to-[#7f858d]"
                       : kpi.id === "ponderados"
-                      ? "bg-gradient-to-r from-red-500 to-rose-500"
+                      ? "bg-gradient-to-r from-[#8f949c] to-[#c8ccd2]"
                       : kpi.id === "hoy"
-                      ? "bg-gradient-to-r from-amber-500 to-orange-500"
-                      : "bg-gradient-to-r from-sky-600 to-amber-400"
+                      ? "bg-gradient-to-r from-[#d0a514] to-[#f2c230]"
+                      : "bg-gradient-to-r from-[#23262b] to-[#f2c230]"
                   }`}
                 />
               </div>
@@ -231,18 +228,18 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
           transition={{ duration: 0.25 }}
         >
           <Card
-            className="border bg-white border-amber-100"
+            className="beck-panel"
             title={
               <div className="flex items-center gap-2 text-sm">
-                <ApartmentOutlined className="text-orange-600" />
+                <ApartmentOutlined className="text-[#a8860f]" />
                 <span>Mapa rápido de la obra</span>
               </div>
             }
             styles={{
               header: {
-                backgroundColor: "#fff7ed", // amber-50
-                color: "#020617",
-                borderBottom: "1px solid #fed7aa", // amber-200
+                backgroundColor: "#fffbf0",
+                color: "#17181A",
+                borderBottom: "1px solid #d8dcd6",
                 fontSize: 13,
               },
               body: { padding: 14 },
@@ -261,8 +258,8 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                       whileTap={{ scale: 0.98 }}
                       className={`w-full rounded-xl px-3 py-2.5 flex items-center justify-between border text-left transition ${
                         active
-                          ? "border-transparent bg-gradient-to-r from-orange-500 via-red-500 to-rose-500 text-white shadow-md"
-                          : "border-amber-100 bg-amber-50/40 hover:border-orange-300/80 hover:bg-amber-50"
+                          ? "border-transparent bg-gradient-to-r from-[#17181a] via-[#444b52] to-[#d0a514] text-white shadow-md"
+                          : "border-beck-border-light bg-[#fffbf0] hover:border-[#d6c680] hover:bg-[#fff7d6]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -270,7 +267,7 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                           className={`h-7 w-7 rounded-lg flex items-center justify-center text-xs ${
                             active
                               ? "bg-white/15 text-white"
-                              : "bg-amber-100 text-orange-700"
+                              : "bg-[#fff1b8] text-beck-ink"
                           }`}
                         >
                           <AimOutlined />
@@ -278,14 +275,14 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                         <div className="min-w-0">
                           <p
                             className={`text-xs font-semibold truncate ${
-                              active ? "text-white" : "text-slate-900"
+                              active ? "text-white" : "text-beck-ink"
                             }`}
                           >
                             {floor.label}
                           </p>
                           <p
                             className={`text-[11px] ${
-                              active ? "text-amber-100/90" : "text-slate-700"
+                              active ? "text-[#f7edbe]" : "text-beck-ink-soft"
                             }`}
                           >
                             {floor.sellos} sellos ejecutados
@@ -295,18 +292,18 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                       <div className="flex flex-col items-end flex-shrink-0">
                         <span
                           className={`text-xs font-semibold ${
-                            active ? "text-white" : "text-orange-700"
+                            active ? "text-white" : "text-[#a8860f]"
                           }`}
                         >
                           {floor.progress}%
                         </span>
                         <div
                           className={`mt-1 h-1 w-16 rounded-full ${
-                            active ? "bg-white/30" : "bg-slate-200"
+                            active ? "bg-white/30" : "bg-[#d9dcd6]"
                           } overflow-hidden`}
                         >
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-500"
+                            className="h-full rounded-full bg-gradient-to-r from-[#17181a] to-[#f2c230]"
                             style={{ width: `${floor.progress}%` }}
                           />
                         </div>
@@ -318,48 +315,48 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
 
               {/* Detalle del piso seleccionado */}
               {selectedFloorData && (
-                <div className="rounded-xl border border-dashed border-orange-300 bg-gradient-to-br from-white via-amber-50 to-orange-50 p-3 text-xs">
-                  <p className="text-[11px] uppercase tracking-wide mb-2 text-amber-700/90">
+                <div className="rounded-xl border border-dashed border-[#d6c680] bg-gradient-to-br from-white via-[#fffbf0] to-[#f7f1d0] p-3 text-xs">
+                  <p className="mb-2 text-[11px] uppercase tracking-wide text-[#8a7418]">
                     Detalle del piso seleccionado
                   </p>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-beck-ink">
                     {selectedFloorData.label}
                   </p>
-                  <p className="text-[11px] mt-1 text-slate-700">
+                  <p className="mt-1 text-[11px] text-beck-ink-soft">
                     {selectedFloorData.sellos} sellos registrados en el
                     itemizado, con un avance estimado de{" "}
-                    <span className="font-semibold text-orange-700">
+                    <span className="font-semibold text-[#a8860f]">
                       {selectedFloorData.progress}%
                     </span>{" "}
                     respecto a la meta del proyecto.
                   </p>
                   <ul className="mt-3 space-y-1.5">
                     <li className="flex justify-between gap-2">
-                      <span className="text-slate-700">
+                      <span className="text-beck-ink-soft">
                         Sellos estándar (F = 1)
                       </span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-beck-ink">
                         ~55%
                       </span>
                     </li>
                     <li className="flex justify-between gap-2">
-                      <span className="text-slate-700">
+                      <span className="text-beck-ink-soft">
                         Holguras medias (F = 1,2 / 1,4)
                       </span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-beck-ink">
                         ~35%
                       </span>
                     </li>
                     <li className="flex justify-between gap-2">
-                      <span className="text-slate-700">
+                      <span className="text-beck-ink-soft">
                         Holguras críticas (F = 1,8)
                       </span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-beck-ink">
                         ~10%
                       </span>
                     </li>
                   </ul>
-                  <p className="mt-3 text-[10px] text-amber-800/80">
+                  <p className="mt-3 text-[10px] text-[#7b6a22]">
                     Datos simulados que luego se reemplazarán por consultas al
                     microservicio de reportes (por piso, factor y tipo de
                     solución cortafuego).
@@ -377,18 +374,18 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
           transition={{ duration: 0.25 }}
         >
           <Card
-            className="border bg-gradient-to-br from-white via-amber-50/50 to-orange-50/40 border-amber-200"
+            className="beck-panel-soft"
             title={
               <div className="flex items-center gap-2 text-sm">
-                <TeamOutlined className="text-orange-600" />
+                <TeamOutlined className="text-[#a8860f]" />
                 <span>Rendimiento por equipo</span>
               </div>
             }
             styles={{
               header: {
-                backgroundColor: "#fff7ed",
-                color: "#020617",
-                borderBottom: "1px solid #fed7aa",
+                backgroundColor: "#fffbf0",
+                color: "#17181A",
+                borderBottom: "1px solid #d8dcd6",
                 fontSize: 13,
               },
               body: { padding: 14 },
@@ -398,17 +395,17 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
               {teams.map((team, idx) => (
                 <motion.li
                   key={team.nombre}
-                  className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-orange-100/60 cursor-default"
+                  className="flex cursor-default items-center justify-between rounded-lg px-2 py-1.5 hover:bg-[#fff7d6]"
                   initial={{ opacity: 0, x: 5 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
                   whileHover={{ x: 4 }}
                 >
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-900 truncate">
+                    <p className="truncate font-medium text-beck-ink">
                       {team.nombre}
                     </p>
-                    <p className="text-[11px] text-slate-700">
+                    <p className="text-[11px] text-beck-ink-soft">
                       {team.piso} · {team.sellos} sellos registrados
                     </p>
                   </div>
@@ -423,7 +420,7 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
                 </motion.li>
               ))}
             </ul>
-            <p className="mt-3 text-[11px] text-slate-700">
+            <p className="mt-3 text-[11px] text-beck-ink-soft">
               Identifica qué equipos están enfrentando holguras más exigentes y
               frentes críticos, para priorizar supervisión y apoyo técnico en la
               protección pasiva contra incendios.

@@ -1,21 +1,124 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "antd/dist/reset.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-@import "antd/dist/reset.css";
-
-/* Solo tema claro */
 :root {
   color-scheme: light;
-  background-color: #f3f4f6; /* gris clarito de fondo */
-  color: #0f172a;
+  --beck-primary: #f2c230;
+  --beck-primary-dark: #d0a514;
+  --beck-accent: #f8e18e;
+  --beck-ink: #17181a;
+  --beck-ink-soft: #3a4147;
+  --beck-bg-light: #f3f4ef;
+  --beck-surface-light: #fffbf0;
+  --beck-surface-alt: #f8f6ec;
+  --beck-border-light: #d8dcd6;
+  background-color: var(--beck-bg-light);
+  color: var(--beck-ink);
 }
 
-/* Estilos base - solo claro */
 body {
-  @apply min-h-screen bg-beck-bg-light text-slate-900;
+  @apply min-h-screen bg-beck-bg-light text-beck-ink;
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  background-image: radial-gradient(
+      circle at top left,
+      rgba(248, 225, 142, 0.22),
+      transparent 24%
+    ),
+    linear-gradient(180deg, #f8f6ec 0%, #f3f4ef 100%);
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+::selection {
+  background: rgba(242, 194, 48, 0.35);
+  color: var(--beck-ink);
+}
+
+@layer components {
+  .beck-panel {
+    @apply rounded-2xl border border-beck-border-light bg-white shadow-beck-panel;
+  }
+
+  .beck-panel-soft {
+    @apply rounded-2xl border border-beck-border-light bg-gradient-to-b from-white via-white to-beck-surface-alt shadow-beck-panel;
+  }
+
+  .beck-badge {
+    @apply inline-flex items-center gap-2 rounded-full border border-[#decb7e] bg-[#fff7d6] px-3 py-1 text-[11px] font-medium text-beck-ink;
+  }
+
+  .beck-btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl border border-[#cfad21] bg-beck-primary px-4 py-2.5 text-sm font-semibold text-beck-ink transition hover:bg-beck-primary-dark disabled:cursor-not-allowed disabled:border-[#e4dbb2] disabled:bg-[#efe2a0] disabled:text-[#6f6427];
+  }
+
+  .beck-btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-beck-border-light bg-white px-4 py-2.5 text-sm font-medium text-beck-ink-soft transition hover:border-[#d6c680] hover:bg-beck-surface-light hover:text-beck-ink disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .beck-icon-button {
+    @apply flex items-center justify-center rounded-full border border-beck-border-light bg-white/90 text-beck-ink-soft transition hover:border-[#d6c680] hover:bg-beck-surface-light hover:text-beck-ink;
+  }
+
+  .beck-tab-group {
+    @apply inline-flex rounded-xl border border-beck-border-light bg-white p-1 shadow-sm;
+  }
+
+  .beck-tab-button {
+    @apply rounded-lg px-3 py-2 text-sm font-medium text-beck-ink-soft transition hover:bg-beck-surface-light hover:text-beck-ink;
+  }
+
+  .beck-tab-button-active {
+    @apply bg-beck-primary text-beck-ink shadow-sm hover:bg-beck-primary;
+  }
+
+  .beck-kpi-card {
+    @apply relative overflow-hidden rounded-2xl border border-[#e6d794] bg-gradient-to-br from-white via-beck-surface-light to-[#f7f1d0] shadow-beck-panel;
+  }
+}
+
+.beck-segmented.ant-segmented {
+  background: rgba(255, 251, 240, 0.96);
+  border: 1px solid var(--beck-border-light);
+  border-radius: 9999px;
+  padding: 4px;
+  box-shadow: 0 10px 24px rgba(23, 24, 26, 0.06);
+}
+
+.beck-segmented.ant-segmented .ant-segmented-item {
+  border-radius: 9999px;
+  color: var(--beck-ink-soft);
+}
+
+.beck-segmented.ant-segmented .ant-segmented-item-selected {
+  background: var(--beck-primary);
+  color: var(--beck-ink);
+  box-shadow: none;
+}
+
+.beck-segmented.ant-segmented .ant-segmented-thumb {
+  background: var(--beck-primary);
+  box-shadow: none;
+}
+
+.ant-btn-primary {
+  background-color: var(--beck-primary) !important;
+  border-color: #cfad21 !important;
+  color: var(--beck-ink) !important;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary:hover,
+.ant-btn-primary:focus,
+.ant-btn-primary:active {
+  background-color: var(--beck-primary-dark) !important;
+  border-color: var(--beck-primary-dark) !important;
+  color: var(--beck-ink) !important;
 }
