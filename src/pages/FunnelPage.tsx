@@ -1761,6 +1761,16 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       return;
     }
 
+    if (funnelModalMode === "edit" && draft.etapa === "cerrada" && editingDealId) {
+      setIsModalOpen(false);
+      setDealEnCierre(editingDealId);
+      setEstadoCierreModal("");
+      setMotivoPerdidaModal("");
+      setCierreModalOpen(true);
+      submitLockRef.current = false;
+      return;
+    }
+
     submitLockRef.current = true;
     setFieldErrors({});
 
