@@ -3,6 +3,7 @@ import {
   Button,
   Descriptions,
   Modal as AntdModal,
+  Select,
   Spin,
   message,
 } from "antd";
@@ -74,6 +75,7 @@ type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
 type FunnelCotizacionItem = {
   id: string;
   numero: string;
+  version: number;
   codigo: string;
   funnelBeckId?: string;
   cliente: string;
@@ -501,6 +503,7 @@ const mapCotizacionRecord = (
     id: toText(source.id),
     numero:
       numeroValue !== undefined ? toText(numeroValue) : codigo || String(index + 1),
+    version: toNumber(pickValue(source, ["version"])) || index + 1,
     codigo,
     funnelBeckId:
       toText(pickValue(source, ["funnelBeckId", "funnel_beck_id"]), "") ||
@@ -1155,6 +1158,10 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const [cotizacionEditorContextDeal, setCotizacionEditorContextDeal] =
     useState<FunnelDeal | null>(null);
   const [cotizacionEditorLoading, setCotizacionEditorLoading] = useState(false);
+  const [cotizacionVersionesById, setCotizacionVersionesById] = useState<
+    Record<string, FunnelCotizacionItem[]>
+  >({});
+  const [updatingStage, setUpdatingStage] = useState(false);
 
   void ufFecha;
 
@@ -1351,11 +1358,28 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     try {
       setRelatedCotizacionesLoading(true);
       const response = await funnelBeckAPI.listarCotizaciones(dealId);
-      setRelatedCotizaciones(
-        response.map((item, index) => mapCotizacionRecord(item, index))
+      const cotizaciones = response
+        .filter((item) => (item as { esActual?: boolean }).esActual !== false)
+        .map((item, index) => mapCotizacionRecord(item, index));
+      setRelatedCotizaciones(cotizaciones);
+
+      const versionesMap: Record<string, FunnelCotizacionItem[]> = {};
+      await Promise.all(
+        cotizaciones.map(async (cotizacion) => {
+          try {
+            const versiones = await cotizacionesAPI.getVersiones(cotizacion.id);
+            versionesMap[cotizacion.id] = versiones
+              .filter((v) => v.id !== cotizacion.id)
+              .map((v, i) => mapCotizacionRecord(v, i));
+          } catch {
+            versionesMap[cotizacion.id] = [];
+          }
+        })
       );
+      setCotizacionVersionesById(versionesMap);
     } catch (error) {
       setRelatedCotizaciones([]);
+      setCotizacionVersionesById({});
       message.error(
         getErrorMessage(error, "No se pudieron cargar las cotizaciones")
       );
@@ -1373,6 +1397,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const closeDealDetail = () => {
     setSelectedDeal(null);
     setRelatedCotizaciones([]);
+    setCotizacionVersionesById({});
     setSelectedCotizacion(null);
     setSelectedCotizacionLoading(false);
   };
@@ -1760,6 +1785,53 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       setDeals(previousDeals);
       message.error("No se pudo actualizar la etapa");
       console.error("Error al actualizar etapa:", error);
+    }
+  };
+
+  const handleChangeStage = async (nuevaEtapa: FunnelStage) => {
+    if (!selectedDeal || updatingStage || !canEditFunnel) return;
+
+    if (nuevaEtapa === "cerrada") {
+      setDealEnCierre(selectedDeal.id);
+      setEstadoCierreModal("");
+      setMotivoPerdidaModal("");
+      setCierreModalOpen(true);
+      return;
+    }
+
+    try {
+      setUpdatingStage(true);
+      const response = await fetchWithAuth(
+        `/funnel-beck/${selectedDeal.id}/etapa`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ etapa: etapaFrontendToBackendMap[nuevaEtapa] }),
+        }
+      );
+      const result = (await response.json()) as {
+        success: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "El backend rechazo la actualizacion de etapa"
+        );
+      }
+      setSelectedDeal((current) =>
+        current ? { ...current, etapa: nuevaEtapa } : current
+      );
+      setDeals((current) =>
+        current.map((deal) =>
+          deal.id === selectedDeal.id ? { ...deal, etapa: nuevaEtapa } : deal
+        )
+      );
+      message.success("Etapa actualizada");
+      void loadDeals();
+    } catch (error) {
+      message.error(getErrorMessage(error, "No se pudo actualizar la etapa"));
+    } finally {
+      setUpdatingStage(false);
     }
   };
 
@@ -2197,6 +2269,27 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
               )}
             </div>
 
+            {canEditFunnel && selectedDeal && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">
+                  Cambiar etapa
+                </p>
+                <Select
+                  value={selectedDeal.etapa}
+                  onChange={(value) => {
+                    void handleChangeStage(value);
+                  }}
+                  disabled={updatingStage}
+                  loading={updatingStage}
+                  style={{ width: 220 }}
+                  options={etapas.map((etapa) => ({
+                    value: etapa,
+                    label: etapasLabel[etapa],
+                  }))}
+                />
+              </div>
+            )}
+
             {relatedCotizacionesLoading ? (
               <div className="flex justify-center py-8">
                 <Spin />
@@ -2224,58 +2317,125 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {relatedCotizaciones.map((cotizacion) => (
-                      <tr key={cotizacion.id}>
-                        <td className="px-3 py-2 text-slate-700">
-                          {cotizacion.numero}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {cotizacion.estado}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {formatCotizacionMoney(cotizacion.total, cotizacion.moneda)}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {formatCotizacionDate(cotizacion.fecha)}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="small"
-                              icon={<EyeOutlined />}
-                              onClick={() => {
-                                void openCotizacionDetail(cotizacion.id);
-                              }}
-                            >
-                              Ver
-                            </Button>
-                            <Button
-                              size="small"
-                              icon={<DownloadOutlined />}
-                              onClick={() => {
-                                void handleVerCotizacionPDF(
-                                  cotizacion.id,
-                                  cotizacion.numero
-                                );
-                              }}
-                            >
-                              PDF
-                            </Button>
-                            {canEditFunnel && (
-                              <Button
-                                size="small"
-                                icon={<EditOutlined />}
-                                onClick={() => {
-                                  void openEditCotizacion(cotizacion);
-                                }}
+                    {relatedCotizaciones.map((cotizacion) => {
+                      const versiones = [
+                        ...(cotizacionVersionesById[cotizacion.id] ?? []),
+                      ].sort((a, b) => b.version - a.version);
+
+                      return (
+                        <React.Fragment key={cotizacion.id}>
+                          <tr>
+                            <td className="px-3 py-2 text-slate-700">
+                              <div className="flex items-center gap-1.5">
+                                <span>{cotizacion.numero}</span>
+                                <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-600">
+                                  Actual
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {cotizacion.estado}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {formatCotizacionMoney(
+                                cotizacion.total,
+                                cotizacion.moneda
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {formatCotizacionDate(cotizacion.fecha)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="small"
+                                  icon={<EyeOutlined />}
+                                  onClick={() => {
+                                    void openCotizacionDetail(cotizacion.id);
+                                  }}
+                                >
+                                  Ver
+                                </Button>
+                                <Button
+                                  size="small"
+                                  icon={<DownloadOutlined />}
+                                  onClick={() => {
+                                    void handleVerCotizacionPDF(
+                                      cotizacion.id,
+                                      cotizacion.numero
+                                    );
+                                  }}
+                                >
+                                  PDF
+                                </Button>
+                                {canEditFunnel && (
+                                  <Button
+                                    size="small"
+                                    icon={<EditOutlined />}
+                                    onClick={() => {
+                                      void openEditCotizacion(cotizacion);
+                                    }}
+                                  >
+                                    Editar
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {versiones.map((version, index) => {
+                            const isLast = index === versiones.length - 1;
+
+                            return (
+                              <tr
+                                key={version.id}
+                                className="bg-slate-50 text-sm text-slate-500"
                               >
-                                Editar
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                <td className="py-1.5 pl-8 pr-3 font-mono text-slate-500">
+                                  {isLast ? "└─" : "├─"} #{version.version}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-500">
+                                  {version.estado}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-500">
+                                  {formatCotizacionMoney(
+                                    version.total,
+                                    version.moneda
+                                  )}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-500">
+                                  {formatCotizacionDate(version.fecha)}
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      size="small"
+                                      icon={<EyeOutlined />}
+                                      onClick={() => {
+                                        void openCotizacionDetail(version.id);
+                                      }}
+                                    >
+                                      Ver
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      icon={<DownloadOutlined />}
+                                      onClick={() => {
+                                        void handleVerCotizacionPDF(
+                                          version.id,
+                                          version.numero
+                                        );
+                                      }}
+                                    >
+                                      PDF
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

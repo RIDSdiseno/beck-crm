@@ -336,6 +336,13 @@ export const cotizacionesAPI = {
     );
     return unwrapApiResponse(response.data);
   },
+
+  getVersiones: async (id: string): Promise<CotizacionApiRecord[]> => {
+    const response = await api.get<ApiResponseEnvelope<CotizacionApiRecord[]>>(
+      `/cotizaciones/${id}/versiones`
+    );
+    return unwrapApiResponse(response.data);
+  },
 };
 
 export interface RegistroTerrenoInput {
@@ -639,3 +646,90 @@ export const statsAPI = {
 
 export default api;
 
+export type MovimientoCRMRecord = {
+  id: string;
+  usuarioId: string;
+  modulo: "FUNNEL" | "COTIZACION" | "USUARIO" | "OBRA";
+  tipo:
+    | "OPORTUNIDAD_CREADA"
+    | "OPORTUNIDAD_EDITADA"
+    | "ETAPA_MODIFICADA"
+    | "OPORTUNIDAD_ELIMINADA"
+    | "COTIZACION_CREADA"
+    | "COTIZACION_EDITADA"
+    | "COTIZACION_ENVIADA"
+    | "COTIZACION_ACEPTADA"
+    | "COTIZACION_RECHAZADA"
+    | "COTIZACION_ELIMINADA"
+    | "USUARIO_CREADO"
+    | "USUARIO_ACTIVADO"
+    | "USUARIO_DESACTIVADO"
+    | "ROL_CAMBIADO"
+    | "OBRA_CREADA";
+  entidadId?: string | null;
+  descripcion: string;
+  datos?: unknown;
+  createdAt: string;
+  usuario?: {
+    id: string;
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+};
+
+export type MovimientosCRMResponse = {
+  items: MovimientoCRMRecord[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+};
+
+export const movimientosCrmAPI = {
+  listar: async (params?: {
+    page?: number;
+    limit?: number;
+    modulo?: string;
+    tipo?: string;
+    usuarioId?: string;
+    entidadId?: string;
+  }): Promise<MovimientosCRMResponse> => {
+    const searchParams = new URLSearchParams();
+
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.modulo) searchParams.set("modulo", params.modulo);
+    if (params?.tipo) searchParams.set("tipo", params.tipo);
+    if (params?.usuarioId) searchParams.set("usuarioId", params.usuarioId);
+    if (params?.entidadId) searchParams.set("entidadId", params.entidadId);
+
+    const query = searchParams.toString();
+    const response = await fetchWithAuth(
+      `/movimientos-crm${query ? `?${query}` : ""}`
+    );
+    const result =
+      (await response.json()) as ApiResponseEnvelope<MovimientosCRMResponse>;
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "No se pudieron cargar los movimientos");
+    }
+
+    return result.data;
+  },
+
+  getById: async (id: string): Promise<MovimientoCRMRecord> => {
+    const response = await fetchWithAuth(`/movimientos-crm/${id}`);
+    const result =
+      (await response.json()) as ApiResponseEnvelope<MovimientoCRMRecord>;
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "No se pudo cargar el movimiento");
+    }
+
+    return result.data;
+  },
+};
+ 

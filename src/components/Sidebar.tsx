@@ -11,6 +11,7 @@ import {
   FireOutlined,
   FileTextOutlined,
   ProjectOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import { NavLink } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
@@ -24,6 +25,7 @@ export type RoleAccess = {
   reportes: boolean;
   juntaEspuma: boolean;
   cotizaciones: boolean;
+  movimientos: boolean;
   configuracion: boolean;
 };
 
@@ -209,6 +211,19 @@ const Sidebar: React.FC<SidebarProps> = ({
             </NavLink>
           )}
 
+          {access.movimientos && (
+            <NavLink
+              to="/movimientos"
+              className={({ isActive }) =>
+                `${linkBase} ${
+                  collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-3"
+                } ${getLinkClasses(isActive)}`
+              }
+            >
+              <HistoryOutlined />
+              {!collapsed && <span>Movimientos</span>}
+            </NavLink>
+          )}
 
           {access.funnel && (
             <NavLink
