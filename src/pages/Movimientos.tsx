@@ -78,12 +78,6 @@ const formatDay = (value: string) => {
   return date.format("DD-MM-YYYY");
 };
 
-const formatDescription = (descripcion: string) => {
-  return descripcion.replace(/\$([0-9]+)\.00/g, (_, amount: string) => {
-    const value = Number(amount);
-    return `$${value.toLocaleString("es-CL")}`;
-  });
-};
 
 const groupByDay = (items: MovimientoCRMRecord[]) => {
   return items.reduce<Record<string, MovimientoCRMRecord[]>>((acc, item) => {
@@ -226,7 +220,7 @@ const MovimientosPage: React.FC = () => {
                           </div>
 
                           <p className="text-sm font-semibold text-slate-800">
-                            {formatDescription(movimiento.descripcion)}
+                            {movimiento.descripcion}
                           </p>
 
                           <p className="text-xs text-slate-500">

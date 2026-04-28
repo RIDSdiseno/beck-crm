@@ -25,6 +25,7 @@ import {
   EyeOutlined,
   EditOutlined,
   DownloadOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import * as XLSX from "xlsx";
@@ -460,6 +461,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
     useState<CotizacionListItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [editorLoading, setEditorLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [filtroEstado, setFiltroEstado] = useState<string | undefined>();
   const [filtroOrigen, setFiltroOrigen] = useState<string | undefined>();
@@ -935,6 +937,38 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               icon={<DownloadOutlined />}
               onClick={() => {
                 void handleVerPDF(record.id, record.numero);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title="Eliminar">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingId === record.id}
+              onClick={() => {
+                Modal.confirm({
+                  title: "Eliminar cotización",
+                  content: "Esta acción eliminará la cotización. ¿Deseas continuar?",
+                  okText: "Eliminar",
+                  okButtonProps: { danger: true },
+                  cancelText: "Cancelar",
+                  onOk: async () => {
+                    try {
+                      setDeletingId(record.id);
+                      await cotizacionesAPI.delete(record.id);
+                      message.success("Cotización eliminada");
+                      await loadCotizaciones();
+                    } catch (error) {
+                      message.error(
+                        getErrorMessage(error, "No se pudo eliminar la cotización")
+                      );
+                    } finally {
+                      setDeletingId(null);
+                    }
+                  },
+                });
               }}
             />
           </Tooltip>

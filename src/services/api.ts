@@ -343,6 +343,13 @@ export const cotizacionesAPI = {
     );
     return unwrapApiResponse(response.data);
   },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await api.delete<ApiResponseEnvelope<{ message?: string }>>(
+      `/cotizaciones/${id}`
+    );
+    unwrapApiResponse(response.data);
+  },
 };
 
 export interface RegistroTerrenoInput {
