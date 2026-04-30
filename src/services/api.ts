@@ -494,14 +494,29 @@ export interface Obra {
   id: string;
   codigo: string;
   nombre: string;
+  descripcion?: string;
   direccion: string;
   ciudad: string;
   cliente: string;
   activa: boolean;
+  estado?: "activa" | "inactiva" | "pausada" | "finalizada";
+  usuarios?: Array<{
+    id: string;
+    nombre?: string;
+    email?: string;
+    rol?: string;
+  }>;
   fecha_inicio?: string;
   fecha_termino?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CrearObraInput {
+  nombre: string;
+  codigo?: string;
+  descripcion?: string;
+  estado: "activa" | "inactiva" | "pausada" | "finalizada";
 }
 
 export const obrasAPI = {
@@ -515,7 +530,7 @@ export const obrasAPI = {
     return response.data;
   },
 
-  crear: async (data: Omit<Obra, "id" | "created_at" | "updated_at">) => {
+  crear: async (data: CrearObraInput) => {
     const response = await api.post<Obra>("/obras", data);
     return response.data;
   },
@@ -530,6 +545,18 @@ export const obrasAPI = {
 
   eliminar: async (id: string) => {
     const response = await api.delete(`/obras/${id}`);
+    return response.data;
+  },
+
+  asignarUsuarios: async (id: string, usuariosIds: string[]) => {
+    const response = await api.put<Obra>(`/obras/${id}/usuarios`,{
+      usuariosIds,
+    });
+    return response.data;
+  },
+
+  obtenerUsuarios: async (id: string) =>{
+    const response = await api.get<UsuarioApi[]>(`/obras/${id}/usuarios`);
     return response.data;
   },
 };

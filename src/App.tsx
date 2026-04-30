@@ -23,6 +23,7 @@ import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
 import AuthCallback from "./pages/AuthCallback";
 import Login from "./pages/Login";
 import Movimientos from "./pages/Movimientos";
+import Obras from "./pages/Obras";
 import RegistroSellos from "./pages/RegistroSellos";
 import Reportes from "./pages/Reportes";
 import type { ThemeMode } from "./hooks/useSystemTheme";
@@ -43,6 +44,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: true,
         cotizaciones: true,
         movimientos: true,
+        obras: true,
         configuracion: true,
       };
     case "Vendedor":
@@ -55,6 +57,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: false,
         cotizaciones: true,
         movimientos: false,
+        obras: true,
         configuracion: false,
       };
     case "Terreno":
@@ -67,6 +70,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: true,
         cotizaciones: false,
         movimientos: false,
+        obras: false,
         configuracion: false,
       };
     case "Ingenieria":
@@ -79,6 +83,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: false,
         cotizaciones: false,
         movimientos: false,
+        obras: false,
         configuracion: false,
       };
     case "Visualizador":
@@ -92,6 +97,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: false,
         cotizaciones: false,
         movimientos: false,
+        obras: false,
         configuracion: false,
       };
   }
@@ -130,6 +136,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname.startsWith("/junta-espuma")) return access.juntaEspuma;
   if (pathname.startsWith("/cotizaciones")) return access.cotizaciones;
   if (pathname.startsWith("/movimientos")) return access.movimientos;
+  if (pathname.startsWith("/obras")) return access.obras;
   if (pathname.startsWith("/configuracion")) return access.configuracion;
 
   return true;
@@ -376,6 +383,16 @@ const AppShell: React.FC = () => {
                   element={
                     access.movimientos ? (
                       <Movimientos />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/obras"
+                  element={
+                    access.obras ? (
+                      <Obras />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )

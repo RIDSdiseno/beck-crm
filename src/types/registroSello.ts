@@ -1,7 +1,16 @@
 export type RegistroSello = {
-  id: number;
+  id: number | string;
+  codigo?: string;
+  obra?: string;
+  fecha?: string;
+  estado?: string;
   obraId?: string;
+  usuarioId?: string;
+  diaSemana?: string;
+  descripcionMaterial?: string;
+  accesibilidad?: number;
   obraNombre?: string;
+  usuarioNombre?: string;
   itemizadoBeck: string;
   itemizadoSacyr: string;
   fechaEjecucion: string; // ISO

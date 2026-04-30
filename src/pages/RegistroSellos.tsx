@@ -1,6 +1,6 @@
 // src/pages/RegistroSellos.tsx
-import React, { useMemo, useState } from "react";
-import { Button, Card, Select, Table, Tag, Switch } from "antd";
+import React, { useEffect, useMemo, useState } from "react";
+import { Button, Card, Select, Table, Tag, Switch, message } from "antd";
 import {
   PlusOutlined,
   FireOutlined,
@@ -18,45 +18,205 @@ import * as XLSX from "xlsx";
 
 import type { RegistroSello } from "../types/registroSello";
 import DateRangeQuickFilter from "../components/DateRangeQuickFilter";
-import RegistroDetalleModal from "../components/RegistroDetalleModal";
+import RegistroDetalleModal, {
+  type RegistroDetalleUpdateValues,
+} from "../components/RegistroDetalleModal";
 import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
 } from "../components/NuevoRegistroDrawer";
 import { loadObras } from "../data/obrasStorage";
+import { api } from "../services/api";
+import { useAuth } from "../context/useAuth";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
+};
+
+type RegistroApiRecord = {
+  id: string;
+  obraId?: string | null;
+  obra_id?: string | null;
+  usuarioId?: string | null;
+  usuario_id?: string | null;
+  fecha?: string | null;
+  diaSemana?: string | null;
+  dia_semana?: string | null;
+  descripcionMaterial?: string | null;
+  descripcion_material?: string | null;
+  modulo?: string | null;
+  piso?: string | null;
+  ejeNumerico?: number | string | null;
+  eje_numerico?: number | string | null;
+  ejeAlfabetico?: string | null;
+  eje_alfabetico?: string | null;
+  numeroSello?: string | null;
+  numero_sello?: string | null;
+  cantidadSellos?: number | string | null;
+  cantidad_sellos?: number | string | null;
+  nombreSellador?: string | null;
+  nombre_sellador?: string | null;
+  holgura?: number | string | null;
+  accesibilidad?: number | string | null;
+  estado?: string | null;
+  observaciones?: string | null;
+  obra?: { nombre?: string | null } | null;
+  obra_nombre?: string | null;
+  usuario?: { nombre?: string | null } | null;
+  usuario_nombre?: string | null;
+};
+
+type RegistrosApiResponse = {
+  success: boolean;
+  data?: RegistroApiRecord[];
+};
+
+type RegistroUpdateResponse = {
+  success: boolean;
+  data?: RegistroApiRecord;
+};
+
+type RegistroUpdatePayload = {
+  descripcion_material: string;
+  modulo: string;
+  piso: string;
+  eje_numerico: string;
+  eje_alfabetico: string;
+  numero_sello: string;
+  cantidad_sellos: number;
+  nombre_sellador: string;
+  holgura: number;
+  accesibilidad: number;
+  observaciones: string;
+  estado: RegistroDetalleUpdateValues["estado"];
+};
+
+type RegistroEstado = "pendiente" | "validado" | "rechazado";
+
+const normalizeEstado = (estado?: string | null): RegistroEstado => {
+  if (estado === "validado" || estado === "rechazado") return estado;
+  return "pendiente";
+};
+
+const getEstadoLabel = (estado?: string): string => {
+  const normalized = normalizeEstado(estado);
+  if (normalized === "validado") return "Validado";
+  if (normalized === "rechazado") return "Rechazado";
+  return "Pendiente";
+};
+
+const getEstadoColor = (estado?: string): string => {
+  const normalized = normalizeEstado(estado);
+  if (normalized === "validado") return "green";
+  if (normalized === "rechazado") return "red";
+  return "gold";
+};
+
+const getEstadoBadgeClass = (estado?: string): string => {
+  const normalized = normalizeEstado(estado);
+  if (normalized === "validado") {
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (normalized === "rechazado") {
+    return "border border-red-200 bg-red-50 text-red-700";
+  }
+  return "border border-orange-200 bg-orange-50 text-orange-700";
+};
+
+const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
+  if (value === 1.2 || value === 1.4 || value === 1.8) return value;
+  return 1;
+};
+
+const normalizeCieloModular = (value: number): 1 | 2 | 3 => {
+  if (value === 2 || value === 3) return value;
+  return 1;
+};
+
+const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
+  const obraId = r.obraId ?? r.obra_id ?? "";
+  const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
+  const fecha = r.fecha ?? "";
+  const diaSemana =
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).format("dddd") : "");
+  const descripcionMaterial =
+    r.descripcionMaterial ?? r.descripcion_material ?? "";
+  const ejeNumerico = String(r.ejeNumerico ?? r.eje_numerico ?? "");
+  const ejeAlfabetico = r.ejeAlfabetico ?? r.eje_alfabetico ?? "";
+  const numeroSello = r.numeroSello ?? r.numero_sello ?? "";
+  const cantidadSellos = Number(r.cantidadSellos ?? r.cantidad_sellos ?? 0);
+  const nombreSellador = r.nombreSellador ?? r.nombre_sellador ?? "";
+  const holguraCm = Number(r.holgura ?? 0);
+  const accesibilidad = Number(r.accesibilidad ?? 0);
+  const obraNombre = r.obra?.nombre ?? r.obra_nombre ?? "Sin obra";
+  const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
+
+  return {
+    id: r.id,
+    codigo: `REG-${r.id.slice(0, 6)}`,
+    obra: obraId,
+    fecha,
+    estado: normalizeEstado(r.estado),
+    obraId,
+    usuarioId,
+    diaSemana,
+    descripcionMaterial,
+    accesibilidad,
+    obraNombre,
+    usuarioNombre,
+    itemizadoBeck: descripcionMaterial || `REG-${r.id.slice(0, 6)}`,
+    itemizadoSacyr: "",
+    fechaEjecucion: fecha,
+    dia: diaSemana,
+    piso: r.piso ?? "",
+    ejeAlfabetico,
+    ejeNumerico,
+    nombreSellador,
+    recinto: r.modulo ?? "",
+    numeroSello,
+    cantidadSellos,
+    holguraCm,
+    factorHolgura: normalizeFactorHolgura(holguraCm),
+    cieloModular: normalizeCieloModular(accesibilidad),
+    cantidadSellosConFactor:
+      cantidadSellos * normalizeFactorHolgura(holguraCm),
+    observaciones: r.observaciones ?? "",
+  };
 };
 
 const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   // el tema es fijo claro, solo para compatibilidad
   void themeMode;
 
+  const { user } = useAuth();
+  const canReview =
+    user?.rol === "Administrador" || user?.rol === "Ingenieria";
   const [openDrawer, setOpenDrawer] = useState(false);
 
-  const [data, setData] = useState<RegistroSello[]>([
-    {
-      id: 1,
-      itemizadoBeck: "BECK-001",
-      itemizadoSacyr: "SACYR-A12",
-      fechaEjecucion: dayjs().format("YYYY-MM-DD"),
-      dia: dayjs().format("dddd"),
-      piso: "Piso 2",
-      ejeAlfabetico: "B",
-      ejeNumerico: "12",
-      nombreSellador: "Juan Pérez",
-      fotoUrl:
-        "https://res.cloudinary.com/dvqpmttci/image/upload/v1762883986/T1840G5i78GB500GBW10P_2_Supersize_hlt6je.jpg",
-      recinto: "Sala bombas",
-      numeroSello: "S-0001",
-      cantidadSellos: 4,
-      holguraCm: 6,
-      factorHolgura: 1.4,
-      cieloModular: 2,
-      cantidadSellosConFactor: 4 * 1.4,
-      observaciones: "Sellos verificados por supervisor.",
-    },
-  ]);
+  const [data, setData] = useState<RegistroSello[]>([]);
+  const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
+  const [savingDetalle, setSavingDetalle] = useState(false);
+  const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
+
+  useEffect(() => {
+    const cargarRegistros = async () => {
+      try {
+        const res = await api.get<RegistrosApiResponse | RegistroApiRecord[]>(
+          "/registros"
+        );
+        const lista = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data ?? [];
+        const registrosNormalizados = lista.map(normalizeRegistro);
+
+        setData(registrosNormalizados);
+      } catch (error) {
+        console.error(error);
+        message.error("No se pudieron cargar los registros");
+      }
+    };
+
+    void cargarRegistros();
+  }, []);
 
   // filtros
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
@@ -135,6 +295,117 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     };
   }, [filteredData]);
 
+  const handleCambiarEstado = async (
+    record: RegistroSello,
+    estado: RegistroEstado
+  ) => {
+    const id = String(record.id);
+    setChangingEstadoId(id);
+    try {
+      await api.patch(`/registros/${id}/estado`, { estado });
+      setData((prev) =>
+        prev.map((registro) =>
+          String(registro.id) === id ? { ...registro, estado } : registro
+        )
+      );
+      message.success(`Registro ${getEstadoLabel(estado).toLowerCase()}`);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo actualizar el estado del registro");
+    } finally {
+      setChangingEstadoId(null);
+    }
+  };
+
+  const handleDescargarPdf = async (record: RegistroSello) => {
+    const id = String(record.id);
+    const codigo = record.codigo || `REG-${id.slice(0, 6)}`;
+
+    try {
+      const response = await api.get<Blob>(`/registros/${id}/pdf`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `registro-${codigo}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success("PDF descargado correctamente");
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo descargar el PDF");
+    }
+  };
+
+  const handleGuardarDetalle = async (
+    values: RegistroDetalleUpdateValues
+  ) => {
+    if (!registroDetalle) return;
+
+    const id = String(registroDetalle.id);
+    const payload: RegistroUpdatePayload = {
+      descripcion_material: values.descripcionMaterial,
+      modulo: values.modulo,
+      piso: values.piso,
+      eje_numerico: values.ejeNumerico,
+      eje_alfabetico: values.ejeAlfabetico,
+      numero_sello: values.numeroSello,
+      cantidad_sellos: values.cantidadSellos,
+      nombre_sellador: values.nombreSellador,
+      holgura: values.holguraCm,
+      accesibilidad: values.accesibilidad,
+      observaciones: values.observaciones,
+      estado: values.estado,
+    };
+
+    setSavingDetalle(true);
+    try {
+      const response = await api.put<RegistroUpdateResponse>(
+        `/registros/${id}`,
+        payload
+      );
+      const factorHolgura = normalizeFactorHolgura(values.holguraCm);
+      const registroActualizado = response.data.data
+        ? normalizeRegistro(response.data.data)
+        : {
+            ...registroDetalle,
+            descripcionMaterial: values.descripcionMaterial,
+            itemizadoBeck:
+              values.descripcionMaterial || registroDetalle.itemizadoBeck,
+            recinto: values.modulo,
+            piso: values.piso,
+            ejeNumerico: values.ejeNumerico,
+            ejeAlfabetico: values.ejeAlfabetico,
+            numeroSello: values.numeroSello,
+            cantidadSellos: values.cantidadSellos,
+            nombreSellador: values.nombreSellador,
+            holguraCm: values.holguraCm,
+            accesibilidad: values.accesibilidad,
+            cieloModular: normalizeCieloModular(values.accesibilidad),
+            factorHolgura,
+            cantidadSellosConFactor: values.cantidadSellos * factorHolgura,
+            observaciones: values.observaciones,
+            estado: values.estado,
+          };
+
+      setData((prev) =>
+        prev.map((registro) =>
+          String(registro.id) === id ? registroActualizado : registro
+        )
+      );
+      setRegistroDetalle(null);
+      message.success("Registro actualizado correctamente");
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo guardar el registro");
+    } finally {
+      setSavingDetalle(false);
+    }
+  };
+
   // columnas tabla
   const todasLasColumnas: ColumnsType<RegistroSello> = [
     {
@@ -152,6 +423,18 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "itemizadoSacyr",
       key: "itemizadoSacyr",
       width: 130,
+    },
+    {
+      title: "Obra",
+      dataIndex: "obraNombre",
+      key: "obraNombre",
+      width: 160,
+    },
+    {
+      title: "Usuario",
+      dataIndex: "usuarioNombre",
+      key: "usuarioNombre",
+      width: 150,
     },
     {
       title: "Fecha ejecución",
@@ -207,6 +490,23 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "cantidadSellos",
       key: "cantidadSellos",
       width: 90,
+    },
+    {
+      title: "Estado",
+      dataIndex: "estado",
+      key: "estado",
+      width: 110,
+      render: (value: string) => (
+        <Tag
+          className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getEstadoBadgeClass(
+            value
+          )}`}
+          color={getEstadoColor(value)}
+          style={{ marginInlineEnd: 0 }}
+        >
+          {getEstadoLabel(value)}
+        </Tag>
+      ),
     },
     {
       title: "Holgura (cm)",
@@ -281,6 +581,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               onClick={(e) => {
                 e.stopPropagation();
                 setRegistroDetalle(record);
+                setDetalleMode("view");
               }}
               className="p-0 text-[11px]"
             >
@@ -298,18 +599,86 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       width: 220,
       ellipsis: true,
     },
+    ...(canReview
+      ? [
+          {
+            title: "Acciones",
+            key: "acciones",
+            width: 220,
+            render: (_value: unknown, record: RegistroSello) => {
+              const estado = normalizeEstado(record.estado);
+              const loading = changingEstadoId === String(record.id);
+
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {estado === "pendiente" && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={loading}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleCambiarEstado(record, "validado");
+                      }}
+                    >
+                      Validar
+                    </Button>
+                  )}
+                  {estado === "pendiente" && (
+                    <Button
+                      size="small"
+                      danger
+                      loading={loading}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleCambiarEstado(record, "rechazado");
+                      }}
+                    >
+                      Rechazar
+                    </Button>
+                  )}
+                  {estado !== "validado" && (
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRegistroDetalle(record);
+                        setDetalleMode("edit");
+                      }}
+                    >
+                      Editar
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDescargarPdf(record);
+                    }}
+                  >
+                    PDF
+                  </Button>
+                </div>
+              );
+            },
+          },
+        ]
+      : []),
   ];
 
   const clavesCompactas = new Set([
     "itemizadoBeck",
-    "itemizadoSacyr",
+    "obraNombre",
+    "usuarioNombre",
     "fechaEjecucion",
     "piso",
     "recinto",
     "cantidadSellos",
+    "estado",
     "factorHolgura",
     "cantidadSellosConFactor",
     "foto",
+    "acciones",
   ]);
 
   const columnasTabla = useMemo(
@@ -332,7 +701,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     const cantidad = Number(values.cantidadSellos || 0);
 
     const nuevo: RegistroSello = {
-      id: data.length ? data[data.length - 1].id + 1 : 1,
+      id: data.length + 1,
       obraId: values.obraId,
       obraNombre: obra?.nombre,
       itemizadoBeck: values.itemizadoBeck,
@@ -657,7 +1026,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           scroll={{ x: 1500 }}
           pagination={{ pageSize: 8 }}
           onRow={(record) => ({
-            onClick: () => setRegistroDetalle(record),
+            onClick: () => {
+              setRegistroDetalle(record);
+              setDetalleMode("view");
+            },
           })}
         />
       </Card>
@@ -666,7 +1038,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       <RegistroDetalleModal
         registro={registroDetalle}
         open={!!registroDetalle}
+        mode={detalleMode}
+        canEdit={
+          canReview &&
+          !!registroDetalle &&
+          normalizeEstado(registroDetalle.estado) !== "validado"
+        }
+        saving={savingDetalle}
         onClose={() => setRegistroDetalle(null)}
+        onEdit={() => setDetalleMode("edit")}
+        onSave={handleGuardarDetalle}
+        onDownloadPdf={handleDescargarPdf}
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}
