@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Card, Table, Tag, Button, Modal, Form, Input, Select, message } from "antd";
 import { EyeOutlined, CheckCircleOutlined, ClockCircleOutlined } from "@ant-design/icons";
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;

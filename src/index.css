@@ -16,6 +16,16 @@
   --beck-surface-light: #fffbf0;
   --beck-surface-alt: #f8f6ec;
   --beck-border-light: #d8dcd6;
+
+  /* Firemat color tokens */
+  --firemat-primary: #e63c1e;
+  --firemat-primary-dark: #c0301a;
+  --firemat-accent: #f4956a;
+  --firemat-bg-light: #f5f3f3;
+  --firemat-surface: #fff9f8;
+  --firemat-surface-alt: #f8efee;
+  --firemat-border: #ddd1d0;
+
   background-color: var(--beck-bg-light);
   color: var(--beck-ink);
 }
@@ -121,4 +131,48 @@ body {
   background-color: var(--beck-primary-dark) !important;
   border-color: var(--beck-primary-dark) !important;
   color: var(--beck-ink) !important;
+}
+
+/* ── Firemat component classes ───────────────────────────────── */
+.firemat-panel {
+  @apply rounded-2xl border bg-white shadow-beck-panel;
+  border-color: var(--firemat-border);
+}
+
+.firemat-kpi-card {
+  @apply relative overflow-hidden rounded-2xl border bg-white shadow-beck-panel;
+  border-color: var(--firemat-border);
+  background: linear-gradient(135deg, #fff9f8 0%, #fdf3f1 100%);
+}
+
+.firemat-badge {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[10px] font-medium;
+  background: #fde8e4;
+  border: 1px solid #f4c4ba;
+  color: var(--firemat-primary-dark);
+}
+
+.text-firemat-primary {
+  color: var(--firemat-primary);
+}
+
+.bg-firemat-surface {
+  background-color: var(--firemat-surface);
+}
+
+.border-firemat-border {
+  border-color: var(--firemat-border);
+}
+
+/* Sidebar: Firemat active link override */
+.theme-firemat .sidebar-link-active {
+  background: #fde8e4;
+  border-color: #f4c4ba;
+  color: var(--firemat-primary-dark);
+}
+
+/* Firemat sidebar background */
+.theme-firemat .sidebar-root {
+  background: rgba(245, 243, 243, 0.95);
+  border-color: var(--firemat-border);
 }

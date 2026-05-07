@@ -6,7 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { Layout, message } from "antd";
+import { Button, Layout, message } from "antd";
 
 import Sidebar, {
   SIDEBAR_WIDTH_COLLAPSED,
@@ -14,23 +14,46 @@ import Sidebar, {
   type RoleAccess,
 } from "./components/Sidebar";
 import SessionWatcher from "./components/SessionWatcher";
-import FunnelPage from "./pages/FunnelPage";
-import Configuracion from "./pages/Configuracion";
-import Cotizaciones from "./pages/Cotizaciones";
-import Dashboard from "./pages/Dashboard";
-import Ingenieria from "./pages/Ingenieria";
-import JuntaLinealEspuma from "./pages/JuntaLinealEspuma";
 import AuthCallback from "./pages/AuthCallback";
 import Login from "./pages/Login";
-import Movimientos from "./pages/Movimientos";
-import Obras from "./pages/Obras";
-import RegistroSellos from "./pages/RegistroSellos";
-import Reportes from "./pages/Reportes";
+
+// Beck pages
+import {
+  BeckDashboard,
+  BeckFunnel,
+  BeckCotizaciones,
+  BeckObras,
+  BeckReportes,
+  BeckMovimientos,
+  BeckRegistro,
+  BeckProcesamientoIngenieria,
+  BeckJuntaLinealEspuma,
+  BeckUsuariosParametros,
+} from "./pages/beck";
+
+// Firemat pages
+import {
+  FirematDashboard,
+  FirematFunnel,
+  FirematCotizaciones,
+  FirematProductos,
+  FirematInventario,
+  FirematVentas,
+  FirematReportes,
+  FirematMovimientos,
+  FirematUsuariosParametros,
+} from "./pages/firemat";
+
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import type { RolUsuario } from "./types/usuario";
 
 const { Content } = Layout;
+
+const ACCESS_DENIED_PATH = "/access-denied";
+
+const isCrmBlockedRole = (rol: RolUsuario): boolean =>
+  rol === "Terreno" || rol === "JefeObra";
 
 const getRoleAccess = (rol: RolUsuario): RoleAccess => {
   switch (rol) {
@@ -46,6 +69,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         movimientos: true,
         obras: true,
         configuracion: true,
+        firemat: true,
       };
     case "Vendedor":
       return {
@@ -57,107 +81,120 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         juntaEspuma: false,
         cotizaciones: true,
         movimientos: false,
-        obras: true,
+        obras: false,
         configuracion: false,
+        firemat: true,
       };
     case "Terreno":
+    case "JefeObra":
+      return {
+        dashboard: false,
+        funnel: false,
+        registro: false,
+        ingenieria: false,
+        reportes: false,
+        juntaEspuma: false,
+        cotizaciones: false,
+        movimientos: false,
+        obras: false,
+        configuracion: false,
+        firemat: false,
+      };
+    case "Ingenieria":
+      return {
+        dashboard: false,
+        funnel: true,
+        registro: true,
+        ingenieria: true,
+        reportes: true,
+        juntaEspuma: false,
+        cotizaciones: false,
+        movimientos: false,
+        obras: true,
+        configuracion: false,
+        firemat: false,
+      };
+    case "Visualizador":
+    default:
       return {
         dashboard: false,
         funnel: true,
         registro: true,
         ingenieria: false,
         reportes: true,
-        juntaEspuma: true,
-        cotizaciones: false,
-        movimientos: false,
-        obras: false,
-        configuracion: false,
-      };
-    case "Ingenieria":
-      return {
-        dashboard: false,
-        funnel: true,
-        registro: false,
-        ingenieria: true,
-        reportes: true,
         juntaEspuma: false,
-        cotizaciones: false,
+        cotizaciones: true,
         movimientos: false,
-        obras: false,
+        obras: true,
         configuracion: false,
-      };
-    case "Visualizador":
-    default:
-      return {
-        dashboard: false,
-        funnel: true,
-        registro: false,
-        ingenieria: false,
-        reportes: true,
-        juntaEspuma: false,
-        cotizaciones: false,
-        movimientos: false,
-        obras: false,
-        configuracion: false,
+        firemat: true,
       };
   }
 };
 
 const getHomeRouteForRole = (rol: RolUsuario): string => {
+  if (isCrmBlockedRole(rol)) {
+    return ACCESS_DENIED_PATH;
+  }
+
   switch (rol) {
     case "Administrador":
-      return "/dashboard";
+      return "/beck/dashboard";
     case "Vendedor":
-      return "/dashboard/funnel";
-    case "Terreno":
-      return "/registro";
+      return "/beck/funnel";
     case "Ingenieria":
-      return "/ingenieria";
+      return "/beck/procesamiento-ingenieria";
     case "Visualizador":
     default:
-      return "/reportes";
+      return "/beck/reportes";
   }
 };
 
 const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
+  if (["/" , "/login", "/auth/callback"].includes(pathname)) return true;
+  if (pathname === ACCESS_DENIED_PATH) return true;
+
+  // Legacy redirects — always passthrough (they redirect internally)
   if (
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/auth/callback"
+    pathname === "/dashboard" ||
+    pathname === "/dashboard/funnel" ||
+    pathname === "/registro" ||
+    pathname === "/ingenieria" ||
+    pathname === "/reportes" ||
+    pathname === "/junta-espuma" ||
+    pathname === "/cotizaciones" ||
+    pathname === "/movimientos" ||
+    pathname === "/obras" ||
+    pathname === "/configuracion"
   ) {
     return true;
   }
 
-  if (pathname.startsWith("/dashboard/funnel")) return access.funnel;
-  if (pathname.startsWith("/dashboard")) return access.dashboard;
-  if (pathname.startsWith("/registro")) return access.registro;
-  if (pathname.startsWith("/ingenieria")) return access.ingenieria;
-  if (pathname.startsWith("/reportes")) return access.reportes;
-  if (pathname.startsWith("/junta-espuma")) return access.juntaEspuma;
-  if (pathname.startsWith("/cotizaciones")) return access.cotizaciones;
-  if (pathname.startsWith("/movimientos")) return access.movimientos;
-  if (pathname.startsWith("/obras")) return access.obras;
-  if (pathname.startsWith("/configuracion")) return access.configuracion;
+  // Beck routes
+  if (pathname === "/beck/dashboard") return access.dashboard;
+  if (pathname === "/beck/funnel") return access.funnel;
+  if (pathname === "/beck/registro") return access.registro;
+  if (pathname === "/beck/procesamiento-ingenieria") return access.ingenieria;
+  if (pathname === "/beck/reportes") return access.reportes;
+  if (pathname === "/beck/junta-lineal-espuma") return access.juntaEspuma;
+  if (pathname === "/beck/cotizaciones") return access.cotizaciones;
+  if (pathname === "/beck/movimientos") return access.movimientos;
+  if (pathname === "/beck/obras") return access.obras;
+  if (pathname === "/beck/usuarios-parametros") return access.configuracion;
+
+  if (pathname.startsWith("/firemat/")) return access.firemat;
 
   return true;
 };
 
 const getLoginErrorMessage = (error: unknown): string => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
+  if (typeof error === "object" && error !== null && "response" in error) {
     const axiosError = error as {
       response?: {
         status?: number;
-        data?: {
-          error?: string;
-          message?: string;
-        };
+        data?: { error?: string; message?: string };
       };
     };
-
     return (
       axiosError.response?.data?.error ||
       axiosError.response?.data?.message ||
@@ -166,7 +203,9 @@ const getLoginErrorMessage = (error: unknown): string => {
         : "No se pudo iniciar sesión")
     );
   }
-
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
   return "No se pudo iniciar sesión";
 };
 
@@ -189,13 +228,15 @@ const AppShell: React.FC = () => {
   );
   const homeRoute = user ? getHomeRouteForRole(user.rol) : "/login";
 
+  const isFiremat = location.pathname.startsWith("/firemat");
+  const themeClass = isFiremat ? "theme-firemat" : "theme-beck";
+
   useEffect(() => {
     const onResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (mobile) setCollapsed(true);
     };
-
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -209,7 +250,6 @@ const AppShell: React.FC = () => {
       navigate("/login", { replace: true });
       return;
     }
-
     if (user && location.pathname === "/login") {
       navigate(homeRoute, { replace: true });
     }
@@ -217,7 +257,6 @@ const AppShell: React.FC = () => {
 
   useEffect(() => {
     if (!user || !access) return;
-
     if (!canAccessPath(location.pathname, access)) {
       navigate(homeRoute, { replace: true });
     }
@@ -242,6 +281,20 @@ const AppShell: React.FC = () => {
     navigate("/login", { replace: true });
   };
 
+  const deniedScreen = (
+    <div className="flex min-h-screen items-center justify-center bg-beck-bg-light px-4 text-beck-ink">
+      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Acceso denegado</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Tu usuario no tiene acceso al CRM web.
+        </p>
+        <Button type="primary" className="mt-5" onClick={handleLogout}>
+          Cerrar sesión
+        </Button>
+      </div>
+    </div>
+  );
+
   if (!user || !access) {
     return (
       <>
@@ -262,11 +315,26 @@ const AppShell: React.FC = () => {
     return <Navigate to={homeRoute} replace />;
   }
 
+  if (isCrmBlockedRole(user.rol)) {
+    return (
+      <>
+        <SessionWatcher />
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="*" element={deniedScreen} />
+        </Routes>
+      </>
+    );
+  }
+
+  const renderFirematRoute = (element: React.ReactElement) =>
+    access.firemat ? element : <Navigate to={homeRoute} replace />;
+
   return (
     <>
       <SessionWatcher />
       <Layout
-        className="bg-beck-bg-light text-beck-ink"
+        className={`${themeClass} bg-beck-bg-light text-beck-ink`}
         style={{ minHeight: "100vh" }}
       >
         {isMobile && collapsed && (
@@ -297,7 +365,7 @@ const AppShell: React.FC = () => {
           }}
         >
           <Content
-            className="bg-beck-bg-light"
+            className={isFiremat ? "bg-firemat-bg" : "bg-beck-bg-light"}
             style={{
               padding: 16,
               paddingTop: isMobile && collapsed ? 56 : 16,
@@ -306,103 +374,138 @@ const AppShell: React.FC = () => {
             <div className="mx-auto max-w-6xl">
               <Routes>
                 <Route path="/auth/callback" element={<AuthCallback />} />
+
+                {/* Root: redirect based on session */}
                 <Route path="/" element={<Navigate to={homeRoute} replace />} />
 
+                {/* Legacy redirects (backward compatibility) */}
+                <Route path="/dashboard" element={<Navigate to="/beck/dashboard" replace />} />
+                <Route path="/dashboard/funnel" element={<Navigate to="/beck/funnel" replace />} />
+                <Route path="/registro" element={<Navigate to="/beck/registro" replace />} />
+                <Route path="/ingenieria" element={<Navigate to="/beck/procesamiento-ingenieria" replace />} />
+                <Route path="/reportes" element={<Navigate to="/beck/reportes" replace />} />
+                <Route path="/junta-espuma" element={<Navigate to="/beck/junta-lineal-espuma" replace />} />
+                <Route path="/cotizaciones" element={<Navigate to="/beck/cotizaciones" replace />} />
+                <Route path="/movimientos" element={<Navigate to="/beck/movimientos" replace />} />
+                <Route path="/obras" element={<Navigate to="/beck/obras" replace />} />
+                <Route path="/configuracion" element={<Navigate to="/beck/usuarios-parametros" replace />} />
+
+                {/* ── Beck routes ─────────────────────────────── */}
                 <Route
-                  path="/dashboard"
+                  path="/beck/dashboard"
                   element={
                     access.dashboard ? (
-                      <Dashboard themeMode={themeMode} />
+                      <BeckDashboard themeMode={themeMode} />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )
                   }
                 />
                 <Route
-                  path="/dashboard/funnel"
+                  path="/beck/funnel"
                   element={
                     access.funnel ? (
-                      <FunnelPage themeMode={themeMode} />
+                      <BeckFunnel themeMode={themeMode} />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )
                   }
                 />
                 <Route
-                  path="/registro"
-                  element={
-                    access.registro ? (
-                      <RegistroSellos themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/ingenieria"
-                  element={
-                    access.ingenieria ? (
-                      <Ingenieria themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/reportes"
-                  element={
-                    access.reportes ? (
-                      <Reportes themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/junta-espuma"
-                  element={
-                    access.juntaEspuma ? (
-                      <JuntaLinealEspuma themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/cotizaciones"
+                  path="/beck/cotizaciones"
                   element={
                     access.cotizaciones ? (
-                      <Cotizaciones themeMode={themeMode} />
+                      <BeckCotizaciones themeMode={themeMode} />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )
                   }
                 />
                 <Route
-                  path="/movimientos"
-                  element={
-                    access.movimientos ? (
-                      <Movimientos />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/obras"
+                  path="/beck/obras"
                   element={
                     access.obras ? (
-                      <Obras />
+                      <BeckObras />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )
                   }
                 />
                 <Route
-                  path="/configuracion"
+                  path="/beck/reportes"
+                  element={
+                    access.reportes ? (
+                      <BeckReportes themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/movimientos"
+                  element={
+                    access.movimientos ? (
+                      <BeckMovimientos />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/registro"
+                  element={
+                    access.registro ? (
+                      <BeckRegistro themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/procesamiento-ingenieria"
+                  element={
+                    access.ingenieria ? (
+                      <BeckProcesamientoIngenieria themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/junta-lineal-espuma"
+                  element={
+                    access.juntaEspuma ? (
+                      <BeckJuntaLinealEspuma themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/usuarios-parametros"
                   element={
                     access.configuracion ? (
-                      <Configuracion themeMode={themeMode} />
+                      <BeckUsuariosParametros themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+
+                {/* ── Firemat routes ──────────────────────────── */}
+                <Route path="/firemat/dashboard" element={renderFirematRoute(<FirematDashboard />)} />
+                <Route path="/firemat/funnel" element={renderFirematRoute(<FirematFunnel />)} />
+                <Route path="/firemat/cotizaciones" element={renderFirematRoute(<FirematCotizaciones />)} />
+                <Route path="/firemat/productos" element={renderFirematRoute(<FirematProductos />)} />
+                <Route path="/firemat/inventario" element={renderFirematRoute(<FirematInventario />)} />
+                <Route path="/firemat/ventas" element={renderFirematRoute(<FirematVentas />)} />
+                <Route path="/firemat/reportes" element={renderFirematRoute(<FirematReportes />)} />
+                <Route path="/firemat/movimientos" element={renderFirematRoute(<FirematMovimientos />)} />
+                <Route
+                  path="/firemat/usuarios-parametros"
+                  element={
+                    access.firemat && access.configuracion ? (
+                      <FirematUsuariosParametros />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )

@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { isAxiosError } from "axios";
 import dayjs from "dayjs";
-import { Button, Card, Select, Switch, Table, Tag, message } from "antd";
+import { Button, Card, Form, Input, Modal, Select, Switch, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
-import { useAuth } from "../context/useAuth";
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import { useAuth } from "../../context/useAuth";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 import {
   usuariosAPI,
   type UsuarioApi,
   type UsuarioApiRol,
-} from "../services/api";
+} from "../../services/api";
 
 type ConfiguracionProps = {
   themeMode: ThemeMode;
@@ -20,6 +20,7 @@ const roleOptions: Array<{ label: string; value: UsuarioApiRol }> = [
   { label: "Administrador", value: "administrador" },
   { label: "Vendedor", value: "vendedor" },
   { label: "Terreno", value: "terreno" },
+  { label: "Jefe de obra", value: "jefeobra"},
   { label: "Ingenieria", value: "ingenieria" },
   { label: "Visualizador", value: "visualizador" },
 ];
@@ -28,6 +29,7 @@ const roleLabels: Record<UsuarioApiRol, string> = {
   administrador: "Administrador",
   vendedor: "Vendedor",
   terreno: "Terreno",
+  jefeobra: "Jefe de obra",
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
 };
@@ -36,6 +38,7 @@ const roleTagColor: Record<UsuarioApiRol, string> = {
   administrador: "volcano",
   vendedor: "purple",
   terreno: "green",
+  jefeobra: "cyan",
   ingenieria: "gold",
   visualizador: "geekblue",
 };
@@ -76,6 +79,15 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
   const [reloadKey, setReloadKey] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form] = Form.useForm<{
+    nombre: string;
+    email: string;
+    password: string;
+    rol: UsuarioApiRol;
+    activo: boolean;
+  }>();
 
   useEffect(() => {
     let isMounted = true;
@@ -130,6 +142,30 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
   const refreshUsuarios = () => {
     setReloadKey((prev) => prev + 1);
   };
+
+  const crearUsuario = async () => {
+  try {
+    const values = await form.validateFields();
+    setCreating(true);
+
+    const nuevoUsuario = await usuariosAPI.crear({
+      nombre: values.nombre,
+      email: values.email,
+      password: values.password,
+      rol: values.rol,
+      activo: values.activo,
+    });
+
+    setUsuarios((prev) => [nuevoUsuario, ...prev]);
+    form.resetFields();
+    setCreateOpen(false);
+    message.success("Usuario creado correctamente");
+  } catch (error) {
+    message.error(getErrorMessage(error, "No se pudo crear el usuario"));
+  } finally {
+    setCreating(false);
+  }
+};
 
   const syncCurrentSessionIfNeeded = async (updatedUsuario: UsuarioApi) => {
     if (!currentUser || currentUser.id !== updatedUsuario.id) {
@@ -321,8 +357,18 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
             </div>
 
             <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-3 text-[11px] leading-5 text-slate-600">
-              Aqui puedes modificar roles y gestionar el acceso de los integrantes
-              del equipo, asi como activar o desactivar perfiles de la plataforma.
+              <p className="mb-3">
+                Crea usuarios para que puedan ingresar a la app móvil con correo y contraseña.
+              </p>
+
+              <Button
+                type="primary"
+                icon={<UserAddOutlined />}
+                onClick={() => setCreateOpen(true)}
+                className="w-full bg-orange-500"
+              >
+                Crear usuario
+              </Button>
             </div>
           </div>
         </Card>
@@ -362,6 +408,66 @@ const Configuracion: React.FC<ConfiguracionProps> = ({ themeMode }) => {
           />
         </Card>
       </div>
+        <Modal
+            title="Crear usuario app"
+            open={createOpen}
+            onCancel={() => setCreateOpen(false)}
+            onOk={crearUsuario}
+            confirmLoading={creating}
+            okText="Crear usuario"
+            cancelText="Cancelar"
+          >
+            <Form
+              form={form}
+              layout="vertical"
+              initialValues={{
+                rol: "terreno",
+                activo: true,
+              }}
+            >
+              <Form.Item
+                label="Nombre"
+                name="nombre"
+                rules={[{ required: true, message: "Ingresa el nombre" }]}
+              >
+                <Input placeholder="Ej: Juan Pérez" />
+              </Form.Item>
+
+              <Form.Item
+                label="Correo"
+                name="email"
+                rules={[
+                  { required: true, message: "Ingresa el correo" },
+                  { type: "email", message: "Correo no válido" },
+                ]}
+              >
+                <Input placeholder="usuario@becksoluciones.cl" />
+              </Form.Item>
+
+              <Form.Item
+                label="Contraseña"
+                name="password"
+                rules={[
+                  { required: true, message: "Ingresa una contraseña" },
+                  { min: 6, message: "Mínimo 6 caracteres" },
+                ]}
+              >
+                <Input.Password placeholder="Contraseña para la app" />
+              </Form.Item>
+
+              <Form.Item
+                label="Rol"
+                name="rol"
+                rules={[{ required: true, message: "Selecciona un rol" }]}
+              >
+                <Select options={roleOptions} />
+              </Form.Item>
+
+              <Form.Item label="Activo" name="activo" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </Form>
+        </Modal>
     </div>
   );
 };

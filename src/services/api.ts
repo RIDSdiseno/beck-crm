@@ -150,6 +150,7 @@ export interface LoginResponse {
       | "administrador"
       | "vendedor"
       | "terreno"
+      | "jefeobra"
       | "ingenieria"
       | "visualizador";
   };
@@ -173,13 +174,14 @@ export interface CotizacionApiRecord {
 }
 
 export interface CotizacionLineaPayload {
-  tipoLinea: "PRODUCTO" | "SERVICIO";
+  tipoLinea: "PRODUCTO" | "SERVICIO" | "MANUAL" | "PRODUCTO_FIREMAT";
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
   subtotal: number;
   orden: number;
   gananciaPct: number;
+  productoFirematId?: number;
 }
 
 export interface CotizacionUpsertPayload {
@@ -610,7 +612,8 @@ export type UsuarioApiRol =
   | "vendedor"
   | "terreno"
   | "ingenieria"
-  | "visualizador";
+  | "visualizador"
+  | "jefeobra";
 
 export interface UsuarioApi {
   id: string;
@@ -628,6 +631,13 @@ export interface ActualizarUsuarioInput {
   rol?: UsuarioApiRol;
   activo?: boolean;
 }
+export interface CrearUsuarioInput {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: UsuarioApiRol;
+  activo?: boolean;
+}
 
 export interface EliminarUsuarioResponse {
   message: string;
@@ -636,6 +646,11 @@ export interface EliminarUsuarioResponse {
 export const usuariosAPI = {
   listar: async () => {
     const response = await api.get<UsuarioApi[]>("/usuarios");
+    return response.data;
+  },
+
+  crear: async (data: CrearUsuarioInput) => {
+    const response = await api.post<UsuarioApi>("/usuarios", data);
     return response.data;
   },
 
@@ -680,6 +695,204 @@ export const statsAPI = {
 
 export default api;
 
+export type ProductoFiremat = {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  precio: number;
+  stock: number;
+  stockReservado: number;
+  stockDisponible: number;
+  minStock: number;
+  activo: boolean;
+  criticidad: string;
+  ubicacion?: string | null;
+  imagen?: string | null;
+  categoria?: string | null;
+  categoriaId: number;
+  alertaStockBajo: boolean;
+  createdAt: string;
+};
+
+export const firematProductosAPI = {
+  listar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+  }): Promise<ProductoFiremat[]> => {
+    const response = await api.get<ApiResponseEnvelope<ProductoFiremat[]>>(
+      "/firemat/productos",
+      { params }
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
+export type InventarioFirematItem = {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  categoria?: string | null;
+  categoriaId: number;
+  stock: number;
+  stockReservado: number;
+  stockDisponible: number;
+  minStock: number;
+  estadoStock: "SIN_STOCK" | "BAJO_STOCK" | "OK";
+  alertaStockBajo: boolean;
+  criticidad: string;
+  ubicacion?: string | null;
+  activo: boolean;
+  imagen?: string | null;
+  precio: number;
+  createdAt: string;
+};
+
+export type InventarioFirematResumen = {
+  totalProductos: number;
+  productosActivos: number;
+  productosInactivos: number;
+  productosSinStock: number;
+  productosBajoStock: number;
+  stockTotal: number;
+  stockReservadoTotal: number;
+  stockDisponibleTotal: number;
+};
+
+type InventarioApiEnvelope = {
+  success: boolean;
+  data: InventarioFirematItem[];
+  resumen: InventarioFirematResumen;
+  message?: string;
+  error?: string;
+};
+
+export type MovimientoFiremat = {
+  id: number;
+  tipo: string;
+  cantidad: number;
+  stockAnterior: number;
+  stockNuevo: number;
+  motivo?: string | null;
+  documento?: string | null;
+  productoId: number;
+  productoNombre: string;
+  userId?: number | null;
+  createdAt: string;
+};
+
+type MovimientosApiEnvelope = {
+  success: boolean;
+  data: MovimientoFiremat[];
+  message?: string;
+  error?: string;
+};
+
+export type VentaFiremat = {
+  id: number;
+  cliente: string;
+  contacto?: string | null;
+  cantidad: number;
+  precio: number;
+  total: number;
+  estado: string;
+  responsable?: string | null;
+  fechaCierre?: string | null;
+  createdAt: string;
+  producto?: { id: number; nombre: string } | null;
+  detalle: Array<{
+    id: number;
+    productoId: number;
+    nombreProducto: string;
+    cantidad: number;
+    precio: number;
+    subtotal: number;
+  }>;
+};
+
+export type VentasFirematResumen = {
+  totalVentas: number;
+  ventasCerradas: number;
+  ventasProspecto: number;
+  montoTotal: number;
+  montoCerrado: number;
+};
+
+type VentasApiEnvelope = {
+  success: boolean;
+  data: VentaFiremat[];
+  resumen: VentasFirematResumen;
+  message?: string;
+  error?: string;
+};
+
+export const firematVentasAPI = {
+  listar: async (params?: {
+    q?: string;
+    estado?: string;
+    desde?: string;
+    hasta?: string;
+  }): Promise<{ data: VentaFiremat[]; resumen: VentasFirematResumen }> => {
+    const res = await api.get<VentasApiEnvelope>("/firemat/ventas", { params });
+    const payload = res.data;
+    if (!payload.success) {
+      throw new Error(payload.message ?? payload.error ?? "Error al cargar ventas");
+    }
+    return {
+      data: payload.data ?? [],
+      resumen: payload.resumen ?? {
+        totalVentas: 0,
+        ventasCerradas: 0,
+        ventasProspecto: 0,
+        montoTotal: 0,
+        montoCerrado: 0,
+      },
+    };
+  },
+};
+
+export const firematInventarioAPI = {
+  listar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+    bajoStock?: boolean;
+    criticidad?: string;
+  }): Promise<{ data: InventarioFirematItem[]; resumen: InventarioFirematResumen }> => {
+    const res = await api.get<InventarioApiEnvelope>("/firemat/inventario", { params });
+    const payload = res.data;
+    if (!payload.success) {
+      throw new Error(payload.message ?? payload.error ?? "Error al cargar inventario");
+    }
+    return {
+      data: payload.data ?? [],
+      resumen: payload.resumen ?? {
+        totalProductos: 0,
+        productosActivos: 0,
+        productosInactivos: 0,
+        productosSinStock: 0,
+        productosBajoStock: 0,
+        stockTotal: 0,
+        stockReservadoTotal: 0,
+        stockDisponibleTotal: 0,
+      },
+    };
+  },
+
+  movimientos: async (params?: {
+    productoId?: number;
+    tipo?: string;
+    desde?: string;
+    hasta?: string;
+  }): Promise<MovimientosApiEnvelope> => {
+    const res = await api.get<MovimientosApiEnvelope>(
+      "/firemat/inventario/movimientos",
+      { params }
+    );
+    return res.data;
+  },
+};
+
 export type MovimientoCRMRecord = {
   id: string;
   usuarioId: string;
@@ -699,7 +912,9 @@ export type MovimientoCRMRecord = {
     | "USUARIO_ACTIVADO"
     | "USUARIO_DESACTIVADO"
     | "ROL_CAMBIADO"
-    | "OBRA_CREADA";
+    | "OBRA_CREADA"
+    | "OBRA_EDITADA"
+    | "OBRA_ELIMINADA";
   entidadId?: string | null;
   descripcion: string;
   datos?: unknown;

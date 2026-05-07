@@ -1,0 +1,10 @@
+export { default as BeckDashboard } from "./Dashboard";
+export { default as BeckFunnel } from "./Funnel";
+export { default as BeckCotizaciones } from "./Cotizaciones";
+export { default as BeckObras } from "./Obras";
+export { default as BeckReportes } from "./Reportes";
+export { default as BeckMovimientos } from "./Movimientos";
+export { default as BeckRegistro } from "./Registro";
+export { default as BeckProcesamientoIngenieria } from "./ProcesamientoIngenieria";
+export { default as BeckJuntaLinealEspuma } from "./JuntaLinealEspuma";
+export { default as BeckUsuariosParametros } from "./UsuariosParametros";

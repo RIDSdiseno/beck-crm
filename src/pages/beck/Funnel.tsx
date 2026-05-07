@@ -26,32 +26,32 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import dayjs, { Dayjs } from "dayjs";
-import CierreDeProyecto from "../components/Cierredeproyecto";
-import FunnelCalendario from "../components/FunnelCalendario";
+import CierreDeProyecto from "../../components/Cierredeproyecto";
+import FunnelCalendario from "../../components/FunnelCalendario";
 import CotizacionEditorModal, {
   type CotizacionEditorValues,
   type LineaCotizacion,
-} from "../components/CotizacionEditorModal";
-import { useAuth } from "../context/useAuth";
+} from "../../components/CotizacionEditorModal";
+import { useAuth } from "../../context/useAuth";
 import {
   cotizacionesAPI,
   fetchWithAuth,
   funnelBeckAPI,
   type CotizacionApiRecord,
   type CotizacionUpsertPayload,
-} from "../services/api";
+} from "../../services/api";
 
 import {
   regionesComunasChile,
   type RegionChile,
-} from "../data/regionesComunasChile";
-import type { ThemeMode } from "../hooks/useSystemTheme";
+} from "../../data/regionesComunasChile";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 import type {
   FunnelCurrency,
   FunnelDeal,
   FunnelLeadSource,
   FunnelStage,
-} from "../types/funnel";
+} from "../../types/funnel";
 
 type FunnelPageProps = {
   themeMode: ThemeMode;
@@ -614,19 +614,19 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
   onViewDetail,
   onCreateCotizacion,
 }) => {
-  void canEditFunnel;
   void onStageChange;
   void onCreateCotizacion;
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: deal.id,
+      disabled: !canEditFunnel,
     });
 
   return (
     <article
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
+      {...(canEditFunnel ? listeners : {})}
+      {...(canEditFunnel ? attributes : {})}
       className={`group cursor-pointer rounded-lg border border-beck-border-light bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:border-yellow-400 hover:z-20 ${
         isDragging ? "opacity-30" : ""
       }`}
@@ -670,6 +670,7 @@ const FunnelColumn: React.FC<FunnelColumnProps> = ({
 }) => {
   const { setNodeRef } = useDroppable({
     id: etapa,
+    disabled: !canEditFunnel,
   });
 
   return (
@@ -1106,6 +1107,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     user?.rol === "Vendedor" ||
     user?.rol === "Terreno" ||
     user?.rol === "Ingenieria";
+  const canManageGanancia = user?.rol === "Administrador";
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -1490,7 +1492,9 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         .map((linea, index) => {
           const cantidad = Math.max(1, Number(linea.cantidad || 0));
           const precioUnitario = Number(linea.precioUnitario || 0);
-          const gananciaPct = Number(linea.gananciaPct || 0);
+          const gananciaPct = canManageGanancia
+            ? Number(linea.gananciaPct || 0)
+            : 0;
           const tipoLinea: CotizacionUpsertPayload["lineas"][number]["tipoLinea"] =
             linea.tipoLinea === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
           const subtotal = calculateLineSubtotal(
@@ -1836,12 +1840,19 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canEditFunnel) return;
+
     const dealId = String(event.active.id);
     const deal = deals.find((item) => item.id === dealId) ?? null;
     setActiveDragDeal(deal);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canEditFunnel) {
+      setActiveDragDeal(null);
+      return;
+    }
+
     const dealId = String(event.active.id);
     const nuevaEtapa = event.over?.id as FunnelStage | undefined;
 
@@ -2503,6 +2514,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
           initialValues={cotizacionEditorInitialValues}
           submitting={cotizacionSaving}
           lockFunnelSelection={cotizacionEditorLockedFunnel}
+          canManageGanancia={canManageGanancia}
           onClose={() => {
             if (cotizacionSaving) {
               return;

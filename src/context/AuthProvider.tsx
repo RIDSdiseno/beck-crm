@@ -23,10 +23,13 @@ import {
 const ROLE_MAP: Record<string, RolUsuario> = {
   administrador: "Administrador",
   terreno: "Terreno",
+  jefeobra: "JefeObra",
   vendedor: "Vendedor",
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
 };
+
+const CRM_ACCESS_DENIED_MESSAGE = "Este usuario no tiene acceso al CRM web.";
 
 type BackendUser = {
   id?: unknown;
@@ -39,8 +42,12 @@ const isRolUsuario = (value: unknown): value is RolUsuario =>
   value === "Administrador" ||
   value === "Vendedor" ||
   value === "Terreno" ||
+  value === "JefeObra" ||
   value === "Ingenieria" ||
   value === "Visualizador";
+
+const isCrmBlockedRole = (rol: RolUsuario): boolean =>
+  rol === "Terreno" || rol === "JefeObra";
 
 const isSameAuthUser = (left: AuthUser | null, right: AuthUser): boolean =>
   Boolean(
@@ -76,7 +83,7 @@ const buildAuthUser = (user: LoginResponse["user"]): AuthUser => ({
   id: user.id,
   nombre: user.nombre,
   email: user.email,
-  rol: ROLE_MAP[user.rol] || "Visualizador",
+  rol: ROLE_MAP[user.rol.trim().toLowerCase()] || "Visualizador",
 });
 
 const buildAuthUserFromBackend = (value: unknown): AuthUser | null => {
@@ -102,7 +109,7 @@ const buildAuthUserFromBackend = (value: unknown): AuthUser | null => {
     id: user.id,
     nombre: user.nombre,
     email: user.email,
-    rol: ROLE_MAP[user.rol] || "Visualizador",
+    rol: ROLE_MAP[user.rol.trim().toLowerCase()] || "Visualizador",
   };
 };
 
@@ -146,6 +153,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         const response = await authAPI.login(email, password);
         const authUser = buildAuthUser(response.user);
+
+        if (isCrmBlockedRole(authUser.rol)) {
+          clearStoredSession();
+          throw new Error(CRM_ACCESS_DENIED_MESSAGE);
+        }
 
         persistSession(authUser, response.token);
         setUser(authUser);

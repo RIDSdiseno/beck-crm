@@ -281,13 +281,15 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
         </Form>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
-          <Button
-            onClick={() => {
-              void onDownloadPdf?.(registro);
-            }}
-          >
-            Descargar PDF
-          </Button>
+          {onDownloadPdf && (
+            <Button
+              onClick={() => {
+                void onDownloadPdf(registro);
+              }}
+            >
+              Descargar PDF
+            </Button>
+          )}
           <Button onClick={onClose}>Cerrar</Button>
           {canEditRegistro && (
             <Button

@@ -5,7 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { ThunderboltOutlined, FireOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 
 type JuntaEspumaRow = {
   key: number;

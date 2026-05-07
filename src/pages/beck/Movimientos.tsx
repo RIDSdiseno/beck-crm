@@ -12,7 +12,7 @@ import dayjs from "dayjs";
 import {
   movimientosCrmAPI,
   type MovimientoCRMRecord,
-} from "../services/api";
+} from "../../services/api";
 
 const moduloOptions = [
   { label: "Todos", value: "" },
@@ -45,6 +45,8 @@ const tipoLabel: Record<string, string> = {
   USUARIO_DESACTIVADO: "Usuario desactivado",
   ROL_CAMBIADO: "Rol cambiado",
   OBRA_CREADA: "Obra creada",
+  OBRA_EDITADA: "Obra editada",
+  OBRA_ELIMINADA: "Obra eliminada",
 };
 
 const getModuloIcon = (modulo: string) => {

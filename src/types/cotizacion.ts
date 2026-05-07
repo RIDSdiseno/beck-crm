@@ -12,7 +12,7 @@ export type TipoCotizacion =
   | "Mantencion"
   | "Otro";
 
-export type TipoLineaCotizacion = "PRODUCTO" | "SERVICIO";
+export type TipoLineaCotizacion = "PRODUCTO" | "SERVICIO" | "MANUAL" | "PRODUCTO_FIREMAT";
 
 export type CotizacionLinea = {
   id?: string | number;
@@ -23,6 +23,7 @@ export type CotizacionLinea = {
   subtotal: number;
   orden: number;
   gananciaPct: number;
+  productoFirematId?: number | null;
 };
 
 export type Cotizacion = {

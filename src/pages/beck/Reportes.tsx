@@ -24,8 +24,8 @@ import {
   CartesianGrid,
 } from "recharts";
 
-import type { ThemeMode } from "../hooks/useSystemTheme";
-import type { RegistroSello } from "../types/registroSello";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
+import type { RegistroSello } from "../../types/registroSello";
 
 type ReportesProps = {
   themeMode: ThemeMode;

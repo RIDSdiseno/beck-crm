@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Button, Checkbox, Form, Input } from "antd";
+import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Button, Checkbox, Form, Input, message } from "antd";
 import {
   LockOutlined,
   SafetyCertificateOutlined,
@@ -24,10 +25,33 @@ const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").re
   ""
 );
 const MICROSOFT_LOGIN_URL = `${API_URL}/auth/microsoft/login`;
+const CRM_ACCESS_DENIED_MESSAGE = "Este usuario no tiene acceso al CRM web.";
 
 const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
   const isDark = themeMode === "dark";
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+
+    if (searchParams.get("crmAccess") !== "denied") {
+      return;
+    }
+
+    message.error(CRM_ACCESS_DENIED_MESSAGE);
+    searchParams.delete("crmAccess");
+
+    const nextSearch = searchParams.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+      },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate]);
 
   const handleFinish = (values: LoginFormValues) => {
     onLogin({ email: values.email, password: values.password });
@@ -82,30 +106,29 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-50">
-                    BECK Soluciones
+                    CRM BECK / FIREMAT
                   </p>
                   <p className="text-[11px] text-slate-300">
-                    CRM de sellos cortafuego
+                    Sistema integrado de gestión comercial
                   </p>
                 </div>
               </div>
 
               <h2 className="mt-8 text-2xl font-semibold leading-snug text-slate-50">
-                Controla tu obra con precisión,
+                Gestión comercial, obras e inventario
                 <br />
-                sin salir de un solo panel.
+                en un solo panel.
               </h2>
               <p className="mt-3 text-xs text-slate-300">
-                El CRM BECK centraliza el registro de sellos cortafuego, fotos,
-                factores y KPIs de avance. Desde aquí se alimentan los reportes
-                hacia mandantes, contratistas y supervisión interna.
+                Sistema integrado de gestión comercial, obras, cotizaciones e
+                inventario para BECK Soluciones y Firemat.
               </p>
             </div>
 
             <div className="mt-6 space-y-2 text-[11px] text-slate-300">
-              <p>• Registro rápido de itemizado BECK / SACYR desde obra.</p>
-              <p>• KPIs en tiempo real por piso, equipo y tipo de sello.</p>
-              <p>• Integración futura con Cloudinary y microservicios BECK.</p>
+              <p>• Gestión de cotizaciones, obras y pipeline comercial.</p>
+              <p>• Control de stock, inventario y ventas Firemat.</p>
+              <p>• KPIs en tiempo real por empresa, equipo y módulo.</p>
             </div>
           </motion.div>
 
@@ -139,8 +162,8 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
                   isDark ? "text-slate-400" : "text-slate-500"
                 }`}
               >
-                Usa tus credenciales corporativas BECK. El acceso con Microsoft
-                ahora se inicia desde el backend.
+                Usa tus credenciales corporativas. El acceso con Microsoft se
+                inicia desde el backend.
               </p>
             </div>
 
@@ -238,8 +261,8 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
                   isDark ? "text-slate-500" : "text-slate-600"
                 }`}
               >
-                Esta es una versión demo. La validación real se hará contra el
-                microservicio de autenticación en el backend.
+                La validación se realiza contra el microservicio de
+                autenticación del backend.
               </p>
             </Form>
           </motion.div>

@@ -10,7 +10,7 @@ import {
   ApartmentOutlined,
   AimOutlined,
 } from "@ant-design/icons";
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 
 type DashboardProps = {
   themeMode: ThemeMode; // se recibe, pero el tema es siempre claro

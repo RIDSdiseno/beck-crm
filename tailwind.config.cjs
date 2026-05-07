@@ -19,6 +19,12 @@ module.exports = {
         "beck-card-light": "#FFFFFF",
         "beck-border-dark": "#202636",
         "beck-border-light": "#D8DCD6",
+        "firemat-primary": "#E63C1E",
+        "firemat-primary-dark": "#C0301A",
+        "firemat-accent": "#F4956A",
+        "firemat-bg": "#F5F3F3",
+        "firemat-surface": "#FFF9F8",
+        "firemat-border": "#DDD1D0",
       },
       boxShadow: {
         "beck-soft": "0 18px 35px rgba(0,0,0,0.35)",

@@ -1,4 +1,10 @@
-export type RolUsuario = "Administrador" | "Terreno" | "Ingenieria" | "Visualizador" | "Vendedor";
+export type RolUsuario =
+  | "Administrador"
+  | "Terreno"
+  | "JefeObra"
+  | "Ingenieria"
+  | "Visualizador"
+  | "Vendedor";
 
 export type Usuario = {
   id: string;

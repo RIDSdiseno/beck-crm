@@ -9,14 +9,19 @@ import {
 import type { RolUsuario } from "../types/usuario";
 
 const POST_LOGIN_REDIRECT = "/dashboard";
+const CRM_ACCESS_DENIED_REDIRECT = "/login?crmAccess=denied";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
   administrador: "Administrador",
   terreno: "Terreno",
+  jefeobra: "JefeObra",
   vendedor: "Vendedor",
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
 };
+
+const isCrmBlockedRole = (rol: RolUsuario): boolean =>
+  rol === "Terreno" || rol === "JefeObra";
 
 let activeCallbackKey: string | null = null;
 let activeCallbackPromise: Promise<void> | null = null;
@@ -51,7 +56,7 @@ const parseAuthUser = (value: unknown): AuthUser | null => {
     id: user.id,
     nombre: user.nombre,
     email: user.email,
-    rol: ROLE_MAP[user.rol] || "Visualizador",
+    rol: ROLE_MAP[user.rol.trim().toLowerCase()] || "Visualizador",
   };
 };
 
@@ -91,6 +96,12 @@ const AuthCallback: React.FC = () => {
 
         if (!authUser) {
           throw new Error("No se pudo obtener el usuario autenticado");
+        }
+
+        if (isCrmBlockedRole(authUser.rol)) {
+          clearStoredSession();
+          redirectTo(CRM_ACCESS_DENIED_REDIRECT);
+          return;
         }
 
         window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));

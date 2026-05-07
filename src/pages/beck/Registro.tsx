@@ -12,21 +12,21 @@ import {
   TeamOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 import dayjs, { Dayjs } from "dayjs";
 import * as XLSX from "xlsx";
 
-import type { RegistroSello } from "../types/registroSello";
-import DateRangeQuickFilter from "../components/DateRangeQuickFilter";
+import type { RegistroSello } from "../../types/registroSello";
+import DateRangeQuickFilter from "../../components/DateRangeQuickFilter";
 import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
-} from "../components/RegistroDetalleModal";
+} from "../../components/RegistroDetalleModal";
 import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
-} from "../components/NuevoRegistroDrawer";
-import { loadObras } from "../data/obrasStorage";
-import { api } from "../services/api";
-import { useAuth } from "../context/useAuth";
+} from "../../components/NuevoRegistroDrawer";
+import { loadObras } from "../../data/obrasStorage";
+import { api } from "../../services/api";
+import { useAuth } from "../../context/useAuth";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
@@ -189,6 +189,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const { user } = useAuth();
   const canReview =
+    user?.rol === "Administrador" || user?.rol === "Ingenieria";
+  const canCreateRegistro = user?.rol === "Administrador";
+  const canDownloadPdf =
     user?.rol === "Administrador" || user?.rol === "Ingenieria";
   const [openDrawer, setOpenDrawer] = useState(false);
 
@@ -815,14 +818,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <Button icon={<FireOutlined />} disabled className="text-xs">
             Subir foto (Cloudinary pronto)
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
-            onClick={openNuevo}
-          >
-            Nuevo registro
-          </Button>
+          {canCreateRegistro && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
+              onClick={openNuevo}
+            >
+              Nuevo registro
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1048,15 +1053,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         onClose={() => setRegistroDetalle(null)}
         onEdit={() => setDetalleMode("edit")}
         onSave={handleGuardarDetalle}
-        onDownloadPdf={handleDescargarPdf}
+        onDownloadPdf={canDownloadPdf ? handleDescargarPdf : undefined}
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}
-      <NuevoRegistroDrawer
-        open={openDrawer}
-        onClose={() => setOpenDrawer(false)}
-        onSubmit={handleSubmit}
-      />
+      {canCreateRegistro && (
+        <NuevoRegistroDrawer
+          open={openDrawer}
+          onClose={() => setOpenDrawer(false)}
+          onSubmit={handleSubmit}
+        />
+      )}
     </div>
   );
 };

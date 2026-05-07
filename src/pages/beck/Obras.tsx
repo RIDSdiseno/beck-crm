@@ -19,7 +19,8 @@ import {
   PlusOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
-import { obrasAPI, usuariosAPI, type Obra, type UsuarioApi } from "../services/api";
+import { useAuth } from "../../context/useAuth";
+import { obrasAPI, usuariosAPI, type Obra, type UsuarioApi } from "../../services/api";
 
 type EstadoForm = "activa" | "inactiva" | "pausada" | "finalizada";
 
@@ -91,6 +92,8 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 const Obras: React.FC = () => {
+  const { user } = useAuth();
+  const canManageObras = user?.rol !== "Visualizador";
   const [obras, setObras] = useState<Obra[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioApi[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,12 +123,15 @@ const Obras: React.FC = () => {
     const cargarDatos = async () => {
       setLoading(true);
       try {
-        const [obrasData, usuariosData] = await Promise.all([
-          obrasAPI.listar(),
-          usuariosAPI.listar(),
-        ]);
+        const obrasData = await obrasAPI.listar();
         setObras(obrasData);
-        setUsuarios(usuariosData);
+
+        if (canManageObras) {
+          const usuariosData = await usuariosAPI.listar();
+          setUsuarios(usuariosData);
+        } else {
+          setUsuarios([]);
+        }
       } catch (error) {
         message.error(getErrorMessage(error, "Error al cargar los datos"));
       } finally {
@@ -133,9 +139,11 @@ const Obras: React.FC = () => {
       }
     };
     void cargarDatos();
-  }, []);
+  }, [canManageObras]);
 
   const handleCrear = async (values: ObraFormValues) => {
+    if (!canManageObras) return;
+
     setSaving(true);
     try {
       const payload: Parameters<typeof obrasAPI.crear>[0] = {
@@ -164,7 +172,7 @@ const Obras: React.FC = () => {
   };
 
   const handleGuardarEdicion = async (values: ObraFormValues) => {
-    if (!obraSeleccionada) return;
+    if (!canManageObras || !obraSeleccionada) return;
 
     setSaving(true);
     try {
@@ -206,6 +214,8 @@ const Obras: React.FC = () => {
   };
 
   const handleSubmitObra = (values: ObraFormValues) => {
+    if (!canManageObras) return;
+
     if (modalMode === "editar") {
       void handleGuardarEdicion(values);
       return;
@@ -215,6 +225,8 @@ const Obras: React.FC = () => {
   };
 
   const openCrear = () => {
+    if (!canManageObras) return;
+
     setModalMode("crear");
     setObraSeleccionada(null);
     form.resetFields();
@@ -223,6 +235,8 @@ const Obras: React.FC = () => {
   };
 
   const openEditar = async (obra: Obra) => {
+    if (!canManageObras) return;
+
     setModalMode("editar");
     setModalOpen(true);
     setLoadingUsuariosObra(true);
@@ -251,6 +265,8 @@ const Obras: React.FC = () => {
   };
 
   const openAsignar = async (obra: Obra) => {
+    if (!canManageObras) return;
+
     setAsignarOpen(true);
     setLoadingUsuariosObra(true);
     try {
@@ -272,7 +288,7 @@ const Obras: React.FC = () => {
   };
 
   const handleAsignarUsuarios = async (values: AsignarUsuariosFormValues) => {
-    if (!obraSeleccionada) return;
+    if (!canManageObras || !obraSeleccionada) return;
 
     setAssigning(true);
     try {
@@ -297,6 +313,8 @@ const Obras: React.FC = () => {
   };
 
   const handleEliminar = (obra: Obra) => {
+    if (!canManageObras) return;
+
     Modal.confirm({
       title: "Eliminar obra",
       content: `¿Estás seguro de eliminar "${obra.nombre}"? Esta acción no se puede deshacer.`,
@@ -347,37 +365,41 @@ const Obras: React.FC = () => {
         );
       },
     },
-    {
-      title: "Acciones",
-      key: "acciones",
-      width: 250,
-      render: (_: unknown, record: Obra) => (
-        <Space size={6} wrap>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEditar(record)}
-          >
-            Editar
-          </Button>
-          <Button
-            size="small"
-            icon={<TeamOutlined />}
-            onClick={() => openAsignar(record)}
-          >
-            Asignar
-          </Button>
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleEliminar(record)}
-          >
-            Eliminar
-          </Button>
-        </Space>
-      ),
-    },
+    ...(canManageObras
+      ? [
+          {
+            title: "Acciones",
+            key: "acciones",
+            width: 250,
+            render: (_: unknown, record: Obra) => (
+              <Space size={6} wrap>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => openEditar(record)}
+                >
+                  Editar
+                </Button>
+                <Button
+                  size="small"
+                  icon={<TeamOutlined />}
+                  onClick={() => openAsignar(record)}
+                >
+                  Asignar
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleEliminar(record)}
+                >
+                  Eliminar
+                </Button>
+              </Space>
+            ),
+          },
+        ]
+      : []),
   ];
 
   const usuarioOptions = usuarios
@@ -395,13 +417,15 @@ const Obras: React.FC = () => {
             Gestiona las obras del sistema
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={openCrear}
-        >
-          Crear obra
-        </Button>
+        {canManageObras && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCrear}
+          >
+            Crear obra
+          </Button>
+        )}
       </div>
 
       <Card

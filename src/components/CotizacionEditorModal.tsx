@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   Form,
@@ -19,11 +19,14 @@ import {
   DollarOutlined,
   FileTextOutlined,
   DeleteOutlined,
+  FireOutlined,
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import {
   funnelBeckAPI,
+  firematProductosAPI,
   type FunnelBeckOpportunity,
+  type ProductoFiremat,
 } from "../services/api";
 import type {
   CotizacionLinea,
@@ -65,6 +68,7 @@ type CotizacionEditorModalProps = {
   onSubmit: (values: CotizacionEditorValues) => void;
   submitting?: boolean;
   lockFunnelSelection?: boolean;
+  canManageGanancia?: boolean;
 };
 
 type LineaTabla = {
@@ -74,6 +78,7 @@ type LineaTabla = {
   cantidad: number;
   precioUnitario: number;
   gananciaPct: number;
+  productoFirematId?: number | null;
 };
 
 const estadosOptions: EstadoCotizacion[] = [
@@ -88,7 +93,8 @@ let lineaCounter = 0;
 const newKey = () => `linea-${++lineaCounter}`;
 
 const buildLineasState = (
-  source?: LineaCotizacion[]
+  source: LineaCotizacion[] | undefined,
+  canManageGanancia: boolean
 ): LineaTabla[] =>
   source?.map((linea) => ({
     key: newKey(),
@@ -96,7 +102,8 @@ const buildLineasState = (
     descripcion: linea.descripcion,
     cantidad: linea.cantidad,
     precioUnitario: linea.precioUnitario,
-    gananciaPct: Number(linea.gananciaPct ?? 0),
+    gananciaPct: canManageGanancia ? Number(linea.gananciaPct ?? 0) : 0,
+    productoFirematId: linea.productoFirematId ?? null,
   })) ?? [];
 
 const calculateLineaSubtotal = (
@@ -116,9 +123,15 @@ const getOpportunityLabel = (opportunity: FunnelBeckOpportunity) => {
   const proyecto = String(opportunity.nombreProyecto || "").trim();
   const empresa =
     typeof opportunity.empresa === "string" ? opportunity.empresa.trim() : "";
-
   return empresa ? `${proyecto} - ${empresa}` : proyecto;
 };
+
+const TIPO_LINEA_OPTIONS = [
+  { label: "Manual", value: "MANUAL" },
+  { label: "Prod. Firemat", value: "PRODUCTO_FIREMAT" },
+  { label: "Producto", value: "PRODUCTO" },
+  { label: "Servicio", value: "SERVICIO" },
+];
 
 const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   open,
@@ -128,14 +141,15 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   onSubmit,
   submitting = false,
   lockFunnelSelection = false,
+  canManageGanancia = false,
 }) => {
   const [form] = Form.useForm<CotizacionEditorValues>();
   const [modalWidth, setModalWidth] = useState(980);
-  const [lineas, setLineas] = useState<LineaTabla[]>(() =>
-    buildLineasState(initialValues?.lineas)
-  );
+  const [lineas, setLineas] = useState<LineaTabla[]>([]);
   const [opportunities, setOpportunities] = useState<FunnelBeckOpportunity[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(false);
+  const [productos, setProductos] = useState<ProductoFiremat[]>([]);
+  const [productosLoading, setProductosLoading] = useState(false);
 
   const descuento =
     (Form.useWatch("descuento", form) as number | undefined) ?? 0;
@@ -146,22 +160,18 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
   useEffect(() => {
     const updateWidth = () => {
-      if (typeof window === "undefined") {
-        return;
-      }
-
+      if (typeof window === "undefined") return;
       setModalWidth(Math.min(980, window.innerWidth - 24));
     };
-
     updateWidth();
     window.addEventListener("resize", updateWidth);
     return () => window.removeEventListener("resize", updateWidth);
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
+
+    setLineas(buildLineasState(initialValues?.lineas, canManageGanancia));
 
     const baseFecha = initialValues?.fecha
       ? dayjs(initialValues.fecha)
@@ -191,54 +201,64 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       descuento: initialValues?.descuento ?? 0,
       aplicaImpuesto: initialValues?.aplicaImpuesto ?? true,
     } as CotizacionEditorValues);
-  }, [form, initialValues, open]);
+  }, [canManageGanancia, form, initialValues, open]);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     let ignore = false;
 
     const loadOpportunities = async () => {
       try {
         setOpportunitiesLoading(true);
         const response = await funnelBeckAPI.listar();
-
-        if (!ignore) {
-          setOpportunities(response);
-        }
+        if (!ignore) setOpportunities(response);
       } catch (error) {
         if (!ignore) {
           setOpportunities([]);
-          message.error("No se pudieron cargar las oportunidades Beck");
+          void message.error("No se pudieron cargar las oportunidades Beck");
         }
-
         console.error("Error al cargar oportunidades Beck:", error);
       } finally {
-        if (!ignore) {
-          setOpportunitiesLoading(false);
-        }
+        if (!ignore) setOpportunitiesLoading(false);
       }
     };
 
     void loadOpportunities();
-
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let ignore = false;
+
+    const loadProductos = async () => {
+      try {
+        setProductosLoading(true);
+        const data = await firematProductosAPI.listar({ activo: true });
+        if (!ignore) setProductos(data);
+      } catch {
+        if (!ignore) setProductos([]);
+      } finally {
+        if (!ignore) setProductosLoading(false);
+      }
+    };
+
+    void loadProductos();
+    return () => { ignore = true; };
+  }, [open]);
+
+  const patchLinea = (key: string, fields: Partial<Omit<LineaTabla, "key">>) => {
+    setLineas((prev) =>
+      prev.map((linea) => (linea.key === key ? { ...linea, ...fields } : linea))
+    );
+  };
 
   const updateLinea = (
     key: string,
     field: keyof Omit<LineaTabla, "key">,
-    value: string | number
+    value: string | number | null
   ) => {
-    setLineas((prev) =>
-      prev.map((linea) =>
-        linea.key === key ? { ...linea, [field]: value } : linea
-      )
-    );
+    patchLinea(key, { [field]: value });
   };
 
   const eliminarLinea = (key: string) => {
@@ -248,7 +268,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   const agregarLinea = (
     tipoLinea: TipoLineaCotizacion,
     descripcion: string,
-    precioUnitario = 0
+    precioUnitario = 0,
+    productoFirematId?: number | null
   ) => {
     setLineas((prev) => [
       ...prev,
@@ -259,24 +280,17 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         cantidad: 1,
         precioUnitario,
         gananciaPct: 0,
+        productoFirematId: productoFirematId ?? null,
       },
     ]);
   };
 
   const handleOpportunityChange = (value?: string) => {
     form.setFieldValue("funnelBeckId", value);
+    if (!value) return;
 
-    if (!value) {
-      return;
-    }
-
-    const selectedOpportunity = opportunities.find(
-      (opportunity) => opportunity.id === value
-    );
-
-    if (!selectedOpportunity) {
-      return;
-    }
+    const selectedOpportunity = opportunities.find((o) => o.id === value);
+    if (!selectedOpportunity) return;
 
     const currentCliente = String(form.getFieldValue("cliente") || "").trim();
     const currentProyecto = String(form.getFieldValue("proyecto") || "").trim();
@@ -286,33 +300,39 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         : "";
     const nextProyecto = String(selectedOpportunity.nombreProyecto || "").trim();
 
-    if (!currentCliente && nextCliente) {
-      form.setFieldValue("cliente", nextCliente);
-    }
-
-    if ((mode === "create" || !currentProyecto) && nextProyecto) {
+    if (!currentCliente && nextCliente) form.setFieldValue("cliente", nextCliente);
+    if ((mode === "create" || !currentProyecto) && nextProyecto)
       form.setFieldValue("proyecto", nextProyecto);
-    }
   };
+
+  const productosOptions = useMemo(
+    () =>
+      productos.map((p) => ({
+        label: `${p.nombre}${p.alertaStockBajo ? ` ⚠ stock: ${p.stockDisponible}` : ""}`,
+        value: p.id,
+      })),
+    [productos]
+  );
 
   const columns: ColumnsType<LineaTabla> = [
     {
       title: "Tipo",
       dataIndex: "tipoLinea",
       key: "tipoLinea",
-      width: 120,
+      width: 140,
       render: (value: TipoLineaCotizacion, record) => (
         <Select
           size="small"
           value={value}
           style={{ width: "100%" }}
-          options={[
-            { label: "Producto", value: "PRODUCTO" },
-            { label: "Servicio", value: "SERVICIO" },
-          ]}
-          onChange={(nextValue) =>
-            updateLinea(record.key, "tipoLinea", nextValue)
-          }
+          options={TIPO_LINEA_OPTIONS}
+          onChange={(nextValue: TipoLineaCotizacion) => {
+            const updates: Partial<LineaTabla> = { tipoLinea: nextValue };
+            if (nextValue !== "PRODUCTO_FIREMAT") {
+              updates.productoFirematId = null;
+            }
+            patchLinea(record.key, updates);
+          }}
         />
       ),
     },
@@ -320,15 +340,41 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       title: "Descripcion",
       dataIndex: "descripcion",
       key: "descripcion",
-      render: (value: string, record) => (
-        <Input
-          size="small"
-          value={value}
-          onChange={(event) =>
-            updateLinea(record.key, "descripcion", event.target.value)
-          }
-        />
-      ),
+      render: (value: string, record) => {
+        if (record.tipoLinea === "PRODUCTO_FIREMAT") {
+          return (
+            <Select
+              size="small"
+              showSearch
+              style={{ width: "100%" }}
+              placeholder="Buscar producto Firemat..."
+              value={record.productoFirematId ?? undefined}
+              loading={productosLoading}
+              optionFilterProp="label"
+              options={productosOptions}
+              onChange={(productId: number) => {
+                const prod = productos.find((p) => p.id === productId);
+                if (prod) {
+                  patchLinea(record.key, {
+                    productoFirematId: prod.id,
+                    descripcion: prod.nombre,
+                    precioUnitario: prod.precio,
+                  });
+                }
+              }}
+            />
+          );
+        }
+        return (
+          <Input
+            size="small"
+            value={value}
+            onChange={(event) =>
+              updateLinea(record.key, "descripcion", event.target.value)
+            }
+          />
+        );
+      },
     },
     {
       title: "Cant.",
@@ -373,31 +419,35 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         />
       ),
     },
-    {
-      title: "% Ganancia",
-      dataIndex: "gananciaPct",
-      key: "gananciaPct",
-      width: 110,
-      align: "right",
-      render: (value: number, record) => (
-        <InputNumber
-          size="small"
-          value={value}
-          min={0}
-          max={100}
-          style={{ width: "100%" }}
-          formatter={(current) =>
-            current !== undefined && current !== null ? `${current}%` : ""
-          }
-          parser={(current) =>
-            current ? Number(current.replace("%", "")) : 0
-          }
-          onChange={(nextValue) =>
-            updateLinea(record.key, "gananciaPct", nextValue ?? 0)
-          }
-        />
-      ),
-    },
+    ...(canManageGanancia
+      ? [
+          {
+            title: "% Ganancia",
+            dataIndex: "gananciaPct",
+            key: "gananciaPct",
+            width: 110,
+            align: "right" as const,
+            render: (value: number, record: LineaTabla) => (
+              <InputNumber
+                size="small"
+                value={value}
+                min={0}
+                max={100}
+                style={{ width: "100%" }}
+                formatter={(current) =>
+                  current !== undefined && current !== null ? `${current}%` : ""
+                }
+                parser={(current) =>
+                  current ? Number(current.replace("%", "")) : 0
+                }
+                onChange={(nextValue) =>
+                  updateLinea(record.key, "gananciaPct", nextValue ?? 0)
+                }
+              />
+            ),
+          },
+        ]
+      : []),
     {
       title: "Subtotal",
       key: "subtotal",
@@ -408,7 +458,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
           calculateLineaSubtotal(
             record.cantidad,
             record.precioUnitario,
-            record.gananciaPct
+            canManageGanancia ? record.gananciaPct : 0
           ),
           moneda
         ),
@@ -437,7 +487,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         calculateLineaSubtotal(
           linea.cantidad,
           linea.precioUnitario,
-          linea.gananciaPct
+          canManageGanancia ? linea.gananciaPct : 0
         ),
       0
     );
@@ -447,9 +497,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     const neto = Math.max(0, subtotal - descuentoMonto);
     const impuesto = aplicaImpuesto ? neto * 0.19 : 0;
     const total = neto + impuesto;
-
     return { subtotal, descuentoPct, descuentoMonto, neto, impuesto, total };
-  }, [aplicaImpuesto, descuento, lineas]);
+  }, [aplicaImpuesto, canManageGanancia, descuento, lineas]);
 
   const handleFinish = (values: CotizacionEditorValues) => {
     onSubmit({
@@ -458,9 +507,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         const subtotal = calculateLineaSubtotal(
           linea.cantidad,
           linea.precioUnitario,
-          linea.gananciaPct
+          canManageGanancia ? linea.gananciaPct : 0
         );
-
         return {
           tipoLinea: linea.tipoLinea,
           descripcion: linea.descripcion,
@@ -468,7 +516,11 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
           precioUnitario: linea.precioUnitario,
           subtotal,
           orden: index + 1,
-          gananciaPct: Number(linea.gananciaPct ?? 0),
+          gananciaPct: canManageGanancia ? Number(linea.gananciaPct ?? 0) : 0,
+          productoFirematId:
+            linea.tipoLinea === "PRODUCTO_FIREMAT"
+              ? (linea.productoFirematId ?? undefined)
+              : undefined,
         };
       }),
     });
@@ -499,7 +551,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               </span>
             </div>
             <h2 className="text-base font-semibold text-slate-900">
-              Cotizacion de sellos cortafuego Â· BECK
+              Cotizacion de sellos cortafuego · BECK
             </h2>
           </div>
 
@@ -760,19 +812,18 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
             <div className="mb-3 flex flex-wrap gap-2">
               <Button
                 size="small"
-                className="border-sky-200 text-sky-600"
-                onClick={() =>
-                  agregarLinea("PRODUCTO", "Producto seleccionado", 10000)
-                }
+                className="border-slate-200 text-slate-600"
+                onClick={() => agregarLinea("MANUAL", "")}
               >
-                + Seleccionar producto
+                + Linea manual
               </Button>
               <Button
                 size="small"
-                className="border-violet-200 text-violet-600"
-                onClick={() => agregarLinea("PRODUCTO", "Nuevo producto")}
+                className="border-orange-200 text-orange-600"
+                icon={<FireOutlined />}
+                onClick={() => agregarLinea("PRODUCTO_FIREMAT", "", 0)}
               >
-                + Crear producto nuevo
+                + Producto Firemat
               </Button>
               <Button
                 size="small"
@@ -788,7 +839,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               dataSource={lineas}
               size="small"
               pagination={false}
-              scroll={{ x: 720 }}
+              scroll={{ x: 760 }}
               tableLayout="fixed"
               locale={{
                 emptyText: (
@@ -816,7 +867,6 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                       {
                         validator: (_, value) => {
                           const numericValue = Number(value ?? 0);
-
                           if (
                             Number.isFinite(numericValue) &&
                             numericValue >= 0 &&
@@ -824,7 +874,6 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                           ) {
                             return Promise.resolve();
                           }
-
                           return Promise.reject(
                             new Error("Ingresa un porcentaje entre 0 y 100")
                           );
@@ -912,7 +961,3 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 };
 
 export default CotizacionEditorModal;
-
-
-
-

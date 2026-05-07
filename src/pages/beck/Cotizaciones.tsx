@@ -30,16 +30,17 @@ import {
 import dayjs, { Dayjs } from "dayjs";
 import * as XLSX from "xlsx";
 
-import type { ThemeMode } from "../hooks/useSystemTheme";
+import type { ThemeMode } from "../../hooks/useSystemTheme";
 import {
   cotizacionesAPI,
   type CotizacionUpsertPayload,
   type CotizacionApiRecord,
-} from "../services/api";
+} from "../../services/api";
 import CotizacionEditorModal, {
   type CotizacionEditorValues,
   type LineaCotizacion,
-} from "../components/CotizacionEditorModal";
+} from "../../components/CotizacionEditorModal";
+import { useAuth } from "../../context/useAuth";
 
 const { RangePicker } = DatePicker;
 
@@ -170,9 +171,12 @@ const normalizeMoneda = (value: unknown): string => {
   return moneda || "CLP";
 };
 
-const normalizeTipoLinea = (value: unknown): "PRODUCTO" | "SERVICIO" => {
-  const normalized = toText(value, "PRODUCTO").trim().toUpperCase();
-  return normalized === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+const normalizeTipoLinea = (value: unknown): LineaCotizacion["tipoLinea"] => {
+  const normalized = toText(value, "MANUAL").trim().toUpperCase();
+  if (normalized === "SERVICIO") return "SERVICIO";
+  if (normalized === "PRODUCTO") return "PRODUCTO";
+  if (normalized === "PRODUCTO_FIREMAT") return "PRODUCTO_FIREMAT";
+  return "MANUAL";
 };
 
 const normalizeTipoCotizacion = (
@@ -239,6 +243,12 @@ const extractLineas = (source: Record<string, unknown>): LineaCotizacion[] => {
       toNumber(pickValue(linea, ["subtotal"])) ||
       calculateLineSubtotal(cantidad, precioUnitario, gananciaPct);
 
+    const rawFirematId = pickValue(linea, ["productoFirematId", "producto_firemat_id"]);
+    const productoFirematId =
+      rawFirematId !== undefined && rawFirematId !== null
+        ? toNumber(rawFirematId) || undefined
+        : undefined;
+
     return [
       {
         tipoLinea: normalizeTipoLinea(
@@ -253,6 +263,7 @@ const extractLineas = (source: Record<string, unknown>): LineaCotizacion[] => {
         subtotal,
         orden: toNumber(pickValue(linea, ["orden"])) || index + 1,
         gananciaPct: Number(gananciaPct ?? 0),
+        productoFirematId,
       },
     ];
   });
@@ -449,6 +460,13 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   void themeMode;
 
+  const { user } = useAuth();
+  const canWriteCotizaciones =
+    user?.rol === "Administrador" || user?.rol === "Vendedor";
+  const canManageGanancia = user?.rol === "Administrador";
+  const canCreateCotizaciones = canWriteCotizaciones;
+  const canEditCotizaciones = canWriteCotizaciones;
+  const canDeleteCotizaciones = canWriteCotizaciones;
   const [cotizaciones, setCotizaciones] = useState<CotizacionListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
@@ -486,6 +504,15 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   useEffect(() => {
     void loadCotizaciones();
   }, [loadCotizaciones]);
+
+  useEffect(() => {
+    if (canWriteCotizaciones) {
+      return;
+    }
+
+    setEditorOpen(false);
+    setEditingRecord(null);
+  }, [canWriteCotizaciones]);
 
   const origenes = useMemo(
     () =>
@@ -583,12 +610,16 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   };
 
   const openNuevo = () => {
+    if (!canCreateCotizaciones) return;
+
     setEditorMode("create");
     setEditingRecord(null);
     setEditorOpen(true);
   };
 
   const openEditar = async (record: CotizacionListItem) => {
+    if (!canEditCotizaciones) return;
+
     try {
       setEditorLoading(true);
       const response = await cotizacionesAPI.getById(record.id);
@@ -644,7 +675,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   };
 
   const handleSaveFromModal = async (values: CotizacionEditorValues) => {
-    if (saving || editorLoading) {
+    if (!canWriteCotizaciones || saving || editorLoading) {
       return;
     }
 
@@ -657,9 +688,17 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         .map((linea, index) => {
           const cantidad = Math.max(1, Number(linea.cantidad || 0));
           const precioUnitario = Number(linea.precioUnitario || 0);
-          const gananciaPct = Number(linea.gananciaPct || 0);
+          const gananciaPct = canManageGanancia
+            ? Number(linea.gananciaPct || 0)
+            : 0;
           const tipoLinea: CotizacionUpsertPayload["lineas"][number]["tipoLinea"] =
-            linea.tipoLinea === "SERVICIO" ? "SERVICIO" : "PRODUCTO";
+            linea.tipoLinea === "SERVICIO"
+              ? "SERVICIO"
+              : linea.tipoLinea === "PRODUCTO_FIREMAT"
+                ? "PRODUCTO_FIREMAT"
+                : linea.tipoLinea === "MANUAL"
+                  ? "MANUAL"
+                  : "PRODUCTO";
           const subtotal = calculateLineSubtotal(
             cantidad,
             precioUnitario,
@@ -674,6 +713,10 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
             subtotal,
             orden: index + 1,
             gananciaPct,
+            productoFirematId:
+              linea.tipoLinea === "PRODUCTO_FIREMAT"
+                ? (linea.productoFirematId ?? undefined)
+                : undefined,
           };
         })
         .filter((linea) => linea.descripcion);
@@ -718,6 +761,10 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
       }
 
       if (savedCotizacion) {
+        const advertencias = savedCotizacion["advertencias"];
+        if (Array.isArray(advertencias) && advertencias.length > 0) {
+          void message.warning("Cotizacion guardada con advertencias de stock");
+        }
         const mappedSavedCotizacion = mapCotizacion(savedCotizacion);
         setSelectedCotizacion((current) =>
           current?.id === mappedSavedCotizacion.id ? mappedSavedCotizacion : current
@@ -919,17 +966,19 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               }}
             />
           </Tooltip>
-          <Tooltip title="Editar">
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              disabled={saving || editorLoading}
-              onClick={() => {
-                void openEditar(record);
-              }}
-            />
-          </Tooltip>
+          {canEditCotizaciones && (
+            <Tooltip title="Editar">
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                disabled={saving || editorLoading}
+                onClick={() => {
+                  void openEditar(record);
+                }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="Ver PDF">
             <Button
               type="text"
@@ -940,38 +989,40 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               }}
             />
           </Tooltip>
-          <Tooltip title="Eliminar">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              loading={deletingId === record.id}
-              onClick={() => {
-                Modal.confirm({
-                  title: "Eliminar cotización",
-                  content: "Esta acción eliminará la cotización. ¿Deseas continuar?",
-                  okText: "Eliminar",
-                  okButtonProps: { danger: true },
-                  cancelText: "Cancelar",
-                  onOk: async () => {
-                    try {
-                      setDeletingId(record.id);
-                      await cotizacionesAPI.delete(record.id);
-                      message.success("Cotización eliminada");
-                      await loadCotizaciones();
-                    } catch (error) {
-                      message.error(
-                        getErrorMessage(error, "No se pudo eliminar la cotización")
-                      );
-                    } finally {
-                      setDeletingId(null);
-                    }
-                  },
-                });
-              }}
-            />
-          </Tooltip>
+          {canDeleteCotizaciones && (
+            <Tooltip title="Eliminar">
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                loading={deletingId === record.id}
+                onClick={() => {
+                  Modal.confirm({
+                    title: "Eliminar cotización",
+                    content: "Esta acción eliminará la cotización. ¿Deseas continuar?",
+                    okText: "Eliminar",
+                    okButtonProps: { danger: true },
+                    cancelText: "Cancelar",
+                    onOk: async () => {
+                      try {
+                        setDeletingId(record.id);
+                        await cotizacionesAPI.delete(record.id);
+                        message.success("Cotización eliminada");
+                        await loadCotizaciones();
+                      } catch (error) {
+                        message.error(
+                          getErrorMessage(error, "No se pudo eliminar la cotización")
+                        );
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    },
+                  });
+                }}
+              />
+            </Tooltip>
+          )}
         </div>
       ),
     },
@@ -1007,15 +1058,17 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
             >
               Recargar
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
-              onClick={openNuevo}
-              disabled={saving || editorLoading}
-            >
-              Crear
-            </Button>
+            {canCreateCotizaciones && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
+                onClick={openNuevo}
+                disabled={saving || editorLoading}
+              >
+                Crear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1290,7 +1343,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         )}
       </Modal>
 
-      {editorOpen && (
+      {editorOpen && canWriteCotizaciones && (
         <CotizacionEditorModal
           key={`${editorMode}-${editingRecord?.id ?? "new"}`}
           open={editorOpen}
@@ -1298,6 +1351,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           initialValues={editorInitialValues}
           submitting={saving}
           lockFunnelSelection={false}
+          canManageGanancia={canManageGanancia}
           onClose={() => {
             if (saving) {
               return;

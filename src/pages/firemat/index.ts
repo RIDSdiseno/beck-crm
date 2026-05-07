@@ -1,0 +1,9 @@
+export { default as FirematDashboard } from "./Dashboard";
+export { default as FirematFunnel } from "./Funnel";
+export { default as FirematCotizaciones } from "./Cotizaciones";
+export { default as FirematProductos } from "./Productos";
+export { default as FirematInventario } from "./Inventario";
+export { default as FirematVentas } from "./Ventas";
+export { default as FirematReportes } from "./Reportes";
+export { default as FirematMovimientos } from "./Movimientos";
+export { default as FirematUsuariosParametros } from "./UsuariosParametros";
