@@ -494,12 +494,12 @@ export const notificacionesAPI = {
 
 export interface Obra {
   id: string;
-  codigo: string;
+  codigo?: string | null;
   nombre: string;
-  descripcion?: string;
-  direccion: string;
-  ciudad: string;
-  cliente: string;
+  descripcion?: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  cliente?: string | null;
   activa: boolean;
   estado?: "activa" | "inactiva" | "pausada" | "finalizada";
   usuarios?: Array<{
@@ -516,9 +516,12 @@ export interface Obra {
 
 export interface CrearObraInput {
   nombre: string;
-  codigo?: string;
-  descripcion?: string;
+  codigo?: string | null;
+  direccion?: string | null;
+  cliente?: string | null;
+  descripcion?: string | null;
   estado: "activa" | "inactiva" | "pausada" | "finalizada";
+  usuariosIds?: string[];
 }
 
 export const obrasAPI = {

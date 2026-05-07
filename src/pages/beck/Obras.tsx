@@ -147,14 +147,14 @@ const Obras: React.FC = () => {
     setSaving(true);
     try {
       const payload: Parameters<typeof obrasAPI.crear>[0] = {
-        nombre: values.nombre,
-        descripcion: values.descripcion,
-        estado: values.estado,
+        nombre: values.nombre.trim(),
+        codigo: values.codigo?.trim() || null,
+        direccion: values.direccion?.trim() || null,
+        cliente: values.cliente?.trim() || null,
+        descripcion: values.descripcion?.trim() || null,
+        estado: values.estado ?? "activa",
+        usuariosIds: values.usuarioIds ?? [],
       };
-
-      if (values.codigo?.trim()) {
-        payload.codigo = values.codigo.trim();
-      }
 
       const nuevaObra = await obrasAPI.crear(payload);
       if (values.usuarioIds?.length > 0) {
@@ -177,7 +177,7 @@ const Obras: React.FC = () => {
     setSaving(true);
     try {
       const payload: Parameters<typeof obrasAPI.actualizar>[1] = {
-        codigo: values.codigo?.trim() || "",
+        codigo: values.codigo?.trim() || null,
         nombre: values.nombre,
         direccion: values.direccion ?? "",
         cliente: values.cliente ?? "",
@@ -339,8 +339,10 @@ const Obras: React.FC = () => {
       dataIndex: "codigo",
       key: "codigo",
       width: 140,
-      render: (value: string) => (
-        <span className="font-mono text-xs text-slate-700">{value || "-"}</span>
+      render: (value: string | null | undefined) => (
+        <span className="font-mono text-xs text-slate-700">
+          {value?.trim() || "No aplica"}
+        </span>
       ),
     },
     {
