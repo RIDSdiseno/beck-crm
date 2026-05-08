@@ -70,6 +70,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         obras: true,
         configuracion: true,
         firemat: true,
+        firematCotizaciones: true,
       };
     case "Vendedor":
       return {
@@ -84,6 +85,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         obras: false,
         configuracion: false,
         firemat: true,
+        firematCotizaciones: true,
       };
     case "Terreno":
     case "JefeObra":
@@ -99,6 +101,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         obras: false,
         configuracion: false,
         firemat: false,
+        firematCotizaciones: false,
       };
     case "Ingenieria":
       return {
@@ -113,6 +116,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         obras: true,
         configuracion: false,
         firemat: false,
+        firematCotizaciones: false,
       };
     case "Visualizador":
     default:
@@ -128,6 +132,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         obras: true,
         configuracion: false,
         firemat: true,
+        firematCotizaciones: true,
       };
   }
 };
@@ -329,6 +334,12 @@ const AppShell: React.FC = () => {
 
   const renderFirematRoute = (element: React.ReactElement) =>
     access.firemat ? element : <Navigate to={homeRoute} replace />;
+  const renderFirematCotizacionesRoute = (element: React.ReactElement) =>
+    access.firemat && access.firematCotizaciones ? (
+      element
+    ) : (
+      <Navigate to={homeRoute} replace />
+    );
 
   return (
     <>
@@ -495,7 +506,7 @@ const AppShell: React.FC = () => {
                 {/* ── Firemat routes ──────────────────────────── */}
                 <Route path="/firemat/dashboard" element={renderFirematRoute(<FirematDashboard />)} />
                 <Route path="/firemat/funnel" element={renderFirematRoute(<FirematFunnel />)} />
-                <Route path="/firemat/cotizaciones" element={renderFirematRoute(<FirematCotizaciones />)} />
+                <Route path="/firemat/cotizaciones" element={renderFirematCotizacionesRoute(<FirematCotizaciones />)} />
                 <Route path="/firemat/productos" element={renderFirematRoute(<FirematProductos />)} />
                 <Route path="/firemat/inventario" element={renderFirematRoute(<FirematInventario />)} />
                 <Route path="/firemat/ventas" element={renderFirematRoute(<FirematVentas />)} />

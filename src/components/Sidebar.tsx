@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   DashboardOutlined,
   ProfileOutlined,
@@ -35,6 +35,7 @@ export type RoleAccess = {
   obras: boolean;
   configuracion: boolean;
   firemat: boolean;
+  firematCotizaciones: boolean;
 };
 
 type Company = "beck" | "firemat";
@@ -87,11 +88,26 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [selectorOpen, setSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
 
-  const activeCompany: Company = location.pathname.startsWith("/firemat")
-    ? "firemat"
-    : "beck";
+  const isFiremat = location.pathname.startsWith("/firemat");
+  const activeCompany: Company = isFiremat ? "firemat" : "beck";
 
   const isBeck = activeCompany === "beck";
+  const logoSrc = isFiremat ? "/Firemat_logo.png" : "/logo.png";
+  const brandName = isFiremat ? "Firemat" : "BECK Soluciones";
+  const brandSubtitle = isFiremat ? "CRM FIREMAT" : "CRM BECK";
+  const brandBadge = isFiremat ? "Inventario y ventas" : "Protección pasiva";
+
+  useEffect(() => {
+    document.title = isFiremat ? "Firemat | CRM" : "BECK Soluciones | CRM";
+  }, [isFiremat]);
+
+  useEffect(() => {
+    const favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+
+    if (favicon) {
+      favicon.href = isFiremat ? "/Firemat_logo.png" : "/logo.png";
+    }
+  }, [isFiremat]);
 
   const handleCompanySwitch = (company: Company) => {
     setSelectorOpen(false);
@@ -144,7 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const firematNav = [
     { key: "dashboard", to: "/firemat/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firemat },
     { key: "funnel", to: "/firemat/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firemat && access.funnel },
-    { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firemat && access.cotizaciones },
+    { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firemat && access.firematCotizaciones },
     { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firemat },
     { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firemat },
     { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firemat && access.funnel },
@@ -171,8 +187,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <img
-              src={isBeck ? "/logo.png" : "/logo-firemat.png"}
-              alt={isBeck ? "BECK Soluciones" : "Firemat"}
+              src={logoSrc}
+              alt={brandName}
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src = "/logo.png";
               }}
@@ -195,8 +211,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 className="flex w-full items-center gap-2 rounded-xl p-1 transition hover:bg-white/60"
               >
                 <img
-                  src={isBeck ? "/logo.png" : "/logo-firemat.png"}
-                  alt={isBeck ? "BECK Soluciones" : "Firemat"}
+                  src={logoSrc}
+                  alt={brandName}
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).src = "/logo.png";
                   }}
@@ -204,14 +220,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                 />
                 <div className="min-w-0 flex-1 text-left leading-tight">
                   <p className="truncate text-xs font-semibold text-beck-ink">
-                    {isBeck ? "BECK Soluciones" : "Firemat"}
+                    {brandName}
                   </p>
                   <p className="truncate text-[10px] text-beck-muted">
-                    {isBeck ? "CRM BECK" : "CRM FIREMAT"}
+                    {brandSubtitle}
                   </p>
                   <span className={badgeClasses}>
                     <FireOutlined className="text-[10px]" />
-                    {isBeck ? "Protección pasiva" : "Inventario y ventas"}
+                    {brandBadge}
                   </span>
                 </div>
                 <SwapOutlined className="flex-shrink-0 text-beck-muted text-xs" />

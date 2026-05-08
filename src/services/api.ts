@@ -731,6 +731,204 @@ export const firematProductosAPI = {
   },
 };
 
+export type FirematCotizacionEstado =
+  | "BORRADOR"
+  | "ENVIADA"
+  | "SEGUIMIENTO"
+  | "ORDEN_CONFIRMADA"
+  | "GANADA"
+  | "PERDIDA"
+  | "POSTERGADA";
+
+export type FirematCotizacionTipoCliente =
+  | "CLIENTE_FINAL"
+  | "BROKER"
+  | "FERRETERIA"
+  | "REDISTRIBUIDOR"
+  | "INSTALADOR"
+  | "COMISIONISTA"
+  | "RECOMPRA";
+
+export type FirematCotizacionLinea = {
+  id?: string | number;
+  productoId: number;
+  productoNombre?: string;
+  nombreProducto?: string;
+  descripcion?: string | null;
+  cantidad: number;
+  precioUnitario: number;
+  descuentoPct: number;
+  subtotal: number;
+  producto?: ProductoFiremat | null;
+};
+
+export type FirematCotizacion = {
+  id: string;
+  numero?: string | number | null;
+  cliente: string;
+  contacto?: string | null;
+  tipoCliente?: FirematCotizacionTipoCliente | string | null;
+  responsable?: string | null;
+  estado: FirematCotizacionEstado;
+  subtotal: number;
+  descuento: number;
+  iva: number;
+  total: number;
+  fecha?: string | null;
+  fechaCotizacion?: string | null;
+  fechaVencimiento?: string | null;
+  vencimiento?: string | null;
+  fechaSeguimiento?: string | null;
+  observaciones?: string | null;
+  lineas?: FirematCotizacionLinea[];
+  detalle?: FirematCotizacionLinea[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type FirematCotizacionPayload = {
+  cliente: string;
+  contacto?: string | null;
+  tipoCliente: FirematCotizacionTipoCliente;
+  responsable?: string | null;
+  fechaVencimiento?: string | null;
+  fechaSeguimiento?: string | null;
+  observaciones?: string | null;
+  subtotal: number;
+  descuento: number;
+  impuesto: number;
+  total: number;
+  detalles: Array<{
+    productoId: number;
+    cantidad: number;
+    precioUnitario: number;
+    descuentoPct: number;
+    observacion?: string | null;
+  }>;
+};
+
+export type FirematCotizacionesResumen = {
+  totalCotizaciones: number;
+  borradores: number;
+  enviadas: number;
+  ganadas: number;
+  montoTotal: number;
+};
+
+type FirematCotizacionesEnvelope = {
+  success?: boolean;
+  data?: FirematCotizacion[];
+  resumen?: Partial<FirematCotizacionesResumen>;
+  message?: string;
+  error?: string;
+};
+
+const normalizeFirematCotizacionesResponse = (
+  payload: FirematCotizacionesEnvelope | FirematCotizacion[]
+): { data: FirematCotizacion[]; resumen: FirematCotizacionesResumen } => {
+  const data = Array.isArray(payload) ? payload : payload.data ?? [];
+  const resumen = Array.isArray(payload) ? undefined : payload.resumen;
+
+  return {
+    data,
+    resumen: {
+      totalCotizaciones: resumen?.totalCotizaciones ?? data.length,
+      borradores:
+        resumen?.borradores ??
+        data.filter((item) => item.estado === "BORRADOR").length,
+      enviadas:
+        resumen?.enviadas ??
+        data.filter((item) => item.estado === "ENVIADA").length,
+      ganadas:
+        resumen?.ganadas ??
+        data.filter((item) => item.estado === "GANADA").length,
+      montoTotal:
+        resumen?.montoTotal ??
+        data.reduce((acc, item) => acc + Number(item.total || 0), 0),
+    },
+  };
+};
+
+export const firematCotizacionesAPI = {
+  listar: async (params?: {
+    q?: string;
+    estado?: FirematCotizacionEstado | "";
+    desde?: string;
+    hasta?: string;
+  }): Promise<{ data: FirematCotizacion[]; resumen: FirematCotizacionesResumen }> => {
+    const response = await api.get<FirematCotizacionesEnvelope | FirematCotizacion[]>(
+      "/firemat/cotizaciones",
+      { params }
+    );
+    const payload = response.data;
+    if (!Array.isArray(payload) && payload.success === false) {
+      throw new Error(payload.message ?? payload.error ?? "Error al cargar cotizaciones");
+    }
+    return normalizeFirematCotizacionesResponse(payload);
+  },
+
+  obtener: async (id: string): Promise<FirematCotizacion> => {
+    const response = await api.get<ApiResponseEnvelope<FirematCotizacion> | FirematCotizacion>(
+      `/firemat/cotizaciones/${id}`
+    );
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  crear: async (payload: FirematCotizacionPayload): Promise<FirematCotizacion> => {
+    const response = await api.post<ApiResponseEnvelope<FirematCotizacion> | FirematCotizacion>(
+      "/firemat/cotizaciones",
+      payload
+    );
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  actualizar: async (
+    id: string,
+    payload: FirematCotizacionPayload
+  ): Promise<FirematCotizacion> => {
+    const response = await api.put<ApiResponseEnvelope<FirematCotizacion> | FirematCotizacion>(
+      `/firemat/cotizaciones/${id}`,
+      payload
+    );
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  cambiarEstado: async (
+    id: string,
+    estado: FirematCotizacionEstado
+  ): Promise<FirematCotizacion> => {
+    const response = await api.patch<ApiResponseEnvelope<FirematCotizacion> | FirematCotizacion>(
+      `/firemat/cotizaciones/${id}/estado`,
+      { estado }
+    );
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    const response = await api.delete<ApiResponseEnvelope<{ message?: string }> | { message?: string }>(
+      `/firemat/cotizaciones/${id}`
+    );
+    if ("success" in response.data) {
+      unwrapApiResponse(response.data);
+    }
+  },
+
+  descargarPdf: async (id: string): Promise<Blob> => {
+    const response = await api.get<Blob>(`/firemat/cotizaciones/${id}/pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+};
+
 export type InventarioFirematItem = {
   id: number;
   nombre: string;
