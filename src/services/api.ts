@@ -929,6 +929,183 @@ export const firematCotizacionesAPI = {
   },
 };
 
+export type FirematFunnelEtapa =
+  | "PROSPECTO"
+  | "PRIMER_CONTACTO"
+  | "DESARROLLO_COTIZACION"
+  | "COTIZACION_ENVIADA"
+  | "ORDEN_CONFIRMADA"
+  | "GANADA"
+  | "PERDIDA"
+  | "POSTERGADA";
+
+export type FirematFunnelOportunidad = {
+  id: string;
+  cliente: string;
+  contacto?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  tipoCliente?: FirematCotizacionTipoCliente | string | null;
+  productoId?: number | null;
+  producto?: ProductoFiremat | null;
+  productoNombre?: string | null;
+  cantidadEstimada?: number | null;
+  responsable?: string | null;
+  etapa: FirematFunnelEtapa;
+  montoEstimado?: number | null;
+  probabilidadCierre?: number | null;
+  proximaAccion?: string | null;
+  fechaProximaAccion?: string | null;
+  observaciones?: string | null;
+  origen?: string | null;
+  cotizacionId?: string | number | null;
+  cotizacion?: FirematCotizacion | null;
+  motivoPerdida?: string | null;
+  motivoPostergacion?: string | null;
+  fechaReactivacion?: string | null;
+  documentoRespaldo?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type FirematFunnelPayload = {
+  cliente: string;
+  contacto?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  tipoCliente?: FirematCotizacionTipoCliente | string | null;
+  productoId?: number | null;
+  cantidadEstimada?: number | null;
+  responsable?: string | null;
+  etapa: FirematFunnelEtapa;
+  montoEstimado?: number | null;
+  probabilidadCierre?: number | null;
+  proximaAccion?: string | null;
+  fechaProximaAccion?: string | null;
+  observaciones?: string | null;
+  origen?: string | null;
+  cotizacionId?: string | number | null;
+  motivoPerdida?: string | null;
+  motivoPostergacion?: string | null;
+  fechaReactivacion?: string | null;
+  documentoRespaldo?: string | null;
+};
+
+export type FirematFunnelResumen = {
+  totalOportunidades: number;
+  pipelineTotal: number;
+  ganadas: number;
+  perdidas: number;
+  postergadas: number;
+  cotizacionesVinculadas: number;
+};
+
+type FirematFunnelEnvelope = {
+  success?: boolean;
+  data?: FirematFunnelOportunidad[];
+  resumen?: Partial<FirematFunnelResumen>;
+  message?: string;
+  error?: string;
+};
+
+const normalizeFirematFunnelResponse = (
+  payload: FirematFunnelEnvelope | FirematFunnelOportunidad[]
+): { data: FirematFunnelOportunidad[]; resumen: FirematFunnelResumen } => {
+  const data = Array.isArray(payload) ? payload : payload.data ?? [];
+  const resumen = Array.isArray(payload) ? undefined : payload.resumen;
+
+  return {
+    data,
+    resumen: {
+      totalOportunidades: resumen?.totalOportunidades ?? data.length,
+      pipelineTotal:
+        resumen?.pipelineTotal ??
+        data.reduce((acc, item) => acc + Number(item.montoEstimado || 0), 0),
+      ganadas:
+        resumen?.ganadas ?? data.filter((item) => item.etapa === "GANADA").length,
+      perdidas:
+        resumen?.perdidas ?? data.filter((item) => item.etapa === "PERDIDA").length,
+      postergadas:
+        resumen?.postergadas ??
+        data.filter((item) => item.etapa === "POSTERGADA").length,
+      cotizacionesVinculadas:
+        resumen?.cotizacionesVinculadas ??
+        data.filter((item) => Boolean(item.cotizacionId || item.cotizacion)).length,
+    },
+  };
+};
+
+export const firematFunnelAPI = {
+  listar: async (params?: {
+    q?: string;
+    etapa?: FirematFunnelEtapa | "";
+    responsable?: string;
+    tipoCliente?: FirematCotizacionTipoCliente | "";
+    productoId?: number;
+  }): Promise<{ data: FirematFunnelOportunidad[]; resumen: FirematFunnelResumen }> => {
+    const response = await api.get<FirematFunnelEnvelope | FirematFunnelOportunidad[]>(
+      "/firemat/funnel",
+      { params }
+    );
+    const payload = response.data;
+    if (!Array.isArray(payload) && payload.success === false) {
+      throw new Error(payload.message ?? payload.error ?? "Error al cargar funnel");
+    }
+    return normalizeFirematFunnelResponse(payload);
+  },
+
+  obtener: async (id: string): Promise<FirematFunnelOportunidad> => {
+    const response = await api.get<
+      ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
+    >(`/firemat/funnel/${id}`);
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  crear: async (payload: FirematFunnelPayload): Promise<FirematFunnelOportunidad> => {
+    const response = await api.post<
+      ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
+    >("/firemat/funnel", payload);
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  actualizar: async (
+    id: string,
+    payload: FirematFunnelPayload
+  ): Promise<FirematFunnelOportunidad> => {
+    const response = await api.put<
+      ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
+    >(`/firemat/funnel/${id}`, payload);
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  cambiarEtapa: async (
+    id: string,
+    etapa: FirematFunnelEtapa
+  ): Promise<FirematFunnelOportunidad> => {
+    const response = await api.patch<
+      ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
+    >(`/firemat/funnel/${id}/etapa`, { etapa });
+    return "success" in response.data
+      ? unwrapApiResponse(response.data)
+      : response.data;
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    const response = await api.delete<
+      ApiResponseEnvelope<{ message?: string }> | { message?: string }
+    >(`/firemat/funnel/${id}`);
+    if ("success" in response.data) {
+      unwrapApiResponse(response.data);
+    }
+  },
+};
+
 export type InventarioFirematItem = {
   id: number;
   nombre: string;
