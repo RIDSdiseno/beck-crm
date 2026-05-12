@@ -166,19 +166,19 @@ body {
   color: var(--firemat-primary-dark);
 }
 
-.theme-firemat .firemat-action-button.ant-btn {
-  background-color: #4b5563;
-  border-color: #4b5563;
-  color: #ffffff;
-  box-shadow: none;
+.firemat-action-button.ant-btn {
+  background-color: #4b5563 !important;
+  border-color: #4b5563 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
-.theme-firemat .firemat-action-button.ant-btn:hover,
-.theme-firemat .firemat-action-button.ant-btn:focus,
-.theme-firemat .firemat-action-button.ant-btn:active {
-  background-color: #374151;
-  border-color: #374151;
-  color: #ffffff;
+.firemat-action-button.ant-btn:hover,
+.firemat-action-button.ant-btn:focus,
+.firemat-action-button.ant-btn:active {
+  background-color: #374151 !important;
+  border-color: #374151 !important;
+  color: #ffffff !important;
 }
 
 .text-firemat-primary {

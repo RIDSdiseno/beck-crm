@@ -1120,7 +1120,7 @@ const FirematFunnel: React.FC = () => {
         onOk={() => form.submit()}
         okText={modalMode === "crear" ? "Crear" : "Guardar"}
         cancelText={modalReadOnly ? "Cerrar" : "Cancelar"}
-        okButtonProps={{ hidden: modalReadOnly }}
+        okButtonProps={{ hidden: modalReadOnly, className: "firemat-action-button" }}
         confirmLoading={saving}
         width={960}
         destroyOnClose
@@ -1206,6 +1206,7 @@ const FirematFunnel: React.FC = () => {
                   </Button>
                 </Popconfirm>
                 <Button
+                  className="firemat-action-button"
                   type="primary"
                   icon={<FileTextOutlined />}
                   onClick={openCrearCotizacion}
@@ -1442,7 +1443,10 @@ const FirematFunnel: React.FC = () => {
         onOk={() => cotizacionForm.submit()}
         okText={cotizacionModalMode === "crear" ? "Crear" : "Guardar"}
         cancelText={cotizacionModalMode === "ver" ? "Cerrar" : "Cancelar"}
-        okButtonProps={{ hidden: cotizacionModalMode === "ver" }}
+        okButtonProps={{
+          hidden: cotizacionModalMode === "ver",
+          className: "firemat-action-button",
+        }}
         confirmLoading={savingCotizacion}
         width={980}
         destroyOnClose

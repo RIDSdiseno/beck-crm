@@ -672,7 +672,7 @@ const FirematCotizaciones: React.FC = () => {
         okText={modalMode === "crear" ? "Crear" : "Guardar"}
         cancelText={modalReadOnly ? "Cerrar" : "Cancelar"}
         confirmLoading={saving}
-        okButtonProps={{ hidden: modalReadOnly }}
+        okButtonProps={{ hidden: modalReadOnly, className: "firemat-action-button" }}
         width={980}
         destroyOnClose
       >

@@ -731,6 +731,7 @@ export default api;
 export type ProductoFiremat = {
   id: number;
   nombre: string;
+  sku?: string | null;
   descripcion?: string | null;
   precio: number;
   stock: number;
@@ -747,6 +748,33 @@ export type ProductoFiremat = {
   createdAt: string;
 };
 
+export type CategoriaFiremat = {
+  id: number;
+  nombre: string;
+};
+
+export type ProductoFirematPayload = {
+  nombre: string;
+  sku?: string | null;
+  descripcion?: string | null;
+  categoriaId: number;
+  precio: number;
+  stockInicial?: number;
+  minStock: number;
+  ubicacion?: string | null;
+  criticidad: string;
+  activo: boolean;
+};
+
+export const firematCategoriasAPI = {
+  listar: async (): Promise<CategoriaFiremat[]> => {
+    const response = await api.get<ApiResponseEnvelope<CategoriaFiremat[]>>(
+      "/firemat/categorias"
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
 export const firematProductosAPI = {
   listar: async (params?: {
     q?: string;
@@ -756,6 +784,30 @@ export const firematProductosAPI = {
     const response = await api.get<ApiResponseEnvelope<ProductoFiremat[]>>(
       "/firemat/productos",
       { params }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  crear: async (payload: ProductoFirematPayload): Promise<ProductoFiremat> => {
+    const response = await api.post<ApiResponseEnvelope<ProductoFiremat>>(
+      "/firemat/productos",
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  editar: async (id: number, payload: Partial<ProductoFirematPayload>): Promise<ProductoFiremat> => {
+    const response = await api.put<ApiResponseEnvelope<ProductoFiremat>>(
+      `/firemat/productos/${id}`,
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  toggleEstado: async (id: number, activo: boolean): Promise<ProductoFiremat> => {
+    const response = await api.patch<ApiResponseEnvelope<ProductoFiremat>>(
+      `/firemat/productos/${id}/estado`,
+      { activo }
     );
     return unwrapApiResponse(response.data);
   },
