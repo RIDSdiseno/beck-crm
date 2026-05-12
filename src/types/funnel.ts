@@ -16,6 +16,8 @@ export type FunnelStage =
   | "negociacion"
   | "cerrada";
 
+export type FunnelEstadoCierre = "ganada" | "perdida" | "postergada";
+
 export type FunnelDeal = {
   id: string;
   etapa: FunnelStage;
@@ -28,4 +30,33 @@ export type FunnelDeal = {
   region?: string;
   comuna?: string;
   fuenteLead?: FunnelLeadSource;
+  // Prospecto
+  rutEmpresa?: string;
+  nombreContacto?: string;
+  cargoContacto?: string;
+  telefonoContacto?: string;
+  correoContacto?: string;
+  tipoCliente?: string;
+  tipoOportunidad?: string;
+  // Primer contacto
+  fechaPrimerContacto?: string;
+  tipoContacto?: string;
+  necesidadDetectada?: string;
+  timingEstimado?: string;
+  nivelInteres?: string;
+  proximaAccion?: string;
+  fechaProximaAccion?: string;
+  // Negociacion
+  probabilidadCierre?: number;
+  objeciones?: string;
+  contrapropuestas?: string;
+  ajustesSolicitados?: string;
+  // Cierre
+  estadoCierre?: FunnelEstadoCierre;
+  motivoPerdida?: string;
+  etapaPerdida?: string;
+  motivoPostergacion?: string;
+  fechaReactivacion?: string;
+  documentoRespaldo?: string;
+  flujoPosterior?: string;
 };

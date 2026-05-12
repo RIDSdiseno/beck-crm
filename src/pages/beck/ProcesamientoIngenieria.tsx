@@ -780,9 +780,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           rowKey="id"
           size="small"
           loading={loading}
-          scroll={{
-            x: activeTab === "sello_cortafuego" ? 2000 : 1700,
-          }}
+          scroll={{ x: "max-content" }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
         />
       </Card>

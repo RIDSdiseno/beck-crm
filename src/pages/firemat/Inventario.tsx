@@ -261,6 +261,7 @@ const FirematInventario: React.FC = () => {
             </p>
           </div>
           <Button
+            className="firemat-action-button"
             icon={<ReloadOutlined />}
             onClick={() => void cargar()}
             loading={loading}

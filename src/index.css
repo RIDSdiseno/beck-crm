@@ -133,6 +133,20 @@ body {
   color: var(--beck-ink) !important;
 }
 
+.theme-firemat .ant-btn-primary {
+  background-color: #4b5563 !important;
+  border-color: #4b5563 !important;
+  color: #ffffff !important;
+}
+
+.theme-firemat .ant-btn-primary:hover,
+.theme-firemat .ant-btn-primary:focus,
+.theme-firemat .ant-btn-primary:active {
+  background-color: #374151 !important;
+  border-color: #374151 !important;
+  color: #ffffff !important;
+}
+
 /* ── Firemat component classes ───────────────────────────────── */
 .firemat-panel {
   @apply rounded-2xl border bg-white shadow-beck-panel;
@@ -150,6 +164,21 @@ body {
   background: #fde8e4;
   border: 1px solid #f4c4ba;
   color: var(--firemat-primary-dark);
+}
+
+.theme-firemat .firemat-action-button.ant-btn {
+  background-color: #4b5563;
+  border-color: #4b5563;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.theme-firemat .firemat-action-button.ant-btn:hover,
+.theme-firemat .firemat-action-button.ant-btn:focus,
+.theme-firemat .firemat-action-button.ant-btn:active {
+  background-color: #374151;
+  border-color: #374151;
+  color: #ffffff;
 }
 
 .text-firemat-primary {

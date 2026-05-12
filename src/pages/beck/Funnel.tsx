@@ -49,6 +49,7 @@ import type { ThemeMode } from "../../hooks/useSystemTheme";
 import type {
   FunnelCurrency,
   FunnelDeal,
+  FunnelEstadoCierre,
   FunnelLeadSource,
   FunnelStage,
 } from "../../types/funnel";
@@ -68,6 +69,28 @@ type FunnelDraft = {
   comuna: string;
   fuenteLead: FunnelLeadSource | "";
   etapa: FunnelStage;
+  // Prospecto
+  rutEmpresa: string;
+  nombreContacto: string;
+  cargoContacto: string;
+  telefonoContacto: string;
+  correoContacto: string;
+  tipoCliente: string;
+  tipoOportunidad: string;
+  // Primer contacto
+  fechaPrimerContacto: string;
+  tipoContacto: string;
+  necesidadDetectada: string;
+  timingEstimado: string;
+  nivelInteres: string;
+  proximaAccion: string;
+  fechaProximaAccion: string;
+  comentariosPrimerContacto: string;
+  // Negociacion
+  probabilidadCierre: string;
+  objeciones: string;
+  contrapropuestas: string;
+  ajustesSolicitados: string;
 };
 
 type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
@@ -165,6 +188,25 @@ const createEmptyDraft = (): FunnelDraft => ({
   comuna: "",
   fuenteLead: "",
   etapa: "prospecto",
+  rutEmpresa: "",
+  nombreContacto: "",
+  cargoContacto: "",
+  telefonoContacto: "",
+  correoContacto: "",
+  tipoCliente: "",
+  tipoOportunidad: "",
+  fechaPrimerContacto: "",
+  tipoContacto: "",
+  necesidadDetectada: "",
+  timingEstimado: "",
+  nivelInteres: "",
+  proximaAccion: "",
+  fechaProximaAccion: "",
+  comentariosPrimerContacto: "",
+  probabilidadCierre: "",
+  objeciones: "",
+  contrapropuestas: "",
+  ajustesSolicitados: "",
 });
 
 const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
@@ -231,6 +273,21 @@ const validateFunnelDraft = (draft: FunnelDraft): FunnelFieldErrors => {
 
   if (!etapa) {
     errors.etapa = "La etapa inicial es obligatoria";
+  }
+
+  const rutEmpresa = draft.rutEmpresa.trim();
+  if (rutEmpresa && !validateRut(rutEmpresa)) {
+    errors.rutEmpresa = "RUT inválido. Verifica el formato y dígito verificador";
+  }
+
+  const telefonoContacto = draft.telefonoContacto.trim();
+  if (telefonoContacto && !validatePhone(telefonoContacto)) {
+    errors.telefonoContacto = "El teléfono debe tener entre 8 y 12 dígitos";
+  }
+
+  const correoContacto = draft.correoContacto.trim();
+  if (correoContacto && !validateEmail(correoContacto)) {
+    errors.correoContacto = "El correo electrónico no es válido";
   }
 
   return errors;
@@ -606,6 +663,46 @@ const disabledInputClassName =
 const inputErrorClassName =
   "border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100";
 
+const cleanRut = (value: string): string =>
+  value.replace(/[^0-9kK]/g, "").toUpperCase();
+
+const formatRut = (value: string): string => {
+  const clean = cleanRut(value);
+  if (clean.length < 2) return clean;
+  const dv = clean.slice(-1);
+  const body = clean.slice(0, -1);
+  const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formatted}-${dv}`;
+};
+
+const validateRut = (value: string): boolean => {
+  const clean = cleanRut(value);
+  if (clean.length < 2) return false;
+  const dv = clean.slice(-1).toUpperCase();
+  const body = clean.slice(0, -1);
+  if (!/^\d+$/.test(body)) return false;
+  let sum = 0;
+  let multiplier = 2;
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body[i], 10) * multiplier;
+    multiplier = multiplier === 7 ? 2 : multiplier + 1;
+  }
+  const remainder = sum % 11;
+  const expectedDv =
+    remainder === 0 ? "0" : remainder === 1 ? "K" : String(11 - remainder);
+  return dv === expectedDv;
+};
+
+const formatPhone = (value: string): string => value.replace(/\D/g, "");
+
+const validatePhone = (value: string): boolean => {
+  const digits = formatPhone(value);
+  return digits.length >= 8 && digits.length <= 12;
+};
+
+const validateEmail = (value: string): boolean =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 
 const FunnelCard: React.FC<FunnelCardProps> = ({
   deal,
@@ -650,6 +747,24 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
       {deal.fechaProbableCierre && (
         <p className="mt-0.5 text-beck-muted">
           Cierre: {formatDisplayDate(deal.fechaProbableCierre)}
+        </p>
+      )}
+
+      {typeof deal.probabilidadCierre === "number" && (
+        <p className="mt-0.5 text-beck-muted">
+          Prob: {deal.probabilidadCierre}%
+        </p>
+      )}
+
+      {deal.proximaAccion && (
+        <p className="mt-0.5 truncate text-beck-muted" title={deal.proximaAccion}>
+          Acc: {deal.proximaAccion}
+        </p>
+      )}
+
+      {deal.fechaProximaAccion && (
+        <p className="mt-0.5 text-beck-muted">
+          Prox: {formatDisplayDate(deal.fechaProximaAccion)}
         </p>
       )}
 
@@ -756,7 +871,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-beck-border-light px-5 py-4">
@@ -784,7 +899,7 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
           </button>
         </div>
 
-        <form noValidate onSubmit={onSubmit} className="space-y-5 px-5 py-5">
+        <form noValidate onSubmit={onSubmit} className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
           {validationMessage && (
             <div
               role="alert"
@@ -1068,6 +1183,322 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
             </div>
           </div>
 
+          {/* PROSPECTO */}
+          <div className="border-t border-beck-border-light pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+              Prospecto
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label htmlFor="funnel-rut-empresa" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  RUT empresa
+                </label>
+                <input
+                  id="funnel-rut-empresa"
+                  type="text"
+                  value={draft.rutEmpresa}
+                  onChange={(e) => {
+                    const clean = cleanRut(e.target.value);
+                    onFieldChange("rutEmpresa", clean.length > 1 ? formatRut(clean) : clean);
+                  }}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName} ${fieldErrors.rutEmpresa ? inputErrorClassName : ""}`}
+                  placeholder="12.345.678-9"
+                  aria-invalid={Boolean(fieldErrors.rutEmpresa)}
+                />
+                {renderFieldError("rutEmpresa")}
+              </div>
+              <div>
+                <label htmlFor="funnel-nombre-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Nombre contacto
+                </label>
+                <input
+                  id="funnel-nombre-contacto"
+                  type="text"
+                  value={draft.nombreContacto}
+                  onChange={(e) => onFieldChange("nombreContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  placeholder="Nombre del contacto"
+                />
+              </div>
+              <div>
+                <label htmlFor="funnel-cargo-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Cargo
+                </label>
+                <input
+                  id="funnel-cargo-contacto"
+                  type="text"
+                  value={draft.cargoContacto}
+                  onChange={(e) => onFieldChange("cargoContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  placeholder="Cargo del contacto"
+                />
+              </div>
+              <div>
+                <label htmlFor="funnel-telefono-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Telefono
+                </label>
+                <input
+                  id="funnel-telefono-contacto"
+                  type="tel"
+                  value={draft.telefonoContacto}
+                  onChange={(e) => onFieldChange("telefonoContacto", formatPhone(e.target.value))}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName} ${fieldErrors.telefonoContacto ? inputErrorClassName : ""}`}
+                  placeholder="56912345678"
+                  aria-invalid={Boolean(fieldErrors.telefonoContacto)}
+                />
+                {renderFieldError("telefonoContacto")}
+              </div>
+              <div>
+                <label htmlFor="funnel-correo-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Correo
+                </label>
+                <input
+                  id="funnel-correo-contacto"
+                  type="email"
+                  value={draft.correoContacto}
+                  onChange={(e) => onFieldChange("correoContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName} ${fieldErrors.correoContacto ? inputErrorClassName : ""}`}
+                  placeholder="contacto@empresa.cl"
+                  aria-invalid={Boolean(fieldErrors.correoContacto)}
+                />
+                {renderFieldError("correoContacto")}
+              </div>
+              <div>
+                <label htmlFor="funnel-tipo-oportunidad" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Tipo oportunidad
+                </label>
+                <input
+                  id="funnel-tipo-oportunidad"
+                  type="text"
+                  value={draft.tipoOportunidad}
+                  onChange={(e) => onFieldChange("tipoOportunidad", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  placeholder="Tipo de oportunidad"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* PRIMER CONTACTO */}
+          <div className="border-t border-beck-border-light pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+              Primer contacto
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label htmlFor="funnel-fecha-primer-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Fecha primer contacto
+                </label>
+                <input
+                  id="funnel-fecha-primer-contacto"
+                  type="date"
+                  value={draft.fechaPrimerContacto}
+                  onChange={(e) => onFieldChange("fechaPrimerContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                />
+              </div>
+              <div>
+                <label htmlFor="funnel-tipo-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Tipo contacto
+                </label>
+                <select
+                  id="funnel-tipo-contacto"
+                  value={draft.tipoContacto}
+                  onChange={(e) => onFieldChange("tipoContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                >
+                  <option value="">Selecciona tipo</option>
+                  <option value="llamada">Llamada</option>
+                  <option value="email">Email</option>
+                  <option value="visita">Visita</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="reunion_virtual">Reunion virtual</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="funnel-tipo-cliente" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Tipo cliente
+                </label>
+                <select
+                  id="funnel-tipo-cliente"
+                  value={draft.tipoCliente}
+                  onChange={(e) => onFieldChange("tipoCliente", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                >
+                  <option value="">Selecciona tipo</option>
+                  <option value="nuevo">Nuevo</option>
+                  <option value="recurrente">Recurrente</option>
+                  <option value="referido">Referido</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="funnel-timing-estimado" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Timing estimado
+                </label>
+                <input
+                  id="funnel-timing-estimado"
+                  type="text"
+                  value={draft.timingEstimado}
+                  onChange={(e) => onFieldChange("timingEstimado", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  placeholder="Ej: 3 meses"
+                />
+              </div>
+              <div>
+                <label htmlFor="funnel-nivel-interes" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Nivel de interes
+                </label>
+                <select
+                  id="funnel-nivel-interes"
+                  value={draft.nivelInteres}
+                  onChange={(e) => onFieldChange("nivelInteres", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                >
+                  <option value="">Selecciona nivel</option>
+                  <option value="alto">Alto</option>
+                  <option value="medio">Medio</option>
+                  <option value="bajo">Bajo</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="funnel-proxima-accion" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Proxima accion
+                </label>
+                <input
+                  id="funnel-proxima-accion"
+                  type="text"
+                  value={draft.proximaAccion}
+                  onChange={(e) => onFieldChange("proximaAccion", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  placeholder="Describe la proxima accion"
+                />
+              </div>
+              <div>
+                <label htmlFor="funnel-fecha-proxima-accion" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Fecha proxima accion
+                </label>
+                <input
+                  id="funnel-fecha-proxima-accion"
+                  type="date"
+                  value={draft.fechaProximaAccion}
+                  onChange={(e) => onFieldChange("fechaProximaAccion", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="funnel-necesidad-detectada" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Necesidad detectada
+                </label>
+                <textarea
+                  id="funnel-necesidad-detectada"
+                  value={draft.necesidadDetectada}
+                  onChange={(e) => onFieldChange("necesidadDetectada", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  rows={2}
+                  placeholder="Describe la necesidad del cliente"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="funnel-comentarios" className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Comentarios
+                </label>
+                <textarea
+                  id="funnel-comentarios"
+                  value={draft.comentariosPrimerContacto}
+                  onChange={(e) => onFieldChange("comentariosPrimerContacto", e.target.value)}
+                  disabled={submitting}
+                  className={`${inputClassName} ${disabledInputClassName}`}
+                  rows={2}
+                  placeholder="Comentarios adicionales"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* NEGOCIACION */}
+          {["enviada", "negociacion", "cerrada"].includes(draft.etapa) && (
+            <div className="border-t border-beck-border-light pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                Negociacion
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label htmlFor="funnel-probabilidad-cierre" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Probabilidad cierre (%)
+                  </label>
+                  <input
+                    id="funnel-probabilidad-cierre"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={draft.probabilidadCierre}
+                    onChange={(e) => onFieldChange("probabilidadCierre", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    placeholder="0-100"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="funnel-objeciones" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Objeciones
+                  </label>
+                  <textarea
+                    id="funnel-objeciones"
+                    value={draft.objeciones}
+                    onChange={(e) => onFieldChange("objeciones", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    rows={2}
+                    placeholder="Objeciones del cliente"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="funnel-contrapropuestas" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Contrapropuestas
+                  </label>
+                  <textarea
+                    id="funnel-contrapropuestas"
+                    value={draft.contrapropuestas}
+                    onChange={(e) => onFieldChange("contrapropuestas", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    rows={2}
+                    placeholder="Contrapropuestas planteadas"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="funnel-ajustes-solicitados" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Ajustes solicitados
+                  </label>
+                  <textarea
+                    id="funnel-ajustes-solicitados"
+                    value={draft.ajustesSolicitados}
+                    onChange={(e) => onFieldChange("ajustesSolicitados", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    rows={2}
+                    placeholder="Ajustes solicitados por el cliente"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col-reverse gap-2 border-t border-beck-border-light pt-4 sm:flex-row sm:justify-end">
             <button
               type="button"
@@ -1132,9 +1563,14 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
   const [dealEnCierre, setDealEnCierre] = useState<string | null>(null);
   const [estadoCierreModal, setEstadoCierreModal] = useState<
-    "ganada" | "perdida" | ""
+    FunnelEstadoCierre | ""
   >("");
   const [motivoPerdidaModal, setMotivoPerdidaModal] = useState("");
+  const [etapaPerdidaModal, setEtapaPerdidaModal] = useState("");
+  const [motivoPostergacionModal, setMotivoPostergacionModal] = useState("");
+  const [fechaReactivacionModal, setFechaReactivacionModal] = useState("");
+  const [documentoRespaldoModal, setDocumentoRespaldoModal] = useState("");
+  const [flujoPosteriorModal, setFlujoPosteriorModal] = useState("");
   const [ufActual, setUfActual] = useState<number | null>(null);
   const [dolarActual, setDolarActual] = useState<number | null>(null);
   const [ufFecha, setUfFecha] = useState<string | null>(null);
@@ -1307,6 +1743,15 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     const valorOriginal = toNumber(item.valorOriginal);
     const fechaProbableCierre = toText(item.fechaProbableCierre, "");
 
+    const probCierre = toNumber(item.probabilidadCierre);
+    const estadoCierreRaw = toText(item.estadoCierre, "");
+    const estadoCierre: FunnelEstadoCierre | undefined =
+      estadoCierreRaw === "ganada" ||
+      estadoCierreRaw === "perdida" ||
+      estadoCierreRaw === "postergada"
+        ? estadoCierreRaw
+        : undefined;
+
     return {
       id: toText(item.id),
       nombreProyecto: toText(item.nombreProyecto),
@@ -1321,6 +1766,37 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
       comuna: toText(item.comuna, "") || undefined,
       fuenteLead: fuenteLeadNormalizada,
       etapa: etapaBackendMap[toText(item.etapa)] ?? "prospecto",
+      rutEmpresa: toText(item.rutEmpresa, "") || undefined,
+      nombreContacto: toText(item.nombreContacto, "") || undefined,
+      cargoContacto: toText(item.cargoContacto, "") || undefined,
+      telefonoContacto: toText(item.telefonoContacto, "") || undefined,
+      correoContacto: toText(item.correoContacto, "") || undefined,
+      tipoCliente: toText(item.tipoCliente, "") || undefined,
+      tipoOportunidad: toText(item.tipoOportunidad, "") || undefined,
+      fechaPrimerContacto: toText(item.fechaPrimerContacto, "")
+        ? toText(item.fechaPrimerContacto, "").slice(0, 10)
+        : undefined,
+      tipoContacto: toText(item.tipoContacto, "") || undefined,
+      necesidadDetectada: toText(item.necesidadDetectada, "") || undefined,
+      timingEstimado: toText(item.timingEstimado, "") || undefined,
+      nivelInteres: toText(item.nivelInteres, "") || undefined,
+      proximaAccion: toText(item.proximaAccion, "") || undefined,
+      fechaProximaAccion: toText(item.fechaProximaAccion, "")
+        ? toText(item.fechaProximaAccion, "").slice(0, 10)
+        : undefined,
+      probabilidadCierre: probCierre > 0 ? probCierre : undefined,
+      objeciones: toText(item.objeciones, "") || undefined,
+      contrapropuestas: toText(item.contrapropuestas, "") || undefined,
+      ajustesSolicitados: toText(item.ajustesSolicitados, "") || undefined,
+      estadoCierre,
+      motivoPerdida: toText(item.motivoPerdida, "") || undefined,
+      etapaPerdida: toText(item.etapaPerdida, "") || undefined,
+      motivoPostergacion: toText(item.motivoPostergacion, "") || undefined,
+      fechaReactivacion: toText(item.fechaReactivacion, "")
+        ? toText(item.fechaReactivacion, "").slice(0, 10)
+        : undefined,
+      documentoRespaldo: toText(item.documentoRespaldo, "") || undefined,
+      flujoPosterior: toText(item.flujoPosterior, "") || undefined,
     };
   };
 
@@ -1338,6 +1814,28 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     comuna: deal.comuna || "",
     fuenteLead: deal.fuenteLead || "",
     etapa: deal.etapa,
+    rutEmpresa: deal.rutEmpresa || "",
+    nombreContacto: deal.nombreContacto || "",
+    cargoContacto: deal.cargoContacto || "",
+    telefonoContacto: deal.telefonoContacto || "",
+    correoContacto: deal.correoContacto || "",
+    tipoCliente: deal.tipoCliente || "",
+    tipoOportunidad: deal.tipoOportunidad || "",
+    fechaPrimerContacto: deal.fechaPrimerContacto || "",
+    tipoContacto: deal.tipoContacto || "",
+    necesidadDetectada: deal.necesidadDetectada || "",
+    timingEstimado: deal.timingEstimado || "",
+    nivelInteres: deal.nivelInteres || "",
+    proximaAccion: deal.proximaAccion || "",
+    fechaProximaAccion: deal.fechaProximaAccion || "",
+    comentariosPrimerContacto: "",
+    probabilidadCierre:
+      typeof deal.probabilidadCierre === "number"
+        ? String(deal.probabilidadCierre)
+        : "",
+    objeciones: deal.objeciones || "",
+    contrapropuestas: deal.contrapropuestas || "",
+    ajustesSolicitados: deal.ajustesSolicitados || "",
   });
 
   const loadDeals = async () => {
@@ -1684,6 +2182,11 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     setDealEnCierre(null);
     setEstadoCierreModal("");
     setMotivoPerdidaModal("");
+    setEtapaPerdidaModal("");
+    setMotivoPostergacionModal("");
+    setFechaReactivacionModal("");
+    setDocumentoRespaldoModal("");
+    setFlujoPosteriorModal("");
   };
 
   const handleFieldChange = (field: keyof FunnelDraft, value: string) => {
@@ -1732,8 +2235,13 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     dealId: string,
     payload: {
       etapa: string;
-      estadoCierre?: "ganada" | "perdida";
+      estadoCierre?: FunnelEstadoCierre;
       motivoPerdida?: string;
+      etapaPerdida?: string;
+      motivoPostergacion?: string;
+      fechaReactivacion?: string;
+      documentoRespaldo?: string;
+      flujoPosterior?: string;
     }
   ) => {
     if (!canEditFunnel || dealSaving) return;
@@ -1878,9 +2386,19 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
   const handleConfirmarCierre = async ({
     estadoCierre,
     motivoPerdida,
+    etapaPerdida,
+    motivoPostergacion,
+    fechaReactivacion,
+    documentoRespaldo,
+    flujoPosterior,
   }: {
-    estadoCierre: "ganada" | "perdida";
+    estadoCierre: FunnelEstadoCierre;
     motivoPerdida?: string;
+    etapaPerdida?: string;
+    motivoPostergacion?: string;
+    fechaReactivacion?: string;
+    documentoRespaldo?: string;
+    flujoPosterior?: string;
   }) => {
     if (!canEditFunnel || !dealEnCierre) {
       return;
@@ -1888,16 +2406,24 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
 
     const payload: {
       etapa: string;
-      estadoCierre: "ganada" | "perdida";
+      estadoCierre: FunnelEstadoCierre;
       motivoPerdida?: string;
+      etapaPerdida?: string;
+      motivoPostergacion?: string;
+      fechaReactivacion?: string;
+      documentoRespaldo?: string;
+      flujoPosterior?: string;
     } = {
       etapa: etapaFrontendToBackendMap.cerrada,
       estadoCierre,
     };
 
-    if (motivoPerdida) {
-      payload.motivoPerdida = motivoPerdida;
-    }
+    if (motivoPerdida) payload.motivoPerdida = motivoPerdida;
+    if (etapaPerdida) payload.etapaPerdida = etapaPerdida;
+    if (motivoPostergacion) payload.motivoPostergacion = motivoPostergacion;
+    if (fechaReactivacion) payload.fechaReactivacion = fechaReactivacion;
+    if (documentoRespaldo) payload.documentoRespaldo = documentoRespaldo;
+    if (flujoPosterior) payload.flujoPosterior = flujoPosterior;
 
     try {
       await updateDealStage(dealEnCierre, payload);
@@ -1945,6 +2471,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     try {
       setDealSaving(true);
 
+      const isNegociacionStage = ["enviada", "negociacion", "cerrada"].includes(draft.etapa);
+
       const payload = {
         nombreProyecto,
         empresa,
@@ -1958,6 +2486,27 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
           ? fuenteLeadFrontendToBackendMap[draft.fuenteLead]
           : undefined,
         etapa: etapaFrontendToBackendMap[draft.etapa],
+        rutEmpresa: draft.rutEmpresa.trim() || undefined,
+        nombreContacto: draft.nombreContacto.trim() || undefined,
+        cargoContacto: draft.cargoContacto.trim() || undefined,
+        telefonoContacto: draft.telefonoContacto.trim() || undefined,
+        correoContacto: draft.correoContacto.trim() || undefined,
+        tipoCliente: draft.tipoCliente.trim() || undefined,
+        tipoOportunidad: draft.tipoOportunidad.trim() || undefined,
+        fechaPrimerContacto: draft.fechaPrimerContacto.trim() || undefined,
+        tipoContacto: draft.tipoContacto.trim() || undefined,
+        necesidadDetectada: draft.necesidadDetectada.trim() || undefined,
+        timingEstimado: draft.timingEstimado.trim() || undefined,
+        nivelInteres: draft.nivelInteres.trim() || undefined,
+        proximaAccion: draft.proximaAccion.trim() || undefined,
+        fechaProximaAccion: draft.fechaProximaAccion.trim() || undefined,
+        comentariosPrimerContacto: draft.comentariosPrimerContacto.trim() || undefined,
+        probabilidadCierre: isNegociacionStage && draft.probabilidadCierre
+          ? Number(draft.probabilidadCierre)
+          : undefined,
+        objeciones: isNegociacionStage ? (draft.objeciones.trim() || undefined) : undefined,
+        contrapropuestas: isNegociacionStage ? (draft.contrapropuestas.trim() || undefined) : undefined,
+        ajustesSolicitados: isNegociacionStage ? (draft.ajustesSolicitados.trim() || undefined) : undefined,
       };
 
       const savedOpportunity =
@@ -2535,6 +3084,11 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         open={cierreModalOpen && canEditFunnel}
         estadoCierre={estadoCierreModal}
         motivoPerdida={motivoPerdidaModal}
+        etapaPerdida={etapaPerdidaModal}
+        motivoPostergacion={motivoPostergacionModal}
+        fechaReactivacion={fechaReactivacionModal}
+        documentoRespaldo={documentoRespaldoModal}
+        flujoPosterior={flujoPosteriorModal}
         onChangeEstado={(value) => {
           if (!canEditFunnel || dealSaving) return;
           setEstadoCierreModal(value);
@@ -2543,28 +3097,40 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
           if (!canEditFunnel || dealSaving) return;
           setMotivoPerdidaModal(value);
         }}
+        onChangeEtapaPerdida={(value) => {
+          if (!canEditFunnel || dealSaving) return;
+          setEtapaPerdidaModal(value);
+        }}
+        onChangeMotivoPostergacion={(value) => {
+          if (!canEditFunnel || dealSaving) return;
+          setMotivoPostergacionModal(value);
+        }}
+        onChangeFechaReactivacion={(value) => {
+          if (!canEditFunnel || dealSaving) return;
+          setFechaReactivacionModal(value);
+        }}
+        onChangeDocumentoRespaldo={(value) => {
+          if (!canEditFunnel || dealSaving) return;
+          setDocumentoRespaldoModal(value);
+        }}
+        onChangeFlujoPosterior={(value) => {
+          if (!canEditFunnel || dealSaving) return;
+          setFlujoPosteriorModal(value);
+        }}
         onConfirm={() => {
           if (!canEditFunnel || dealSaving) return;
 
           if (
             estadoCierreModal !== "ganada" &&
-            estadoCierreModal !== "perdida"
+            estadoCierreModal !== "perdida" &&
+            estadoCierreModal !== "postergada"
           ) {
-            console.error(
-              "Debes indicar si la oportunidad fue ganada o perdida."
-            );
+            console.error("Debes indicar el resultado de la oportunidad.");
             return;
           }
 
-          const motivoPerdidaNormalizado = motivoPerdidaModal.trim();
-
-          if (
-            estadoCierreModal === "perdida" &&
-            !motivoPerdidaNormalizado
-          ) {
-            console.error(
-              "Si la oportunidad fue perdida, debes indicar un motivo."
-            );
+          if (estadoCierreModal === "perdida" && !motivoPerdidaModal.trim()) {
+            console.error("Si la oportunidad fue perdida, debes indicar un motivo.");
             return;
           }
 
@@ -2572,8 +3138,22 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
             estadoCierre: estadoCierreModal,
             motivoPerdida:
               estadoCierreModal === "perdida"
-                ? motivoPerdidaNormalizado
+                ? motivoPerdidaModal.trim()
                 : undefined,
+            etapaPerdida:
+              estadoCierreModal === "perdida"
+                ? etapaPerdidaModal.trim()
+                : undefined,
+            motivoPostergacion:
+              estadoCierreModal === "postergada"
+                ? motivoPostergacionModal.trim()
+                : undefined,
+            fechaReactivacion:
+              estadoCierreModal === "postergada"
+                ? fechaReactivacionModal.trim()
+                : undefined,
+            documentoRespaldo: documentoRespaldoModal.trim() || undefined,
+            flujoPosterior: flujoPosteriorModal.trim() || undefined,
           });
         }}
         onCancel={handleCloseCierreModal}

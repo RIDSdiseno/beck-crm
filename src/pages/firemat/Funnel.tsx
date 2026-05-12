@@ -1005,10 +1005,10 @@ const FirematFunnel: React.FC = () => {
             </p>
           </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => void cargar()} loading={loading}>
+            <Button className="firemat-action-button" icon={<ReloadOutlined />} onClick={() => void cargar()} loading={loading}>
               Actualizar
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCrear}>
+            <Button className="firemat-action-button" type="primary" icon={<PlusOutlined />} onClick={openCrear}>
               Crear oportunidad
             </Button>
           </Space>

@@ -196,11 +196,9 @@ const FirematProductos: React.FC = () => {
             <h1 className="mt-2 text-lg font-semibold tracking-wide text-beck-ink">
               Maestro de productos Firemat
             </h1>
-            <p className="mt-1 max-w-2xl text-xs text-beck-ink-soft">
-              Productos reales sincronizados desde el ecommerce Firemat.
-            </p>
           </div>
           <Button
+            className="firemat-action-button"
             icon={<ReloadOutlined />}
             onClick={() => void cargar()}
             loading={loading}

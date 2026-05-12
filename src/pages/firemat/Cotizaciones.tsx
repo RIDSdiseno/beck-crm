@@ -564,6 +564,7 @@ const FirematCotizaciones: React.FC = () => {
           </div>
           <Space wrap>
             <Button
+              className="firemat-action-button"
               icon={<ReloadOutlined />}
               onClick={() => void cargar()}
               loading={loading}
@@ -571,7 +572,7 @@ const FirematCotizaciones: React.FC = () => {
               Actualizar
             </Button>
             {canCreate && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCrear}>
+              <Button className="firemat-action-button" type="primary" icon={<PlusOutlined />} onClick={openCrear}>
                 Nueva cotización
               </Button>
             )}

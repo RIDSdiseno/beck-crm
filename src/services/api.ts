@@ -227,6 +227,36 @@ export interface FunnelBeckUpsertPayload {
   comuna?: string;
   fuenteLead?: string;
   etapa?: string;
+  // Prospecto
+  rutEmpresa?: string;
+  nombreContacto?: string;
+  cargoContacto?: string;
+  telefonoContacto?: string;
+  correoContacto?: string;
+  tipoCliente?: string;
+  tipoOportunidad?: string;
+  // Primer contacto
+  fechaPrimerContacto?: string;
+  tipoContacto?: string;
+  necesidadDetectada?: string;
+  timingEstimado?: string;
+  nivelInteres?: string;
+  proximaAccion?: string;
+  fechaProximaAccion?: string;
+  comentariosPrimerContacto?: string;
+  // Negociacion
+  probabilidadCierre?: number;
+  objeciones?: string;
+  contrapropuestas?: string;
+  ajustesSolicitados?: string;
+  // Cierre
+  estadoCierre?: string;
+  motivoPerdida?: string;
+  etapaPerdida?: string;
+  motivoPostergacion?: string;
+  fechaReactivacion?: string;
+  documentoRespaldo?: string;
+  flujoPosterior?: string;
 }
 
 export const funnelBeckAPI = {
