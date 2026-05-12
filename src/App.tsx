@@ -27,7 +27,6 @@ import {
   BeckMovimientos,
   BeckRegistro,
   BeckProcesamientoIngenieria,
-  BeckJuntaLinealEspuma,
   BeckUsuariosParametros,
 } from "./pages/beck";
 
@@ -64,7 +63,6 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         registro: true,
         ingenieria: true,
         reportes: true,
-        juntaEspuma: true,
         cotizaciones: true,
         movimientos: true,
         obras: true,
@@ -79,7 +77,6 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         registro: false,
         ingenieria: false,
         reportes: true,
-        juntaEspuma: false,
         cotizaciones: true,
         movimientos: false,
         obras: false,
@@ -95,7 +92,6 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         registro: false,
         ingenieria: false,
         reportes: false,
-        juntaEspuma: false,
         cotizaciones: false,
         movimientos: false,
         obras: false,
@@ -110,7 +106,6 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         registro: true,
         ingenieria: true,
         reportes: true,
-        juntaEspuma: false,
         cotizaciones: false,
         movimientos: false,
         obras: true,
@@ -126,7 +121,6 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         registro: true,
         ingenieria: false,
         reportes: true,
-        juntaEspuma: false,
         cotizaciones: true,
         movimientos: false,
         obras: true,
@@ -181,7 +175,6 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/registro") return access.registro;
   if (pathname === "/beck/procesamiento-ingenieria") return access.ingenieria;
   if (pathname === "/beck/reportes") return access.reportes;
-  if (pathname === "/beck/junta-lineal-espuma") return access.juntaEspuma;
   if (pathname === "/beck/cotizaciones") return access.cotizaciones;
   if (pathname === "/beck/movimientos") return access.movimientos;
   if (pathname === "/beck/obras") return access.obras;
@@ -395,7 +388,6 @@ const AppShell: React.FC = () => {
                 <Route path="/registro" element={<Navigate to="/beck/registro" replace />} />
                 <Route path="/ingenieria" element={<Navigate to="/beck/procesamiento-ingenieria" replace />} />
                 <Route path="/reportes" element={<Navigate to="/beck/reportes" replace />} />
-                <Route path="/junta-espuma" element={<Navigate to="/beck/junta-lineal-espuma" replace />} />
                 <Route path="/cotizaciones" element={<Navigate to="/beck/cotizaciones" replace />} />
                 <Route path="/movimientos" element={<Navigate to="/beck/movimientos" replace />} />
                 <Route path="/obras" element={<Navigate to="/beck/obras" replace />} />
@@ -477,16 +469,6 @@ const AppShell: React.FC = () => {
                   element={
                     access.ingenieria ? (
                       <BeckProcesamientoIngenieria themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/beck/junta-lineal-espuma"
-                  element={
-                    access.juntaEspuma ? (
-                      <BeckJuntaLinealEspuma themeMode={themeMode} />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )

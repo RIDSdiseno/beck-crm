@@ -4,7 +4,6 @@ import {
   ProfileOutlined,
   SettingOutlined,
   BarChartOutlined,
-  ThunderboltOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   LogoutOutlined,
@@ -29,7 +28,6 @@ export type RoleAccess = {
   registro: boolean;
   ingenieria: boolean;
   reportes: boolean;
-  juntaEspuma: boolean;
   cotizaciones: boolean;
   movimientos: boolean;
   obras: boolean;
@@ -150,7 +148,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "ingenieria", to: "/beck/procesamiento-ingenieria", icon: <FireOutlined />, label: "Procesamiento Ingeniería", access: access.ingenieria },
     { key: "registro", to: "/beck/registro", icon: <ProfileOutlined />, label: "Registro", access: access.registro },
     { key: "reportes", to: "/beck/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.reportes },
-    { key: "juntaEspuma", to: "/beck/junta-lineal-espuma", icon: <ThunderboltOutlined />, label: "Junta lineal espuma", access: access.juntaEspuma },
     { key: "cotizaciones", to: "/beck/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.cotizaciones },
     { key: "movimientos", to: "/beck/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.movimientos },
     { key: "obras", to: "/beck/obras", icon: <BuildOutlined />, label: "Obras", access: access.obras },

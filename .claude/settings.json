@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\RIDS\\\\Desktop\\\\beck-crm\\\\src\\\\pages\\\\beck\\\\\" -File | Select-Object Name)"
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\RIDS\\\\Desktop\\\\beck-crm\\\\src\\\\pages\\\\beck\\\\\" -File | Select-Object Name)",
+      "Bash(npx tsc *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\RIDS\\\\Desktop\\\\beck-crm\\\\src\\\\pages\\\\beck\" -Force)",
+      "Read(//c/Users/RIDS/Desktop/**)",
+      "Read(//c/Users/RIDS/**)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\RIDS\\\\Desktop\\\\back_beck_crm\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(node -e \"const p = require\\('./node_modules/antd/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const fs = require\\('fs'\\); const p = require\\('./node_modules/rc-image/package.json'\\); console.log\\(p.version, p.main\\)\")",
+      "Bash(dir \"c:\\\\Users\\\\RIDS\\\\Desktop\\\\beck-crm\\\\node_modules\\\\rc-image\\\\lib\" /b)",
+      "Bash(node -e ' *)"
     ]
   }
 }

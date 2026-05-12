@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -95,15 +95,12 @@ const ETAPAS: Array<{
   { label: "Primer contacto", value: "PRIMER_CONTACTO", color: "#2563eb" },
   { label: "Desarrollo cotización", value: "DESARROLLO_COTIZACION", color: "#7c3aed" },
   { label: "Cotización enviada", value: "COTIZACION_ENVIADA", color: "#d97706" },
-  { label: "Orden confirmada", value: "ORDEN_CONFIRMADA", color: "#0891b2" },
+  { label: "|firmada", value: "ORDEN_CONFIRMADA", color: "#0891b2" },
   { label: "Ganada", value: "GANADA", color: "#16a34a" },
   { label: "Perdida", value: "PERDIDA", color: "#dc2626" },
   { label: "Postergada", value: "POSTERGADA", color: "#9333ea" },
 ];
 
-const ETAPA_VALUES = new Set<FirematFunnelEtapa>(
-  ETAPAS.map((etapa) => etapa.value)
-);
 
 const TIPO_CLIENTE_OPTIONS: Array<{
   label: string;
@@ -204,8 +201,6 @@ const downloadBlob = (blob: Blob, fileName: string) => {
 const needsExtraFields = (etapa: FirematFunnelEtapa) =>
   etapa === "PERDIDA" || etapa === "POSTERGADA" || etapa === "GANADA";
 
-const isFirematEtapa = (value: string): value is FirematFunnelEtapa =>
-  ETAPA_VALUES.has(value as FirematFunnelEtapa);
 
 const getCotizacionLabel = (cotizacion: FirematCotizacion) => {
   const numero = cotizacion.numero ?? cotizacion.id;
@@ -384,7 +379,8 @@ const FirematFunnel: React.FC = () => {
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
   const etapaWatch = Form.useWatch("etapa", form);
-  const lineasCotizacionWatch = Form.useWatch("lineas", cotizacionForm) ?? [];
+  const lineasCotizacionRaw = Form.useWatch("lineas", cotizacionForm);
+  const lineasCotizacionWatch = useMemo(() => lineasCotizacionRaw ?? [], [lineasCotizacionRaw]);
 
   const [oportunidades, setOportunidades] = useState<FirematFunnelOportunidad[]>([]);
   const [resumen, setResumen] = useState<FirematFunnelResumen>(RESUMEN_VACIO);
@@ -403,6 +399,7 @@ const FirematFunnel: React.FC = () => {
   const [savingCotizacion, setSavingCotizacion] = useState(false);
   const [activeDragOpportunity, setActiveDragOpportunity] =
     useState<FirematFunnelOportunidad | null>(null);
+  const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
   const [dropOverEtapa, setDropOverEtapa] =
     useState<FirematFunnelEtapa | null>(null);
 
@@ -702,18 +699,57 @@ const FirematFunnel: React.FC = () => {
     }
   };
 
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const mouseXDuringDragRef = useRef<number>(0);
+  const dragScrollRafRef = useRef<number | null>(null);
+
+  const stopDragScroll = useCallback(() => {
+    if (dragScrollRafRef.current !== null) {
+      cancelAnimationFrame(dragScrollRafRef.current);
+      dragScrollRafRef.current = null;
+    }
+  }, []);
+
+  const startDragScroll = useCallback(() => {
+    const tick = () => {
+      const container = kanbanScrollRef.current;
+      if (container) {
+        const { left, right } = container.getBoundingClientRect();
+        const x = mouseXDuringDragRef.current;
+        if (x > right - 80) container.scrollLeft += 15;
+        else if (x < left + 80) container.scrollLeft -= 15;
+      }
+      dragScrollRafRef.current = requestAnimationFrame(tick);
+    };
+    dragScrollRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => {
+    const trackMouse = (e: DragEvent) => {
+      mouseXDuringDragRef.current = e.clientX;
+    };
+    document.addEventListener("dragover", trackMouse);
+    return () => document.removeEventListener("dragover", trackMouse);
+  }, []);
+
+  const handleKanbanDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
   const handleDragStart = (
     event: React.DragEvent<HTMLElement>,
     oportunidad: FirematFunnelOportunidad
   ) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", oportunidad.id);
-    event.dataTransfer.setData("application/firemat-opportunity-id", oportunidad.id);
-    event.dataTransfer.setData("application/firemat-source-stage", oportunidad.etapa);
+    activeDragRef.current = oportunidad;
     setActiveDragOpportunity(oportunidad);
+    startDragScroll();
   };
 
   const handleDragEnd = () => {
+    stopDragScroll();
+    activeDragRef.current = null;
     setActiveDragOpportunity(null);
     setDropOverEtapa(null);
   };
@@ -738,27 +774,11 @@ const FirematFunnel: React.FC = () => {
     event.preventDefault();
     event.stopPropagation();
 
-    const opportunityId =
-      event.dataTransfer.getData("application/firemat-opportunity-id") ||
-      event.dataTransfer.getData("text/plain") ||
-      activeDragOpportunity?.id ||
-      "";
-    const etapaOrigen =
-      event.dataTransfer.getData("application/firemat-source-stage") ||
-      activeDragOpportunity?.etapa ||
-      "";
-
+    const oportunidad = activeDragRef.current;
+    activeDragRef.current = null;
     setDropOverEtapa(null);
     setActiveDragOpportunity(null);
 
-    if (!opportunityId) return;
-    if (etapaOrigen && isFirematEtapa(etapaOrigen) && etapaOrigen === etapaDestino) {
-      return;
-    }
-
-    const oportunidad =
-      oportunidades.find((item) => item.id === opportunityId) ??
-      activeDragOpportunity;
     if (!oportunidad || oportunidad.etapa === etapaDestino) return;
 
     void handleCambiarEtapa(oportunidad, etapaDestino);
@@ -1050,14 +1070,19 @@ const FirematFunnel: React.FC = () => {
         </div>
       </section>
 
-      <section className="firemat-panel overflow-hidden bg-white">
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            <div className="flex min-w-max flex-nowrap gap-4 overflow-x-auto p-4 pb-5 scrollbar-thin">
+      <section className="firemat-panel bg-white" style={{ overflow: "visible" }}>
+        <div
+          ref={kanbanScrollRef}
+          style={{ overflowX: "auto", overflowY: "visible" }}
+          onDragOver={handleKanbanDragOver}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <Spin size="large" />
+            </div>
+          ) : (
+            <div className="flex w-max flex-nowrap gap-4 p-4 pb-5">
               {groupedByEtapa.map((column) => (
                 <FirematFunnelColumn
                   key={column.value}
@@ -1074,8 +1099,8 @@ const FirematFunnel: React.FC = () => {
                 />
               ))}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </section>
 
       <Modal

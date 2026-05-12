@@ -20,6 +20,7 @@ export type RegistroSello = {
   ejeNumerico: string;
   nombreSellador: string;
   fotoUrl?: string;
+  fotosUrls?: string[];
   recinto: string;
   numeroSello: string;
   cantidadSellos: number;
@@ -28,4 +29,6 @@ export type RegistroSello = {
   cieloModular: 1 | 2 | 3;
   cantidadSellosConFactor: number;
   observaciones?: string;
+  tipoRegistro?: string;
+  metrosLineales?: number;
 };

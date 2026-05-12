@@ -176,3 +176,39 @@ body {
   background: rgba(245, 243, 243, 0.95);
   border-color: var(--firemat-border);
 }
+
+/* ── Ant Design Image Preview: bring controls closer to the image ──
+   The image is max-height:70% centered vertically, so its bottom edge
+   sits at ~15vh from the viewport bottom. The toolbar default is
+   bottom:32px, leaving a large gap on tall screens.
+   Formula keeps the toolbar ~8px below the image at any height. ── */
+.ant-image-preview-footer {
+  bottom: max(8px, calc(15vh - 80px)) !important;
+}
+
+/* Tighten the gap between counter and action bar */
+.ant-image-preview-footer {
+  gap: 8px !important;
+}
+
+/* ── Ant Design Image Preview: arrows near the image ──────────────
+   Default inset is ~8px, which on a 1280px screen puts arrows
+   552px from a centred 4:3 photo. At 16vw (≈205px on 1280px) the
+   arrow lands ~15px from the image's left/right edge — modern
+   lightbox style. min(12px) keeps them visible on narrow screens. ── */
+.ant-image-preview-switch-prev {
+  inset-inline-start: max(12px, 16vw) !important;
+}
+.ant-image-preview-switch-next {
+  inset-inline-end: max(12px, 16vw) !important;
+}
+
+/* More visible background so arrows read clearly over any photo */
+.ant-image-preview-switch {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+.ant-image-preview-switch:hover {
+  background-color: rgba(0, 0, 0, 0.55) !important;
+}

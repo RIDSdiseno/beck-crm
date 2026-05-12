@@ -24,8 +24,8 @@ import { useAuth } from "../context/useAuth";
 import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
 
-
 export type NuevoRegistroValues = {
+  tipoRegistro: "sello_cortafuego" | "junta_lineal_espuma";
   obraId: string;
   itemizadoBeck: string;
   itemizadoSacyr?: string;
@@ -36,7 +36,8 @@ export type NuevoRegistroValues = {
   nombreSellador: string;
   recinto?: string;
   numeroSello?: string;
-  cantidadSellos: number;
+  cantidadSellos?: number;
+  metrosLineales?: number;
   holguraCm: number;
   factorHolgura: 1 | 1.2 | 1.4 | 1.8;
   cieloModular: 1 | 2 | 3;
@@ -76,7 +77,9 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
   const [obraForm] = Form.useForm<CreateObraValues>();
 
   const obraId = Form.useWatch("obraId", form);
+  const tipoRegistro = Form.useWatch("tipoRegistro", form);
   const selectedObra = obras.find((o) => o.id === obraId);
+  const esEspuma = tipoRegistro === "junta_lineal_espuma";
 
   const handleAfterOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -88,6 +91,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
     setObras(loadObras());
     form.setFieldsValue({
       fechaEjecucion: dayjs(),
+      tipoRegistro: "sello_cortafuego",
     } as Partial<NuevoRegistroValues>);
   };
 
@@ -141,6 +145,8 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
     message.success("Obra creada");
   };
 
+  const tipoLabel = esEspuma ? "Junta lineal ESPUMA" : "Sello cortafuego";
+
   return (
     <Drawer
       placement="right"
@@ -148,7 +154,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
         <div className="flex flex-col gap-1">
           <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] text-orange-700 border border-amber-100">
             <FireOutlined className="text-[12px]" />
-            <span>Nuevo registro de sello cortafuego</span>
+            <span>Nuevo registro · {tipoLabel}</span>
           </div>
           <p className="text-[11px] text-slate-500">
             Completa los datos según el itemizado BECK y registra la evidencia
@@ -201,7 +207,26 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
         onFinish={handleFinish}
         className="space-y-4"
       >
-        {/* Paso 0: Obra (solo Admin crea) */}
+        {/* Tipo de registro */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Tipo de registro
+          </p>
+          <Form.Item
+            name="tipoRegistro"
+            rules={[{ required: true, message: "Selecciona el tipo" }]}
+            className="mb-0"
+          >
+            <Select
+              options={[
+                { value: "sello_cortafuego", label: "Sello cortafuego" },
+                { value: "junta_lineal_espuma", label: "Junta lineal ESPUMA" },
+              ]}
+            />
+          </Form.Item>
+        </div>
+
+        {/* Obra */}
         <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Obra
@@ -253,185 +278,198 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
           </div>
         ) : (
           <>
-        {/* Bloque 1: Identificación del itemizado */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Identificación del itemizado
-          </p>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Form.Item
-              name="itemizadoBeck"
-              label="Itemizado BECK"
-              rules={[{ required: true, message: "Ingrese itemizado BECK" }]}
-            >
-              <Input placeholder="Ej: BECK-001" />
-            </Form.Item>
-            <Form.Item name="itemizadoSacyr" label="Itemizado SACYR">
-              <Input placeholder="Ej: SACYR-A12" />
-            </Form.Item>
-
-            <Form.Item
-              name="fechaEjecucion"
-              label="Fecha ejecución"
-              rules={[{ required: true, message: "Seleccione la fecha" }]}
-            >
-              <DatePicker
-                format="DD-MM-YYYY"
-                style={{ width: "100%" }}
-                placeholder="Seleccione fecha"
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="piso"
-              label="Piso"
-              rules={[{ required: true, message: "Indique piso" }]}
-            >
-              <Input placeholder="Ej: Piso 2" />
-            </Form.Item>
-          </div>
-        </div>
-
-        {/* Bloque 2: Ubicación y responsable */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Ubicación y responsable
-          </p>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <Form.Item name="ejeAlfabetico" label="Eje alfabético">
-              <Input placeholder="Ej: B" />
-            </Form.Item>
-
-            <Form.Item name="ejeNumerico" label="Eje numérico">
-              <Input placeholder="Ej: 12" />
-            </Form.Item>
-
-            <Form.Item
-              name="nombreSellador"
-              label="Nombre sellador"
-              rules={[{ required: true, message: "Indique el sellador" }]}
-            >
-              <Input placeholder="Nombre sellador" />
-            </Form.Item>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Form.Item name="recinto" label="Recinto">
-              <Input placeholder="Ej: Sala bombas" />
-            </Form.Item>
-
-            <Form.Item name="numeroSello" label="N° del sello">
-              <Input placeholder="Ej: S-0001" />
-            </Form.Item>
-          </div>
-        </div>
-
-        {/* Bloque 3: Parámetros técnicos */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Parámetros técnicos
-          </p>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <Form.Item
-              name="cantidadSellos"
-              label="Cantidad de sellos"
-              rules={[{ required: true, message: "Indique cantidad" }]}
-            >
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item>
-
-            <Form.Item
-              name="holguraCm"
-              label="Holgura (cm)"
-              rules={[{ required: true, message: "Indique holgura" }]}
-            >
-              <InputNumber min={0} style={{ width: "100%" }} />
-            </Form.Item>
-
-            <Form.Item
-              name="factorHolgura"
-              label="Factor por holguras"
-              rules={[{ required: true, message: "Seleccione factor" }]}
-            >
-              <Select
-                placeholder="Seleccione F"
-                options={[
-                  { value: 1, label: "F = 1 · menor a 2 cm" },
-                  { value: 1.2, label: "F = 1,2 · entre 2 y 4 cm" },
-                  { value: 1.4, label: "F = 1,4 · entre 4 y 6 cm" },
-                  { value: 1.8, label: "F = 1,8 · entre 6 y 10 cm" },
-                ]}
-              />
-            </Form.Item>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Form.Item
-              name="cieloModular"
-              label="Cielo modular"
-              rules={[{ required: true, message: "Seleccione tipo de cielo" }]}
-            >
-              <Select
-                placeholder="Seleccione F cielo"
-                options={[
-                  { value: 1, label: "F = 1 · Accesibilidad normal" },
-                  {
-                    value: 2,
-                    label: "F = 2 · Cielo americano / estructurado",
-                  },
-                  { value: 3, label: "F = 3 · Cielo duro / gateras" },
-                ]}
-              />
-            </Form.Item>
-
-            <Form.Item name="fotoUrl" label="Foto (URL / referencia)">
-              <Input
-                prefix={<CameraOutlined />}
-                placeholder="URL foto o ID (Cloudinary después)"
-              />
-            </Form.Item>
-            <Form.Item label="Foto local (subida)">
-              <Upload
-                fileList={fileList}
-                maxCount={1}
-                beforeUpload={() => false}
-                onChange={({ fileList: next }) => setFileList(next)}
-                accept="image/*"
-              >
-                <Button icon={<UploadOutlined />} size="small">
-                  Seleccionar archivo
-                </Button>
-              </Upload>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Guardado local (mock). Para backend real, conectar a Cloudinary/S3.
+            {/* Bloque 1: Identificación del itemizado */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Identificación del itemizado
               </p>
-            </Form.Item>
-          </div>
-        </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Form.Item
+                  name="itemizadoBeck"
+                  label="Itemizado BECK"
+                  rules={[{ required: true, message: "Ingrese itemizado BECK" }]}
+                >
+                  <Input placeholder="Ej: BECK-001" />
+                </Form.Item>
+                <Form.Item name="itemizadoSacyr" label="Itemizado SACYR">
+                  <Input placeholder="Ej: SACYR-A12" />
+                </Form.Item>
 
-        {/* Bloque 4: Observaciones */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Observaciones
-          </p>
-          <Form.Item name="observaciones" label={false}>
-            <Input.TextArea
-              rows={3}
-              placeholder="Notas de supervisión, accesos, refuerzos, etc."
-            />
-          </Form.Item>
-        </div>
+                <Form.Item
+                  name="fechaEjecucion"
+                  label="Fecha ejecución"
+                  rules={[{ required: true, message: "Seleccione la fecha" }]}
+                >
+                  <DatePicker
+                    format="DD-MM-YYYY"
+                    style={{ width: "100%" }}
+                    placeholder="Seleccione fecha"
+                  />
+                </Form.Item>
 
-        <div className="mt-2 flex justify-end gap-2">
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button
-            type="primary"
-            htmlType="submit"
-            className="bg-orange-500 hover:bg-orange-600 border-none"
-          >
-            Guardar registro
-          </Button>
-        </div>
+                <Form.Item
+                  name="piso"
+                  label="Piso"
+                  rules={[{ required: true, message: "Indique piso" }]}
+                >
+                  <Input placeholder="Ej: Piso 2" />
+                </Form.Item>
+              </div>
+            </div>
+
+            {/* Bloque 2: Ubicación y responsable */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Ubicación y responsable
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Form.Item name="ejeAlfabetico" label="Eje alfabético">
+                  <Input placeholder="Ej: B" />
+                </Form.Item>
+
+                <Form.Item name="ejeNumerico" label="Eje numérico">
+                  <Input placeholder="Ej: 12" />
+                </Form.Item>
+
+                <Form.Item
+                  name="nombreSellador"
+                  label={esEspuma ? "Nombre cuadrilla" : "Nombre sellador"}
+                  rules={[{ required: true, message: "Indique el responsable" }]}
+                >
+                  <Input placeholder={esEspuma ? "Nombre cuadrilla" : "Nombre sellador"} />
+                </Form.Item>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Form.Item name="recinto" label="Recinto / Módulo">
+                  <Input placeholder="Ej: Sala bombas" />
+                </Form.Item>
+
+                {!esEspuma && (
+                  <Form.Item name="numeroSello" label="N° del sello">
+                    <Input placeholder="Ej: S-0001" />
+                  </Form.Item>
+                )}
+              </div>
+            </div>
+
+            {/* Bloque 3: Parámetros técnicos */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Parámetros técnicos
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {/* Campo condicional: cantidadSellos (cortafuego) o metrosLineales (espuma) */}
+                {!esEspuma ? (
+                  <Form.Item
+                    name="cantidadSellos"
+                    label="Cantidad de sellos"
+                    rules={[{ required: true, message: "Indique cantidad" }]}
+                  >
+                    <InputNumber min={1} style={{ width: "100%" }} />
+                  </Form.Item>
+                ) : (
+                  <Form.Item
+                    name="metrosLineales"
+                    label="Longitud ejecutada (m)"
+                    rules={[{ required: true, message: "Indique longitud en metros" }]}
+                  >
+                    <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
+
+                <Form.Item
+                  name="holguraCm"
+                  label="Holgura (cm)"
+                  rules={[{ required: true, message: "Indique holgura" }]}
+                >
+                  <InputNumber min={0} style={{ width: "100%" }} />
+                </Form.Item>
+
+                <Form.Item
+                  name="factorHolgura"
+                  label="Factor por holguras"
+                  rules={[{ required: true, message: "Seleccione factor" }]}
+                >
+                  <Select
+                    placeholder="Seleccione F"
+                    options={[
+                      { value: 1, label: "F = 1 · menor a 2 cm" },
+                      { value: 1.2, label: "F = 1,2 · entre 2 y 4 cm" },
+                      { value: 1.4, label: "F = 1,4 · entre 4 y 6 cm" },
+                      { value: 1.8, label: "F = 1,8 · entre 6 y 10 cm" },
+                    ]}
+                  />
+                </Form.Item>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Form.Item
+                  name="cieloModular"
+                  label="Cielo modular"
+                  rules={[{ required: true, message: "Seleccione tipo de cielo" }]}
+                >
+                  <Select
+                    placeholder="Seleccione F cielo"
+                    options={[
+                      { value: 1, label: "F = 1 · Accesibilidad normal" },
+                      {
+                        value: 2,
+                        label: "F = 2 · Cielo americano / estructurado",
+                      },
+                      { value: 3, label: "F = 3 · Cielo duro / gateras" },
+                    ]}
+                  />
+                </Form.Item>
+
+                <Form.Item name="fotoUrl" label="Foto (URL / referencia)">
+                  <Input
+                    prefix={<CameraOutlined />}
+                    placeholder="URL foto o ID (Cloudinary después)"
+                  />
+                </Form.Item>
+                <Form.Item label="Foto local (subida)">
+                  <Upload
+                    fileList={fileList}
+                    maxCount={1}
+                    beforeUpload={() => false}
+                    onChange={({ fileList: next }) => setFileList(next)}
+                    accept="image/*"
+                  >
+                    <Button icon={<UploadOutlined />} size="small">
+                      Seleccionar archivo
+                    </Button>
+                  </Upload>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Guardado local (mock). Para backend real, conectar a Cloudinary/S3.
+                  </p>
+                </Form.Item>
+              </div>
+            </div>
+
+            {/* Bloque 4: Observaciones */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Observaciones
+              </p>
+              <Form.Item name="observaciones" label={false}>
+                <Input.TextArea
+                  rows={3}
+                  placeholder="Notas de supervisión, accesos, refuerzos, etc."
+                />
+              </Form.Item>
+            </div>
+
+            <div className="mt-2 flex justify-end gap-2">
+              <Button onClick={onClose}>Cancelar</Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                className="bg-orange-500 hover:bg-orange-600 border-none"
+              >
+                Guardar registro
+              </Button>
+            </div>
           </>
         )}
       </Form>
