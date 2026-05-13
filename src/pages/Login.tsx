@@ -106,7 +106,7 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-50">
-                    CRM BECK / FIREMAT
+                    CRM BECK / FIREMAT / TRAGGER
                   </p>
                   <p className="text-[11px] text-slate-300">
                     Sistema integrado de gestión comercial
