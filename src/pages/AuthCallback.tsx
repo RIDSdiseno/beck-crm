@@ -6,10 +6,10 @@ import {
   clearStoredSession,
   SESSION_STORAGE_KEY,
   TOKEN_STORAGE_KEY,
+  EMPRESA_STORAGE_KEY,
 } from "../services/api";
 import type { RolUsuario } from "../types/usuario";
 
-const POST_LOGIN_REDIRECT = "/dashboard";
 const CRM_ACCESS_DENIED_REDIRECT = "/login?crmAccess=denied";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
@@ -19,10 +19,19 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   vendedor: "Vendedor",
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
+  vendedor_firemat: "VendedorFiremat",
+  bodeguero: "Bodeguero",
+  visualizador_firemat: "VisualizadorFiremat",
 };
 
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>
   rol === "Terreno" || rol === "JefeObra";
+
+const getEmpresaPorEmail = (email?: string): "beck" | "firemat" => {
+  const lower = email?.toLowerCase() ?? "";
+  if (lower.endsWith("@firemat.cl")) return "firemat";
+  return "beck";
+};
 
 let activeCallbackKey: string | null = null;
 let activeCallbackPromise: Promise<void> | null = null;
@@ -82,6 +91,8 @@ const AuthCallback: React.FC = () => {
 
       const error = hashParams.get("error") || searchParams.get("error");
       const token = hashParams.get("token") || searchParams.get("token");
+      const empresaDefaultParam =
+        hashParams.get("empresaDefault") || searchParams.get("empresaDefault");
 
       if (error || !token) {
         clearStoredSession();
@@ -106,7 +117,23 @@ const AuthCallback: React.FC = () => {
         }
 
         window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
-        redirectTo(POST_LOGIN_REDIRECT);
+
+        // Determinar empresa activa
+        let empresa: "beck" | "firemat";
+        if (empresaDefaultParam === "beck" || empresaDefaultParam === "firemat") {
+          empresa = empresaDefaultParam;
+        } else {
+          const meEmpresa = (meResponse as { empresaDefault?: string }).empresaDefault;
+          if (meEmpresa === "beck" || meEmpresa === "firemat") {
+            empresa = meEmpresa;
+          } else {
+            empresa = getEmpresaPorEmail(authUser.email);
+          }
+        }
+
+        window.localStorage.setItem(EMPRESA_STORAGE_KEY, empresa);
+
+        redirectTo(empresa === "firemat" ? "/firemat/dashboard" : "/beck/dashboard");
       } catch {
         clearStoredSession();
         redirectTo("/login");

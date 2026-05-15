@@ -46,6 +46,7 @@ import {
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import type { RolUsuario } from "./types/usuario";
+import { EMPRESA_STORAGE_KEY } from "./services/api";
 
 const { Content } = Layout;
 
@@ -54,80 +55,84 @@ const ACCESS_DENIED_PATH = "/access-denied";
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>
   rol === "Terreno" || rol === "JefeObra";
 
+const NO_FIREMAT: Pick<RoleAccess,
+  "firemat" | "firematDashboard" | "firematFunnel" | "firematCotizaciones" |
+  "firematProductos" | "firematCategorias" | "firematInventario" |
+  "firematKardex" | "firematVentas" | "firematReportes" | "firematMovimientos"
+> = {
+  firemat: false, firematDashboard: false, firematFunnel: false,
+  firematCotizaciones: false, firematProductos: false, firematCategorias: false,
+  firematInventario: false, firematKardex: false, firematVentas: false,
+  firematReportes: false, firematMovimientos: false,
+};
+
+const NO_BECK: Pick<RoleAccess,
+  "dashboard" | "funnel" | "registro" | "ingenieria" | "reportes" |
+  "cotizaciones" | "movimientos" | "obras" | "configuracion"
+> = {
+  dashboard: false, funnel: false, registro: false, ingenieria: false,
+  reportes: false, cotizaciones: false, movimientos: false, obras: false,
+  configuracion: false,
+};
+
 const getRoleAccess = (rol: RolUsuario): RoleAccess => {
   switch (rol) {
     case "Administrador":
       return {
-        dashboard: true,
-        funnel: true,
-        registro: true,
-        ingenieria: true,
-        reportes: true,
-        cotizaciones: true,
-        movimientos: true,
-        obras: true,
+        dashboard: true, funnel: true, registro: true, ingenieria: true,
+        reportes: true, cotizaciones: true, movimientos: true, obras: true,
         configuracion: true,
-        firemat: true,
-        firematCotizaciones: true,
+        firemat: true, firematDashboard: true, firematFunnel: true,
+        firematCotizaciones: true, firematProductos: true, firematCategorias: true,
+        firematInventario: true, firematKardex: true, firematVentas: true,
+        firematReportes: true, firematMovimientos: true,
       };
     case "Vendedor":
       return {
-        dashboard: false,
-        funnel: true,
-        registro: false,
-        ingenieria: false,
-        reportes: true,
-        cotizaciones: true,
-        movimientos: false,
-        obras: false,
-        configuracion: false,
-        firemat: true,
-        firematCotizaciones: true,
-      };
-    case "Terreno":
-    case "JefeObra":
-      return {
-        dashboard: false,
-        funnel: false,
-        registro: false,
-        ingenieria: false,
-        reportes: false,
-        cotizaciones: false,
-        movimientos: false,
-        obras: false,
-        configuracion: false,
-        firemat: false,
-        firematCotizaciones: false,
+        dashboard: false, funnel: true, registro: false, ingenieria: false,
+        reportes: true, cotizaciones: true, movimientos: false, obras: false,
+        configuracion: false, ...NO_FIREMAT,
       };
     case "Ingenieria":
       return {
-        dashboard: false,
-        funnel: true,
-        registro: true,
-        ingenieria: true,
-        reportes: true,
-        cotizaciones: false,
-        movimientos: false,
-        obras: true,
-        configuracion: false,
-        firemat: false,
-        firematCotizaciones: false,
+        dashboard: false, funnel: true, registro: true, ingenieria: true,
+        reportes: true, cotizaciones: false, movimientos: false, obras: true,
+        configuracion: false, ...NO_FIREMAT,
       };
     case "Visualizador":
-    default:
       return {
-        dashboard: false,
-        funnel: true,
-        registro: true,
-        ingenieria: false,
-        reportes: true,
-        cotizaciones: true,
-        movimientos: false,
-        obras: true,
-        configuracion: false,
-        firemat: true,
-        firematCotizaciones: true,
+        dashboard: false, funnel: true, registro: true, ingenieria: false,
+        reportes: true, cotizaciones: true, movimientos: false, obras: true,
+        configuracion: false, ...NO_FIREMAT,
       };
+    case "VendedorFiremat":
+      return {
+        ...NO_BECK,
+        firemat: true, firematDashboard: true, firematFunnel: true,
+        firematCotizaciones: true, firematProductos: true, firematCategorias: true,
+        firematInventario: false, firematKardex: false,
+        firematVentas: true, firematReportes: false, firematMovimientos: false,
+      };
+    case "Bodeguero":
+      return {
+        ...NO_BECK,
+        firemat: true, firematDashboard: true, firematFunnel: false,
+        firematCotizaciones: false, firematProductos: true, firematCategorias: true,
+        firematInventario: true, firematKardex: true,
+        firematVentas: false, firematReportes: false, firematMovimientos: true,
+      };
+    case "VisualizadorFiremat":
+      return {
+        ...NO_BECK,
+        firemat: true, firematDashboard: true, firematFunnel: true,
+        firematCotizaciones: true, firematProductos: true, firematCategorias: true,
+        firematInventario: true, firematKardex: false,
+        firematVentas: true, firematReportes: false, firematMovimientos: false,
+      };
+    case "Terreno":
+    case "JefeObra":
+    default:
+      return { ...NO_BECK, ...NO_FIREMAT };
   }
 };
 
@@ -137,12 +142,21 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
   }
 
   switch (rol) {
-    case "Administrador":
-      return "/beck/dashboard";
+    case "Administrador": {
+      const empresa =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(EMPRESA_STORAGE_KEY)
+          : null;
+      return empresa === "firemat" ? "/firemat/dashboard" : "/beck/dashboard";
+    }
     case "Vendedor":
       return "/beck/funnel";
     case "Ingenieria":
       return "/beck/procesamiento-ingenieria";
+    case "VendedorFiremat":
+    case "Bodeguero":
+    case "VisualizadorFiremat":
+      return "/firemat/dashboard";
     case "Visualizador":
     default:
       return "/beck/reportes";
@@ -180,6 +194,15 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/obras") return access.obras;
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
 
+  if (pathname === "/firemat/dashboard") return access.firematDashboard;
+  if (pathname === "/firemat/funnel") return access.firematFunnel;
+  if (pathname === "/firemat/cotizaciones") return access.firematCotizaciones;
+  if (pathname === "/firemat/productos") return access.firematProductos;
+  if (pathname === "/firemat/inventario") return access.firematInventario;
+  if (pathname === "/firemat/ventas") return access.firematVentas;
+  if (pathname === "/firemat/movimientos") return access.firematMovimientos || access.firematKardex;
+  if (pathname === "/firemat/reportes") return access.firematReportes;
+  if (pathname === "/firemat/usuarios-parametros") return access.firemat && access.configuracion;
   if (pathname.startsWith("/firemat/")) return access.firemat;
 
   return true;
@@ -325,14 +348,8 @@ const AppShell: React.FC = () => {
     );
   }
 
-  const renderFirematRoute = (element: React.ReactElement) =>
-    access.firemat ? element : <Navigate to={homeRoute} replace />;
-  const renderFirematCotizacionesRoute = (element: React.ReactElement) =>
-    access.firemat && access.firematCotizaciones ? (
-      element
-    ) : (
-      <Navigate to={homeRoute} replace />
-    );
+  const firematRoute = (flag: boolean, element: React.ReactElement) =>
+    flag ? element : <Navigate to={homeRoute} replace />;
 
   return (
     <>
@@ -486,23 +503,17 @@ const AppShell: React.FC = () => {
                 />
 
                 {/* ── Firemat routes ──────────────────────────── */}
-                <Route path="/firemat/dashboard" element={renderFirematRoute(<FirematDashboard />)} />
-                <Route path="/firemat/funnel" element={renderFirematRoute(<FirematFunnel />)} />
-                <Route path="/firemat/cotizaciones" element={renderFirematCotizacionesRoute(<FirematCotizaciones />)} />
-                <Route path="/firemat/productos" element={renderFirematRoute(<FirematProductos />)} />
-                <Route path="/firemat/inventario" element={renderFirematRoute(<FirematInventario />)} />
-                <Route path="/firemat/ventas" element={renderFirematRoute(<FirematVentas />)} />
-                <Route path="/firemat/reportes" element={renderFirematRoute(<FirematReportes />)} />
-                <Route path="/firemat/movimientos" element={renderFirematRoute(<FirematMovimientos />)} />
+                <Route path="/firemat/dashboard" element={firematRoute(access.firematDashboard, <FirematDashboard />)} />
+                <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel />)} />
+                <Route path="/firemat/cotizaciones" element={firematRoute(access.firematCotizaciones, <FirematCotizaciones />)} />
+                <Route path="/firemat/productos" element={firematRoute(access.firematProductos, <FirematProductos />)} />
+                <Route path="/firemat/inventario" element={firematRoute(access.firematInventario, <FirematInventario />)} />
+                <Route path="/firemat/ventas" element={firematRoute(access.firematVentas, <FirematVentas />)} />
+                <Route path="/firemat/reportes" element={firematRoute(access.firematReportes, <FirematReportes />)} />
+                <Route path="/firemat/movimientos" element={firematRoute(access.firematMovimientos || access.firematKardex, <FirematMovimientos />)} />
                 <Route
                   path="/firemat/usuarios-parametros"
-                  element={
-                    access.firemat && access.configuracion ? (
-                      <FirematUsuariosParametros />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
-                  }
+                  element={firematRoute(access.firemat && access.configuracion, <FirematUsuariosParametros />)}
                 />
 
                 <Route path="*" element={<Navigate to={homeRoute} replace />} />

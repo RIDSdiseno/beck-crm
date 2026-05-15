@@ -8,6 +8,7 @@
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 export const TOKEN_STORAGE_KEY = "beck_token";
 export const SESSION_STORAGE_KEY = "beck_crm_session_v1";
+export const EMPRESA_STORAGE_KEY = "empresaActiva";
 
 let isRedirectingToLogin = false;
 
@@ -29,6 +30,7 @@ export const clearStoredSession = (): void => {
 
   window.localStorage.removeItem(TOKEN_STORAGE_KEY);
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  window.localStorage.removeItem(EMPRESA_STORAGE_KEY);
 };
 
 const redirectToLogin = (): void => {
@@ -47,8 +49,8 @@ const redirectToLogin = (): void => {
   window.location.replace("/login");
 };
 
-const isUnauthorizedStatus = (status?: number): status is 401 | 403 =>
-  status === 401 || status === 403;
+const isUnauthorizedStatus = (status?: number): boolean =>
+  status === 401;
 
 export const handleUnauthorizedSession = (status?: number): void => {
   if (!isUnauthorizedStatus(status)) {
@@ -152,8 +154,12 @@ export interface LoginResponse {
       | "terreno"
       | "jefeobra"
       | "ingenieria"
-      | "visualizador";
+      | "visualizador"
+      | "vendedor_firemat"
+      | "bodeguero"
+      | "visualizador_firemat";
   };
+  empresaDefault?: "beck" | "firemat";
 }
 
 export interface ApiError {
@@ -646,7 +652,10 @@ export type UsuarioApiRol =
   | "terreno"
   | "ingenieria"
   | "visualizador"
-  | "jefeobra";
+  | "jefeobra"
+  | "vendedor_firemat"
+  | "bodeguero"
+  | "visualizador_firemat";
 
 export interface UsuarioApi {
   id: string;
@@ -695,6 +704,46 @@ export const usuariosAPI = {
   eliminar: async (id: string) => {
     const response = await api.delete<EliminarUsuarioResponse>(`/usuarios/${id}`);
     return response.data;
+  },
+};
+
+type EmpresaParam = "beck" | "firemat";
+
+const extractArray = (payload: unknown): UsuarioApi[] => {
+  if (Array.isArray(payload)) return payload as UsuarioApi[];
+  if (payload && typeof payload === "object" && "data" in payload) {
+    const env = payload as { data?: unknown };
+    if (Array.isArray(env.data)) return env.data as UsuarioApi[];
+  }
+  return [];
+};
+
+const extractItem = (payload: unknown): UsuarioApi => {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    const env = payload as { data?: unknown };
+    if (env.data && typeof env.data === "object") return env.data as UsuarioApi;
+  }
+  return payload as UsuarioApi;
+};
+
+export const usuariosParametrosAPI = {
+  listar: async (empresa: EmpresaParam): Promise<UsuarioApi[]> => {
+    const response = await api.get<unknown>(`/${empresa}/usuarios-parametros`);
+    return extractArray(response.data);
+  },
+
+  crear: async (empresa: EmpresaParam, data: CrearUsuarioInput): Promise<UsuarioApi> => {
+    const response = await api.post<unknown>(`/${empresa}/usuarios-parametros`, data);
+    return extractItem(response.data);
+  },
+
+  editar: async (empresa: EmpresaParam, id: string, data: ActualizarUsuarioInput): Promise<UsuarioApi> => {
+    const response = await api.put<unknown>(`/${empresa}/usuarios-parametros/${id}`, data);
+    return extractItem(response.data);
+  },
+
+  eliminar: async (empresa: EmpresaParam, id: string): Promise<void> => {
+    await api.delete(`/${empresa}/usuarios-parametros/${id}`);
   },
 };
 

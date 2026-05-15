@@ -13,14 +13,9 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  TeamOutlined,
-} from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useAuth } from "../../context/useAuth";
-import { obrasAPI, usuariosAPI, type Obra, type UsuarioApi } from "../../services/api";
+import { obrasAPI, type Obra } from "../../services/api";
 
 type EstadoForm = "activa" | "inactiva" | "pausada" | "finalizada";
 
@@ -31,11 +26,6 @@ type ObraFormValues = {
   direccion: string;
   cliente: string;
   estado: EstadoForm;
-  usuarioIds: string[];
-};
-
-type AsignarUsuariosFormValues = {
-  usuarioIds: string[];
 };
 
 const estadoOptions: Array<{ label: string; value: EstadoForm }> = [
@@ -54,7 +44,6 @@ const getObraEstado = (obra: Obra): EstadoForm => {
   ) {
     return obra.estado;
   }
-
   return obra.activa ? "activa" : "inactiva";
 };
 
@@ -71,9 +60,6 @@ const getEstadoColor = (estado: EstadoForm): string => {
   if (estado === "finalizada") return "blue";
   return "red";
 };
-
-const getUsuariosAsignadosIds = (obra: Obra): string[] =>
-  obra.usuarios?.map((usuario) => usuario.id) ?? [];
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   if (isAxiosError(error)) {
@@ -94,18 +80,14 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const Obras: React.FC = () => {
   const { user } = useAuth();
   const canManageObras = user?.rol !== "Visualizador";
+
   const [obras, setObras] = useState<Obra[]>([]);
-  const [usuarios, setUsuarios] = useState<UsuarioApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
   const [obraSeleccionada, setObraSeleccionada] = useState<Obra | null>(null);
-  const [asignarOpen, setAsignarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [assigning, setAssigning] = useState(false);
-  const [loadingUsuariosObra, setLoadingUsuariosObra] = useState(false);
   const [form] = Form.useForm<ObraFormValues>();
-  const [asignarForm] = Form.useForm<AsignarUsuariosFormValues>();
 
   const cargarObras = async () => {
     setLoading(true);
@@ -120,46 +102,21 @@ const Obras: React.FC = () => {
   };
 
   useEffect(() => {
-    const cargarDatos = async () => {
-      setLoading(true);
-      try {
-        const obrasData = await obrasAPI.listar();
-        setObras(obrasData);
-
-        if (canManageObras) {
-          const usuariosData = await usuariosAPI.listar();
-          setUsuarios(usuariosData);
-        } else {
-          setUsuarios([]);
-        }
-      } catch (error) {
-        message.error(getErrorMessage(error, "Error al cargar los datos"));
-      } finally {
-        setLoading(false);
-      }
-    };
-    void cargarDatos();
-  }, [canManageObras]);
+    void cargarObras();
+  }, []);
 
   const handleCrear = async (values: ObraFormValues) => {
     if (!canManageObras) return;
-
     setSaving(true);
     try {
-      const payload: Parameters<typeof obrasAPI.crear>[0] = {
+      await obrasAPI.crear({
         nombre: values.nombre.trim(),
         codigo: values.codigo?.trim() || null,
         direccion: values.direccion?.trim() || null,
         cliente: values.cliente?.trim() || null,
         descripcion: values.descripcion?.trim() || null,
         estado: values.estado ?? "activa",
-        usuariosIds: values.usuarioIds ?? [],
-      };
-
-      const nuevaObra = await obrasAPI.crear(payload);
-      if (values.usuarioIds?.length > 0) {
-        await obrasAPI.asignarUsuarios(nuevaObra.id, values.usuarioIds);
-      }
+      });
       message.success("Obra creada correctamente");
       setModalOpen(false);
       form.resetFields();
@@ -173,34 +130,18 @@ const Obras: React.FC = () => {
 
   const handleGuardarEdicion = async (values: ObraFormValues) => {
     if (!canManageObras || !obraSeleccionada) return;
-
     setSaving(true);
     try {
-      const payload: Parameters<typeof obrasAPI.actualizar>[1] = {
+      const obraActualizada = await obrasAPI.actualizar(obraSeleccionada.id, {
         codigo: values.codigo?.trim() || null,
         nombre: values.nombre,
         direccion: values.direccion ?? "",
         cliente: values.cliente ?? "",
         estado: values.estado,
         activa: values.estado === "activa",
-      };
-
-      const obraActualizada = await obrasAPI.actualizar(
-        obraSeleccionada.id,
-        payload
-      );
-      const obraConUsuarios = await obrasAPI.asignarUsuarios(
-        obraSeleccionada.id,
-        values.usuarioIds ?? []
-      );
-      const obraFinal = {
-        ...obraActualizada,
-        usuarios: obraConUsuarios.usuarios ?? obraSeleccionada.usuarios,
-      };
+      });
       setObras((prev) =>
-        prev.map((obra) =>
-          obra.id === obraSeleccionada.id ? obraFinal : obra
-        )
+        prev.map((obra) => (obra.id === obraSeleccionada.id ? obraActualizada : obra))
       );
       message.success("Obra actualizada correctamente");
       setModalOpen(false);
@@ -215,37 +156,28 @@ const Obras: React.FC = () => {
 
   const handleSubmitObra = (values: ObraFormValues) => {
     if (!canManageObras) return;
-
     if (modalMode === "editar") {
       void handleGuardarEdicion(values);
-      return;
+    } else {
+      void handleCrear(values);
     }
-
-    void handleCrear(values);
   };
 
   const openCrear = () => {
     if (!canManageObras) return;
-
     setModalMode("crear");
     setObraSeleccionada(null);
     form.resetFields();
-    form.setFieldsValue({ estado: "activa", usuarioIds: [] });
+    form.setFieldsValue({ estado: "activa" });
     setModalOpen(true);
   };
 
   const openEditar = async (obra: Obra) => {
     if (!canManageObras) return;
-
     setModalMode("editar");
     setModalOpen(true);
-    setLoadingUsuariosObra(true);
     try {
-      const [obraDetalle, usuariosData] = await Promise.all([
-        obrasAPI.obtenerPorId(obra.id),
-        usuariosAPI.listar(),
-      ]);
-      setUsuarios(usuariosData);
+      const obraDetalle = await obrasAPI.obtenerPorId(obra.id);
       setObraSeleccionada(obraDetalle);
       form.setFieldsValue({
         codigo: obraDetalle.codigo ?? "",
@@ -254,67 +186,15 @@ const Obras: React.FC = () => {
         direccion: obraDetalle.direccion ?? "",
         cliente: obraDetalle.cliente ?? "",
         estado: getObraEstado(obraDetalle),
-        usuarioIds: getUsuariosAsignadosIds(obraDetalle),
       });
     } catch (error) {
       setModalOpen(false);
       message.error(getErrorMessage(error, "No se pudo cargar la obra"));
-    } finally {
-      setLoadingUsuariosObra(false);
-    }
-  };
-
-  const openAsignar = async (obra: Obra) => {
-    if (!canManageObras) return;
-
-    setAsignarOpen(true);
-    setLoadingUsuariosObra(true);
-    try {
-      const [obraDetalle, usuariosData] = await Promise.all([
-        obrasAPI.obtenerPorId(obra.id),
-        usuariosAPI.listar(),
-      ]);
-      setUsuarios(usuariosData);
-      setObraSeleccionada(obraDetalle);
-      asignarForm.setFieldsValue({
-        usuarioIds: getUsuariosAsignadosIds(obraDetalle),
-      });
-    } catch (error) {
-      setAsignarOpen(false);
-      message.error(getErrorMessage(error, "No se pudo cargar la obra"));
-    } finally {
-      setLoadingUsuariosObra(false);
-    }
-  };
-
-  const handleAsignarUsuarios = async (values: AsignarUsuariosFormValues) => {
-    if (!canManageObras || !obraSeleccionada) return;
-
-    setAssigning(true);
-    try {
-      const obraActualizada = await obrasAPI.asignarUsuarios(
-        obraSeleccionada.id,
-        values.usuarioIds ?? []
-      );
-      setObras((prev) =>
-        prev.map((obra) =>
-          obra.id === obraSeleccionada.id ? obraActualizada : obra
-        )
-      );
-      message.success("Usuarios asignados correctamente");
-      setAsignarOpen(false);
-      setObraSeleccionada(null);
-      asignarForm.resetFields();
-    } catch (error) {
-      message.error(getErrorMessage(error, "No se pudieron asignar usuarios"));
-    } finally {
-      setAssigning(false);
     }
   };
 
   const handleEliminar = (obra: Obra) => {
     if (!canManageObras) return;
-
     Modal.confirm({
       title: "Eliminar obra",
       content: `¿Estás seguro de eliminar "${obra.nombre}"? Esta acción no se puede deshacer.`,
@@ -359,7 +239,6 @@ const Obras: React.FC = () => {
       width: 120,
       render: (_: unknown, record: Obra) => {
         const estado = getObraEstado(record);
-
         return (
           <Tag color={getEstadoColor(estado)} style={{ marginInlineEnd: 0 }}>
             {getEstadoLabel(estado)}
@@ -372,22 +251,15 @@ const Obras: React.FC = () => {
           {
             title: "Acciones",
             key: "acciones",
-            width: 250,
+            width: 160,
             render: (_: unknown, record: Obra) => (
               <Space size={6} wrap>
                 <Button
                   size="small"
                   icon={<EditOutlined />}
-                  onClick={() => openEditar(record)}
+                  onClick={() => void openEditar(record)}
                 >
                   Editar
-                </Button>
-                <Button
-                  size="small"
-                  icon={<TeamOutlined />}
-                  onClick={() => openAsignar(record)}
-                >
-                  Asignar
                 </Button>
                 <Button
                   size="small"
@@ -404,10 +276,6 @@ const Obras: React.FC = () => {
       : []),
   ];
 
-  const usuarioOptions = usuarios
-    .filter((u) => u.activo)
-    .map((u) => ({ label: `${u.nombre} · ${u.rol} · ${u.email}`, value: u.id }));
-
   return (
     <div className="space-y-6 pb-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -420,11 +288,7 @@ const Obras: React.FC = () => {
           </p>
         </div>
         {canManageObras && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openCrear}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCrear}>
             Crear obra
           </Button>
         )}
@@ -480,7 +344,7 @@ const Obras: React.FC = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmitObra}
-          initialValues={{ estado: "activa", usuarioIds: [] }}
+          initialValues={{ estado: "activa" }}
           className="mt-4"
         >
           <Form.Item
@@ -509,81 +373,6 @@ const Obras: React.FC = () => {
 
           <Form.Item name="estado" label="Estado">
             <Select options={estadoOptions} />
-          </Form.Item>
-
-          {modalMode === "crear" && (
-            <Form.Item name="usuarioIds" label="Usuarios">
-              <Select
-                mode="multiple"
-                options={usuarioOptions}
-                placeholder="Seleccionar usuarios"
-                allowClear
-                filterOption={(input, option) =>
-                  (option?.label ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-            </Form.Item>
-          )}
-          {modalMode === "editar" && (
-            <Form.Item
-              name="usuarioIds"
-              label="Usuarios asignados a la obra"
-            >
-              <Select
-                mode="multiple"
-                options={usuarioOptions}
-                placeholder="Seleccionar usuarios"
-                allowClear
-                loading={loadingUsuariosObra}
-                filterOption={(input, option) =>
-                  (option?.label ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
-
-      <Modal
-        title={
-          obraSeleccionada
-            ? `Asignar usuarios · ${obraSeleccionada.nombre}`
-            : "Asignar usuarios"
-        }
-        open={asignarOpen}
-        onCancel={() => {
-          setAsignarOpen(false);
-          setObraSeleccionada(null);
-          asignarForm.resetFields();
-        }}
-        onOk={() => asignarForm.submit()}
-        okText="Guardar"
-        cancelText="Cancelar"
-        confirmLoading={assigning}
-        destroyOnClose
-      >
-        <Form
-          form={asignarForm}
-          layout="vertical"
-          onFinish={handleAsignarUsuarios}
-          initialValues={{ usuarioIds: [] }}
-          className="mt-4"
-        >
-          <Form.Item name="usuarioIds" label="Usuarios">
-            <Select
-              mode="multiple"
-              options={usuarioOptions}
-              placeholder="Seleccionar usuarios"
-              allowClear
-              loading={loadingUsuariosObra}
-              filterOption={(input, option) =>
-                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
-              }
-            />
           </Form.Item>
         </Form>
       </Modal>

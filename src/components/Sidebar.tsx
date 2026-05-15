@@ -23,6 +23,7 @@ import type { ThemeMode } from "../hooks/useSystemTheme";
 import type { RolUsuario } from "../types/usuario";
 
 export type RoleAccess = {
+  // Beck modules
   dashboard: boolean;
   funnel: boolean;
   registro: boolean;
@@ -32,8 +33,18 @@ export type RoleAccess = {
   movimientos: boolean;
   obras: boolean;
   configuracion: boolean;
+  // Firemat modules
   firemat: boolean;
+  firematDashboard: boolean;
+  firematFunnel: boolean;
   firematCotizaciones: boolean;
+  firematProductos: boolean;
+  firematCategorias: boolean;
+  firematInventario: boolean;
+  firematKardex: boolean;
+  firematVentas: boolean;
+  firematReportes: boolean;
+  firematMovimientos: boolean;
 };
 
 type Company = "beck" | "firemat";
@@ -107,7 +118,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [isFiremat]);
 
+  const puedeCambiarEmpresa = user?.rol === "Administrador";
+
   const handleCompanySwitch = (company: Company) => {
+    if (user?.rol !== "Administrador") return;
     setSelectorOpen(false);
     if (company === activeCompany) return;
     if (company === "firemat" && !access.firemat) return;
@@ -155,14 +169,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const firematNav = [
-    { key: "dashboard", to: "/firemat/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firemat },
-    { key: "funnel", to: "/firemat/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firemat && access.funnel },
-    { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firemat && access.firematCotizaciones },
-    { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firemat },
-    { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firemat },
-    { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firemat && access.funnel },
-    { key: "movimientos", to: "/firemat/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.firemat },
-    { key: "reportes", to: "/firemat/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.firemat && access.reportes },
+    { key: "dashboard", to: "/firemat/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
+    { key: "funnel", to: "/firemat/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
+    { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
+    { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
+    { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firematInventario },
+    { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firematVentas },
+    { key: "movimientos", to: "/firemat/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.firematMovimientos || access.firematKardex },
+    { key: "reportes", to: "/firemat/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.firematReportes },
   ];
 
   const navItems = isBeck ? beckNav : firematNav;
@@ -204,7 +218,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="relative min-w-0 flex-1" ref={selectorRef}>
               <button
                 type="button"
-                onClick={() => setSelectorOpen((v) => !v)}
+                onClick={() => puedeCambiarEmpresa && setSelectorOpen((v) => !v)}
                 className="flex w-full items-center gap-2 rounded-xl p-1 transition hover:bg-white/60"
               >
                 <img
@@ -227,10 +241,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {brandBadge}
                   </span>
                 </div>
-                <SwapOutlined className="flex-shrink-0 text-beck-muted text-xs" />
+                {puedeCambiarEmpresa && <SwapOutlined className="flex-shrink-0 text-beck-muted text-xs" />}
               </button>
 
-              {selectorOpen && (
+              {puedeCambiarEmpresa && selectorOpen && (
                 <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-beck-border-light bg-white shadow-beck-panel">
                   <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-beck-muted">
                     Cambiar empresa

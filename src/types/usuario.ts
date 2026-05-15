@@ -4,7 +4,10 @@ export type RolUsuario =
   | "JefeObra"
   | "Ingenieria"
   | "Visualizador"
-  | "Vendedor";
+  | "Vendedor"
+  | "VendedorFiremat"
+  | "Bodeguero"
+  | "VisualizadorFiremat";
 
 export type Usuario = {
   id: string;

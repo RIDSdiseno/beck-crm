@@ -426,7 +426,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const estado = normalizeEstado(record.estado);
     const loadingEstado = changingEstadoId === String(record.id);
     return (
-      <div className="flex min-w-[250px] flex-wrap items-center gap-1.5">
+      <div className="flex min-w-[260px] flex-wrap items-center gap-1.5">
         <Button
           size="small"
           className="px-2"
@@ -510,7 +510,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const columnaAcciones: ColumnsType<RegistroSello>[number] = {
     title: "Acciones",
     key: "acciones",
-    width: 330,
+    width: 300,
     fixed: "right",
     render: renderAcciones,
   };
@@ -721,7 +721,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       </div>
 
       <Card
-        className="overflow-hidden border border-slate-200 shadow-sm"
+        className="border border-slate-200 shadow-sm"
         styles={{
           header: {
             minHeight: 44,

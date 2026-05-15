@@ -11,6 +11,7 @@ import {
   getStoredToken,
   SESSION_STORAGE_KEY,
   TOKEN_STORAGE_KEY,
+  EMPRESA_STORAGE_KEY,
   type LoginResponse,
 } from "../services/api";
 import type { RolUsuario } from "../types/usuario";
@@ -27,6 +28,15 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   vendedor: "Vendedor",
   ingenieria: "Ingenieria",
   visualizador: "Visualizador",
+  vendedor_firemat: "VendedorFiremat",
+  bodeguero: "Bodeguero",
+  visualizador_firemat: "VisualizadorFiremat",
+};
+
+const getEmpresaPorEmail = (email?: string): "beck" | "firemat" => {
+  const lower = email?.toLowerCase() ?? "";
+  if (lower.endsWith("@firemat.cl")) return "firemat";
+  return "beck";
 };
 
 const CRM_ACCESS_DENIED_MESSAGE = "Este usuario no tiene acceso al CRM web.";
@@ -44,7 +54,10 @@ const isRolUsuario = (value: unknown): value is RolUsuario =>
   value === "Terreno" ||
   value === "JefeObra" ||
   value === "Ingenieria" ||
-  value === "Visualizador";
+  value === "Visualizador" ||
+  value === "VendedorFiremat" ||
+  value === "Bodeguero" ||
+  value === "VisualizadorFiremat";
 
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>
   rol === "Terreno" || rol === "JefeObra";
@@ -160,6 +173,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         persistSession(authUser, response.token);
+
+        const empresa = response.empresaDefault ?? getEmpresaPorEmail(authUser.email);
+        window.localStorage.setItem(EMPRESA_STORAGE_KEY, empresa);
+
         setUser(authUser);
 
         return authUser;
