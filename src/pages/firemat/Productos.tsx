@@ -548,20 +548,21 @@ const FirematProductos: React.FC = () => {
 
       {/* Filtros */}
       <section className="firemat-panel p-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
           <Input
             prefix={<SearchOutlined className="text-beck-muted" />}
             placeholder="Buscar por nombre o SKU"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             allowClear
-            style={{ width: 280 }}
+            className="w-full sm:w-auto sm:min-w-[200px]"
           />
           <Select
             value={activo}
             onChange={(v) => setActivo(v as "" | "true" | "false")}
             options={ESTADO_FILTER_OPTIONS}
             style={{ width: 140 }}
+            className="!w-full sm:!w-[140px]"
           />
           {hayFiltros && (
             <Button icon={<ClearOutlined />} onClick={limpiar} size="middle">

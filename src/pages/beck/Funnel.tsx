@@ -34,9 +34,12 @@ import CotizacionEditorModal, {
 } from "../../components/CotizacionEditorModal";
 import { useAuth } from "../../context/useAuth";
 import {
+  clientesBeckAPI,
   cotizacionesAPI,
   fetchWithAuth,
   funnelBeckAPI,
+  type ClienteBeck,
+  type ContactoClienteBeck,
   type CotizacionApiRecord,
   type CotizacionUpsertPayload,
 } from "../../services/api";
@@ -91,6 +94,9 @@ type FunnelDraft = {
   objeciones: string;
   contrapropuestas: string;
   ajustesSolicitados: string;
+  // Cliente Beck
+  clienteBeckId: string;
+  contactoBeckId: string;
 };
 
 type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
@@ -147,6 +153,15 @@ type FunnelModalProps = {
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: (field: keyof FunnelDraft, value: string) => void;
+  // Cliente Beck
+  selectedClienteBeck: ClienteBeck | null;
+  clienteBeckResults: ClienteBeck[];
+  clienteBeckSearching: boolean;
+  clientesDisponibles: ClienteBeck[];
+  clientesLoading: boolean;
+  onClienteBeckSearchChange: (q: string) => void;
+  onSelectClienteBeck: (cliente: ClienteBeck | null) => void;
+  onSelectContactoBeck: (contacto: ContactoClienteBeck | null) => void;
 };
 
 
@@ -207,6 +222,8 @@ const createEmptyDraft = (): FunnelDraft => ({
   objeciones: "",
   contrapropuestas: "",
   ajustesSolicitados: "",
+  clienteBeckId: "",
+  contactoBeckId: "",
 });
 
 const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
@@ -277,7 +294,7 @@ const validateFunnelDraft = (draft: FunnelDraft): FunnelFieldErrors => {
 
   const rutEmpresa = draft.rutEmpresa.trim();
   if (rutEmpresa && !validateRut(rutEmpresa)) {
-    errors.rutEmpresa = "RUT inválido. Verifica el formato y dígito verificador";
+    errors.rutEmpresa = "Ingresa un RUT con formato válido";
   }
 
   const telefonoContacto = draft.telefonoContacto.trim();
@@ -681,16 +698,8 @@ const validateRut = (value: string): boolean => {
   const dv = clean.slice(-1).toUpperCase();
   const body = clean.slice(0, -1);
   if (!/^\d+$/.test(body)) return false;
-  let sum = 0;
-  let multiplier = 2;
-  for (let i = body.length - 1; i >= 0; i--) {
-    sum += parseInt(body[i], 10) * multiplier;
-    multiplier = multiplier === 7 ? 2 : multiplier + 1;
-  }
-  const remainder = sum % 11;
-  const expectedDv =
-    remainder === 0 ? "0" : remainder === 1 ? "K" : String(11 - remainder);
-  return dv === expectedDv;
+  if (!/^[\dK]$/.test(dv)) return false;
+  return true;
 };
 
 const formatPhone = (value: string): string => value.replace(/\D/g, "");
@@ -737,6 +746,25 @@ const FunnelCard: React.FC<FunnelCardProps> = ({
       <h4 className="font-semibold leading-tight text-beck-ink">
         {deal.nombreProyecto}
       </h4>
+
+      {deal.clienteBeck && (
+        <p
+          className="mt-0.5 truncate text-[10px] font-medium text-amber-700"
+          title={deal.clienteBeck.nombreEmpresa || deal.clienteBeck.razonSocial || ""}
+        >
+          {deal.clienteBeck.nombreEmpresa || deal.clienteBeck.razonSocial}
+        </p>
+      )}
+
+      {deal.contactoBeck && (
+        <p
+          className="truncate text-[10px] text-beck-muted"
+          title={deal.contactoBeck.nombre}
+        >
+          {deal.contactoBeck.nombre}
+          {deal.contactoBeck.cargo ? ` · ${deal.contactoBeck.cargo}` : ""}
+        </p>
+      )}
 
       {typeof deal.valorEstimado === "number" && (
         <p className="mt-1 font-medium text-beck-ink-soft">
@@ -835,6 +863,14 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
   onClose,
   onSubmit,
   onFieldChange,
+  selectedClienteBeck,
+  clienteBeckResults,
+  clienteBeckSearching,
+  clientesDisponibles,
+  clientesLoading,
+  onClienteBeckSearchChange,
+  onSelectClienteBeck,
+  onSelectContactoBeck,
 }) => {
   if (!open) {
     return null;
@@ -864,6 +900,35 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
       </p>
     );
   };
+
+  const clienteLabel = (c: ClienteBeck) => {
+    const nombre = c.nombreEmpresa || c.razonSocial || c.rut;
+    return `${nombre} — ${c.rut}`;
+  };
+
+  const seenIds = new Set<string>();
+  const clienteSelectOptions = [
+    ...(selectedClienteBeck &&
+    !clientesDisponibles.find((c) => c.id === selectedClienteBeck.id) &&
+    !clienteBeckResults.find((c) => c.id === selectedClienteBeck.id)
+      ? [{ value: selectedClienteBeck.id, label: clienteLabel(selectedClienteBeck) }]
+      : []),
+    ...clientesDisponibles.map((c) => ({ value: c.id, label: clienteLabel(c) })),
+    ...clienteBeckResults
+      .filter((c) => !clientesDisponibles.find((d) => d.id === c.id))
+      .map((c) => ({ value: c.id, label: clienteLabel(c) })),
+  ].filter((opt) => {
+    if (seenIds.has(opt.value)) return false;
+    seenIds.add(opt.value);
+    return true;
+  });
+
+  const contactoOptions = (selectedClienteBeck?.contactos ?? [])
+    .filter((c) => c.activo)
+    .map((c) => ({
+      value: c.id,
+      label: `${c.nombre}${c.cargo ? ` — ${c.cargo}` : ""}`,
+    }));
 
   return (
     <div
@@ -908,6 +973,88 @@ const FunnelModal: React.FC<FunnelModalProps> = ({
               {validationMessage}
             </div>
           )}
+
+          {/* CLIENTE ASOCIADO */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                Cliente asociado
+              </p>
+              {draft.clienteBeckId && (
+                <button
+                  type="button"
+                  onClick={() => onSelectClienteBeck(null)}
+                  disabled={submitting}
+                  className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-50"
+                >
+                  Quitar cliente asociado
+                </button>
+              )}
+            </div>
+
+            <Select
+              showSearch
+              allowClear
+              value={draft.clienteBeckId || null}
+              placeholder="Seleccionar cliente"
+              optionFilterProp="label"
+              filterOption={(input, option) =>
+                String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
+              onSearch={onClienteBeckSearchChange}
+              onChange={(value) => {
+                if (!value) {
+                  onSelectClienteBeck(null);
+                  return;
+                }
+                const allClientes = [
+                  ...clientesDisponibles,
+                  ...clienteBeckResults.filter((c) => !clientesDisponibles.find((d) => d.id === c.id)),
+                  ...(selectedClienteBeck ? [selectedClienteBeck] : []),
+                ];
+                const cliente = allClientes.find((c) => c.id === value) ?? null;
+                if (cliente) onSelectClienteBeck(cliente);
+              }}
+              loading={clientesLoading || clienteBeckSearching}
+              disabled={submitting}
+              style={{ width: "100%" }}
+              notFoundContent={
+                clientesLoading ? "Cargando clientes..." : "Sin resultados"
+              }
+              options={clienteSelectOptions}
+            />
+
+            {selectedClienteBeck && (
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Contacto asociado
+                </label>
+                {contactoOptions.length > 0 ? (
+                  <Select
+                    value={draft.contactoBeckId || null}
+                    placeholder="Seleccionar contacto del cliente"
+                    allowClear
+                    disabled={submitting}
+                    onChange={(value) => {
+                      if (!value) {
+                        onSelectContactoBeck(null);
+                        return;
+                      }
+                      const contacto =
+                        (selectedClienteBeck.contactos ?? []).find((c) => c.id === value) ?? null;
+                      onSelectContactoBeck(contacto);
+                    }}
+                    style={{ width: "100%" }}
+                    options={contactoOptions}
+                  />
+                ) : (
+                  <p className="text-xs text-slate-400 py-1">
+                    Este cliente no tiene contactos registrados
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
@@ -1600,6 +1747,12 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     Record<string, FunnelCotizacionItem[]>
   >({});
   const [updatingStage, setUpdatingStage] = useState(false);
+  const [clienteBeckSearch, setClienteBeckSearch] = useState("");
+  const [clienteBeckResults, setClienteBeckResults] = useState<ClienteBeck[]>([]);
+  const [clienteBeckSearching, setClienteBeckSearching] = useState(false);
+  const [selectedClienteBeck, setSelectedClienteBeck] = useState<ClienteBeck | null>(null);
+  const [clientesDisponibles, setClientesDisponibles] = useState<ClienteBeck[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(false);
 
   void ufFecha;
 
@@ -1797,6 +1950,14 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         : undefined,
       documentoRespaldo: toText(item.documentoRespaldo, "") || undefined,
       flujoPosterior: toText(item.flujoPosterior, "") || undefined,
+      clienteBeckId: toText(item.clienteBeckId, "") || null,
+      contactoBeckId: toText(item.contactoBeckId, "") || null,
+      clienteBeck: isObjectRecord(item.clienteBeck)
+        ? (item.clienteBeck as unknown as ClienteBeck)
+        : undefined,
+      contactoBeck: isObjectRecord(item.contactoBeck)
+        ? (item.contactoBeck as unknown as ContactoClienteBeck)
+        : undefined,
     };
   };
 
@@ -1836,6 +1997,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     objeciones: deal.objeciones || "",
     contrapropuestas: deal.contrapropuestas || "",
     ajustesSolicitados: deal.ajustesSolicitados || "",
+    clienteBeckId: deal.clienteBeckId || "",
+    contactoBeckId: deal.contactoBeckId || "",
   });
 
   const loadDeals = async () => {
@@ -2130,6 +2293,26 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     }
   };
 
+  useEffect(() => {
+    const q = clienteBeckSearch.trim();
+    if (!q) {
+      setClienteBeckResults([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setClienteBeckSearching(true);
+      try {
+        const results = await clientesBeckAPI.buscar(q);
+        setClienteBeckResults(results);
+      } catch {
+        setClienteBeckResults([]);
+      } finally {
+        setClienteBeckSearching(false);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [clienteBeckSearch]);
+
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     void loadDeals();
@@ -2137,6 +2320,68 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     void loadDolarActual();
   }, []);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  const resetClienteBeckState = () => {
+    setSelectedClienteBeck(null);
+    setClienteBeckSearch("");
+    setClienteBeckResults([]);
+  };
+
+  const loadClientesDisponibles = async () => {
+    setClientesLoading(true);
+    try {
+      const clientes = await clientesBeckAPI.listar({ activo: true });
+      setClientesDisponibles(clientes);
+    } catch {
+      setClientesDisponibles([]);
+    } finally {
+      setClientesLoading(false);
+    }
+  };
+
+  const handleClienteBeckSearchChange = (q: string) => {
+    setClienteBeckSearch(q);
+  };
+
+  const handleSelectClienteBeck = (cliente: ClienteBeck | null) => {
+    setSelectedClienteBeck(cliente);
+    setClienteBeckSearch("");
+    setClienteBeckResults([]);
+
+    if (cliente) {
+      setDraft((current) => ({
+        ...current,
+        clienteBeckId: cliente.id,
+        contactoBeckId: "",
+        empresa: cliente.nombreEmpresa || cliente.razonSocial || current.empresa,
+        rutEmpresa: cliente.rut
+          ? formatRut(cleanRut(cliente.rut))
+          : current.rutEmpresa,
+        telefonoContacto: cliente.telefono || current.telefonoContacto,
+        correoContacto: cliente.correo || current.correoContacto,
+        region: cliente.region || current.region,
+        comuna: cliente.comuna || current.comuna,
+        tipoCliente: cliente.tipoCliente || current.tipoCliente,
+      }));
+    } else {
+      setDraft((current) => ({
+        ...current,
+        clienteBeckId: "",
+        contactoBeckId: "",
+      }));
+    }
+  };
+
+  const handleSelectContactoBeck = (contacto: ContactoClienteBeck | null) => {
+    setDraft((current) => ({
+      ...current,
+      contactoBeckId: contacto?.id ?? "",
+      nombreContacto: contacto?.nombre ?? current.nombreContacto,
+      cargoContacto: contacto?.cargo ?? current.cargoContacto ?? "",
+      telefonoContacto: contacto?.telefono ?? current.telefonoContacto,
+      correoContacto: contacto?.correo ?? current.correoContacto,
+    }));
+  };
 
   const handleOpenModal = () => {
     if (!canEditFunnel || dealSaving) return;
@@ -2146,21 +2391,36 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     setDraft(createEmptyDraft());
     setFieldErrors({});
     setShowValidationSummary(false);
+    resetClienteBeckState();
     setIsModalOpen(true);
+    void loadClientesDisponibles();
   };
 
-  const handleEditDeal = (deal: FunnelDeal) => {
+  const handleEditDeal = async (deal: FunnelDeal) => {
     if (!canEditFunnel || dealSaving) return;
 
     closeDealDetail();
+
+    let clienteForEdit = deal.clienteBeck ?? null;
+    if (deal.clienteBeckId && !clienteForEdit?.contactos?.length) {
+      try {
+        clienteForEdit = await clientesBeckAPI.obtener(deal.clienteBeckId);
+      } catch {
+        // keep whatever we have
+      }
+    }
 
     window.setTimeout(() => {
       setFunnelModalMode("edit");
       setEditingDealId(deal.id);
       setDraft(dealToDraft(deal));
+      setSelectedClienteBeck(clienteForEdit);
+      setClienteBeckSearch("");
+      setClienteBeckResults([]);
       setFieldErrors({});
       setShowValidationSummary(false);
       setIsModalOpen(true);
+      void loadClientesDisponibles();
     }, 0);
   };
 
@@ -2175,6 +2435,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     setDraft(createEmptyDraft());
     setFieldErrors({});
     setShowValidationSummary(false);
+    resetClienteBeckState();
   };
 
   const handleCloseCierreModal = () => {
@@ -2507,6 +2768,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         objeciones: isNegociacionStage ? (draft.objeciones.trim() || undefined) : undefined,
         contrapropuestas: isNegociacionStage ? (draft.contrapropuestas.trim() || undefined) : undefined,
         ajustesSolicitados: isNegociacionStage ? (draft.ajustesSolicitados.trim() || undefined) : undefined,
+        clienteBeckId: draft.clienteBeckId || null,
+        contactoBeckId: draft.contactoBeckId || null,
       };
 
       const savedOpportunity =
@@ -2730,13 +2993,22 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         onClose={handleCloseModal}
         onSubmit={handleCreateDeal}
         onFieldChange={handleFieldChange}
+        selectedClienteBeck={selectedClienteBeck}
+        clienteBeckResults={clienteBeckResults}
+        clienteBeckSearching={clienteBeckSearching}
+        clientesDisponibles={clientesDisponibles}
+        clientesLoading={clientesLoading}
+        onClienteBeckSearchChange={handleClienteBeckSearchChange}
+        onSelectClienteBeck={handleSelectClienteBeck}
+        onSelectContactoBeck={handleSelectContactoBeck}
       />
 
       <AntdModal
         open={Boolean(selectedDeal)}
         onCancel={closeDealDetail}
         footer={null}
-        width={960}
+        width="min(960px, 95vw)"
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
         title={selectedDeal ? `Oportunidad: ${selectedDeal.nombreProyecto}` : "Oportunidad"}
       >
         {selectedDeal && (
@@ -2764,6 +3036,22 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
               <Descriptions.Item label="Region / Comuna">
                 {[selectedDeal.region, selectedDeal.comuna].filter(Boolean).join(" / ") || "-"}
               </Descriptions.Item>
+              {selectedDeal.clienteBeck && (
+                <Descriptions.Item label="Cliente Beck" span={2}>
+                  <span className="font-medium">
+                    {selectedDeal.clienteBeck.nombreEmpresa || selectedDeal.clienteBeck.razonSocial || selectedDeal.empresa || "—"}
+                  </span>
+                  {" "}
+                  <span className="text-xs text-slate-400">({selectedDeal.clienteBeck.rut ?? selectedDeal.rutEmpresa ?? "Sin RUT"})</span>
+                </Descriptions.Item>
+              )}
+              {selectedDeal.contactoBeck && (
+                <Descriptions.Item label="Contacto Beck" span={2}>
+                  {selectedDeal.contactoBeck.nombre}
+                  {selectedDeal.contactoBeck.cargo ? ` — ${selectedDeal.contactoBeck.cargo}` : ""}
+                  {selectedDeal.contactoBeck.telefono ? ` · ${selectedDeal.contactoBeck.telefono}` : ""}
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
             <div className="flex items-center justify-between gap-3">
@@ -2780,7 +3068,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                 <div className="flex items-center gap-2">
                   <Button
                     icon={<EditOutlined />}
-                    onClick={() => handleEditDeal(selectedDeal)}
+                    onClick={() => { void handleEditDeal(selectedDeal); }}
                     disabled={dealSaving}
                   >
                     Editar
@@ -2842,6 +3130,7 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
                   disabled={updatingStage}
                   loading={updatingStage}
                   style={{ width: 220 }}
+                  className="!w-full sm:!w-[220px]"
                   options={etapas.map((etapa) => ({
                     value: etapa,
                     label: etapasLabel[etapa],
@@ -3012,7 +3301,8 @@ const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
         open={Boolean(selectedCotizacion) || selectedCotizacionLoading}
         onCancel={closeCotizacionDetail}
         footer={null}
-        width={720}
+        width="min(720px, 95vw)"
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
         title="Detalle de cotizacion"
       >
         {selectedCotizacionLoading ? (

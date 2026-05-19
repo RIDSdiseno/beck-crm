@@ -796,7 +796,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const sinRegistros = registros.length === 0;
 
   return (
-    <div className="space-y-5 px-2 sm:px-0 max-w-6xl mx-auto">
+    <div className="w-full min-w-0 space-y-5">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>

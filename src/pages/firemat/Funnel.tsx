@@ -14,6 +14,7 @@ import {
   Space,
   Spin,
   Tag,
+  Typography,
   message,
 } from "antd";
 import {
@@ -29,8 +30,12 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import {
+  clientesFirematAPI,
   firematCotizacionesAPI,
   firematFunnelAPI,
+  type ClienteFiremat,
+  type ContactoClienteFiremat,
+  type ContactoClienteFirematPayload,
   firematProductosAPI,
   type FirematCotizacion,
   type FirematCotizacionPayload,
@@ -41,6 +46,8 @@ import {
   type FirematFunnelResumen,
   type ProductoFiremat,
 } from "../../services/api";
+
+const { Text } = Typography;
 
 type ModalMode = "crear" | "editar" | "ver";
 
@@ -64,6 +71,10 @@ type CotizacionFormValues = {
 };
 
 type FunnelFormValues = {
+  clienteId?: string;
+  clienteFirematId?: string;
+  contactoId?: string;
+  contactoFirematId?: string;
   cliente: string;
   contacto?: string;
   telefono?: string;
@@ -205,6 +216,42 @@ const needsExtraFields = (etapa: FirematFunnelEtapa) =>
 const getCotizacionLabel = (cotizacion: FirematCotizacion) => {
   const numero = cotizacion.numero ?? cotizacion.id;
   return `#${numero} · ${cotizacion.cliente} · ${formatCLP(cotizacion.total)}`;
+};
+
+const getClienteFirematLabel = (cliente: ClienteFiremat) => {
+  const nombre =
+    cliente.nombreEmpresa?.trim() ||
+    cliente.nombre?.trim() ||
+    cliente.razonSocial?.trim() ||
+    "Cliente sin nombre";
+  return `${nombre} — ${cliente.rut?.trim() || "Sin RUT"}`;
+};
+
+const getClienteFirematNombre = (cliente: ClienteFiremat) =>
+  cliente.nombreEmpresa?.trim() ||
+  cliente.nombre?.trim() ||
+  cliente.razonSocial?.trim() ||
+  "";
+
+const getClienteFirematTipo = (cliente: ClienteFiremat) => {
+  const tipo = cliente.tipoCliente?.trim();
+  const map: Record<string, FirematCotizacionTipoCliente> = {
+    cliente_final: "CLIENTE_FINAL",
+    broker: "BROKER",
+    ferreteria: "FERRETERIA",
+    redistribuidor: "REDISTRIBUIDOR",
+    instalador: "INSTALADOR",
+    comisionista: "COMISIONISTA",
+    recompra: "RECOMPRA",
+    CLIENTE_FINAL: "CLIENTE_FINAL",
+    BROKER: "BROKER",
+    FERRETERIA: "FERRETERIA",
+    REDISTRIBUIDOR: "REDISTRIBUIDOR",
+    INSTALADOR: "INSTALADOR",
+    COMISIONISTA: "COMISIONISTA",
+    RECOMPRA: "RECOMPRA",
+  };
+  return tipo ? map[tipo] : undefined;
 };
 
 type ResumenCardProps = {
@@ -386,6 +433,13 @@ const FirematFunnel: React.FC = () => {
   const [resumen, setResumen] = useState<FirematFunnelResumen>(RESUMEN_VACIO);
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
   const [cotizaciones, setCotizaciones] = useState<FirematCotizacion[]>([]);
+  const [clientesFiremat, setClientesFiremat] = useState<ClienteFiremat[]>([]);
+  const [contactosCliente, setContactosCliente] = useState<ContactoClienteFiremat[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(false);
+  const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
+  const [contactoModalOpen, setContactoModalOpen] = useState(false);
+  const [contactoSaving, setContactoSaving] = useState(false);
+  const [contactoForm] = Form.useForm<ContactoClienteFirematPayload>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -430,6 +484,28 @@ const FirematFunnel: React.FC = () => {
         value: cotizacion.id,
       })),
     [cotizaciones]
+  );
+
+  const clienteOptions = useMemo(() => {
+    return clientesFiremat.map((cliente) => ({
+      label: getClienteFirematLabel(cliente),
+      value: cliente.id,
+      clienteId: cliente.id,
+    }));
+  }, [clientesFiremat]);
+
+  const contactoOptions = useMemo(
+    () =>
+      contactosCliente
+        .filter((contacto) => contacto.activo)
+        .map((contacto) => ({
+          label: contacto.cargo
+            ? `${contacto.nombre} — ${contacto.cargo}`
+            : contacto.nombre,
+          value: contacto.nombre,
+          contactoId: contacto.id,
+        })),
+    [contactosCliente]
   );
 
   const cotizacionTotals = useMemo(
@@ -505,6 +581,87 @@ const FirematFunnel: React.FC = () => {
     void cargar();
   }, [cargar]);
 
+  const cargarClientesActivos = useCallback(async () => {
+    setClientesLoading(true);
+    try {
+      const clientes = await clientesFirematAPI.listar({ activo: true });
+      setClientesFiremat(clientes);
+    } catch {
+      void message.error("No se pudieron cargar los clientes Firemat");
+    } finally {
+      setClientesLoading(false);
+    }
+  }, []);
+
+  const seleccionarClienteFiremat = useCallback(
+    async (clienteId: string) => {
+      setClientesLoading(true);
+      try {
+        const cliente = await clientesFirematAPI.obtener(clienteId);
+        const contactosActivos = (cliente.contactos ?? []).filter(
+          (contacto) => contacto.activo
+        );
+
+        setSelectedClienteId(cliente.id);
+        setContactosCliente(contactosActivos);
+        form.setFieldsValue({
+          clienteId: cliente.id,
+          clienteFirematId: cliente.id,
+          cliente: getClienteFirematNombre(cliente),
+          telefono: cliente.telefono ?? "",
+          correo: cliente.email ?? cliente.correo ?? "",
+          tipoCliente: getClienteFirematTipo(cliente),
+          contacto: "",
+          contactoId: undefined,
+          contactoFirematId: undefined,
+        });
+      } catch {
+        void message.error("No se pudo cargar el cliente Firemat");
+      } finally {
+        setClientesLoading(false);
+      }
+    },
+    [form]
+  );
+
+  const limpiarClienteFirematSeleccionado = useCallback(() => {
+    setSelectedClienteId(null);
+    setContactosCliente([]);
+    form.setFieldsValue({
+      clienteId: undefined,
+      clienteFirematId: undefined,
+      contactoId: undefined,
+      contactoFirematId: undefined,
+      contacto: "",
+    });
+  }, [form]);
+
+  const abrirNuevoContacto = () => {
+    contactoForm.resetFields();
+    contactoForm.setFieldsValue({ activo: true, principal: false });
+    setContactoModalOpen(true);
+  };
+
+  const guardarNuevoContacto = async (values: ContactoClienteFirematPayload) => {
+    if (!selectedClienteId) return;
+    setContactoSaving(true);
+    try {
+      await clientesFirematAPI.agregarContacto(selectedClienteId, values);
+      const cliente = await clientesFirematAPI.obtener(selectedClienteId);
+      const contactosActivos = (cliente.contactos ?? []).filter(
+        (contacto) => contacto.activo
+      );
+      setContactosCliente(contactosActivos);
+      setContactoModalOpen(false);
+      contactoForm.resetFields();
+      void message.success("Contacto agregado");
+    } catch {
+      void message.error("No se pudo agregar el contacto");
+    } finally {
+      setContactoSaving(false);
+    }
+  };
+
   const limpiar = () => {
     setQ("");
     setEtapa("");
@@ -518,6 +675,8 @@ const FirematFunnel: React.FC = () => {
     etapaOverride?: FirematFunnelEtapa
   ) => {
     form.setFieldsValue({
+      clienteId: oportunidad.clienteId ?? oportunidad.clienteFirematId ?? undefined,
+      clienteFirematId: oportunidad.clienteFirematId ?? oportunidad.clienteId ?? undefined,
       cliente: oportunidad.cliente,
       contacto: oportunidad.contacto ?? "",
       telefono: oportunidad.telefono ?? "",
@@ -544,11 +703,20 @@ const FirematFunnel: React.FC = () => {
         : null,
       documentoRespaldo: oportunidad.documentoRespaldo ?? "",
     });
+
+    const clienteId = oportunidad.clienteId ?? oportunidad.clienteFirematId;
+    if (clienteId) {
+      void seleccionarClienteFiremat(clienteId);
+    } else {
+      limpiarClienteFirematSeleccionado();
+    }
   };
 
   const openCrear = () => {
     setSelected(null);
     setModalMode("crear");
+    setSelectedClienteId(null);
+    setContactosCliente([]);
     form.resetFields();
     form.setFieldsValue({
       etapa: "PROSPECTO",
@@ -556,6 +724,7 @@ const FirematFunnel: React.FC = () => {
       probabilidadCierre: 20,
     });
     setModalOpen(true);
+    void cargarClientesActivos();
   };
 
   const openOportunidad = async (
@@ -566,6 +735,7 @@ const FirematFunnel: React.FC = () => {
     try {
       setModalMode(mode);
       setModalOpen(true);
+      void cargarClientesActivos();
       const detalle = await firematFunnelAPI.obtener(record.id);
       setSelected(detalle);
       setFormFromOportunidad(detalle, etapaOverride);
@@ -576,6 +746,8 @@ const FirematFunnel: React.FC = () => {
   };
 
   const buildPayload = (values: FunnelFormValues): FirematFunnelPayload => ({
+    clienteId: values.clienteId ?? selectedClienteId,
+    clienteFirematId: values.clienteFirematId ?? selectedClienteId,
     cliente: values.cliente.trim(),
     contacto: values.contacto?.trim() || null,
     telefono: values.telefono?.trim() || null,
@@ -633,6 +805,10 @@ const FirematFunnel: React.FC = () => {
 
   const handleSubmit = async (values: FunnelFormValues) => {
     if (modalMode === "ver") return;
+    if (!selectedClienteId && !values.cliente?.trim()) {
+      void message.error("Selecciona un cliente registrado o ingresa un cliente no registrado");
+      return;
+    }
     if (!validateStageRequirements(values)) return;
 
     setSaving(true);
@@ -647,6 +823,7 @@ const FirematFunnel: React.FC = () => {
       }
       setModalOpen(false);
       setSelected(null);
+      limpiarClienteFirematSeleccionado();
       form.resetFields();
       await cargar();
     } catch {
@@ -1115,6 +1292,7 @@ const FirematFunnel: React.FC = () => {
         onCancel={() => {
           setModalOpen(false);
           setSelected(null);
+          limpiarClienteFirematSeleccionado();
           form.resetFields();
         }}
         onOk={() => form.submit()}
@@ -1308,16 +1486,122 @@ const FirematFunnel: React.FC = () => {
             probabilidadCierre: 20,
           }}
         >
+          <Form.Item name="clienteId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="clienteFirematId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contactoId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contactoFirematId" hidden>
+            <Input />
+          </Form.Item>
+          <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,auto] md:items-end">
+              <Form.Item label="Cliente Firemat registrado (opcional)" className="mb-0">
+                <Select
+                  showSearch
+                  allowClear
+                  loading={clientesLoading}
+                  value={selectedClienteId ?? undefined}
+                  options={clienteOptions}
+                  optionFilterProp="label"
+                  placeholder="Seleccionar cliente por RUT, nombre o razón social"
+                  onClear={() => {
+                    limpiarClienteFirematSeleccionado();
+                    form.setFieldValue("cliente", "");
+                  }}
+                  onChange={(clienteId) => {
+                    if (clienteId) {
+                      void seleccionarClienteFiremat(String(clienteId));
+                      return;
+                    }
+                    limpiarClienteFirematSeleccionado();
+                  }}
+                />
+              </Form.Item>
+              {selectedClienteId && (
+                <Button onClick={limpiarClienteFirematSeleccionado}>
+                  Quitar cliente asociado
+                </Button>
+              )}
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-x-3 md:grid-cols-3">
             <Form.Item
               name="cliente"
-              label="Cliente"
-              rules={[{ required: true, message: "Ingresa el cliente" }]}
+              label="Cliente no registrado"
+              rules={[
+                {
+                  validator: (_, value: string) => {
+                    if (selectedClienteId || value?.trim()) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error("Ingresa el cliente o selecciona uno registrado")
+                    );
+                  },
+                },
+              ]}
             >
-              <Input placeholder="Cliente" />
+              <Input
+                placeholder="Nombre cliente no registrado"
+                disabled={Boolean(selectedClienteId)}
+              />
             </Form.Item>
             <Form.Item name="contacto" label="Contacto">
-              <Input placeholder="Nombre del contacto" />
+              {selectedClienteId ? (
+                <div className="space-y-2">
+                  {contactoOptions.length ? (
+                    <Select
+                      options={contactoOptions}
+                      placeholder="Seleccionar contacto"
+                      allowClear
+                      onChange={(_, option) => {
+                        const selectedOption = Array.isArray(option) ? option[0] : option;
+                        const contactoId =
+                          typeof selectedOption === "object" && selectedOption
+                            ? (selectedOption as { contactoId?: string }).contactoId
+                            : undefined;
+                        const contacto = contactosCliente.find(
+                          (item) => item.id === contactoId
+                        );
+                        if (!contacto) {
+                          form.setFieldsValue({
+                            contacto: "",
+                            contactoId: undefined,
+                            contactoFirematId: undefined,
+                          });
+                          return;
+                        }
+
+                        form.setFieldsValue({
+                          contactoId: contacto.id,
+                          contactoFirematId: contacto.id,
+                          contacto: contacto.nombre,
+                          telefono: contacto.telefono || form.getFieldValue("telefono"),
+                          correo: contacto.correo || form.getFieldValue("correo"),
+                        });
+                      }}
+                    />
+                  ) : (
+                    <Text type="secondary">Este cliente no tiene contactos registrados</Text>
+                  )}
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<PlusOutlined />}
+                    onClick={abrirNuevoContacto}
+                    className="!px-0"
+                  >
+                    Nuevo contacto
+                  </Button>
+                </div>
+              ) : (
+                <Input placeholder="Nombre contacto" />
+              )}
             </Form.Item>
             <Form.Item name="responsable" label="Responsable">
               <Input placeholder="Responsable comercial" />
@@ -1424,6 +1708,84 @@ const FirematFunnel: React.FC = () => {
           </Form.Item>
         </Form>
         )}
+      </Modal>
+
+      <Modal
+        title="Nuevo contacto"
+        open={contactoModalOpen}
+        onCancel={() => {
+          setContactoModalOpen(false);
+          contactoForm.resetFields();
+        }}
+        destroyOnClose
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setContactoModalOpen(false);
+              contactoForm.resetFields();
+            }}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="submit"
+            loading={contactoSaving}
+            onClick={() => contactoForm.submit()}
+            style={{
+              backgroundColor: "#475569",
+              borderColor: "#475569",
+              color: "#ffffff",
+            }}
+          >
+            Agregar
+          </Button>,
+        ]}
+      >
+        <Form
+          form={contactoForm}
+          layout="vertical"
+          onFinish={guardarNuevoContacto}
+          initialValues={{ activo: true, principal: false }}
+        >
+          <Form.Item
+            name="nombre"
+            label="Nombre"
+            rules={[{ required: true, message: "Ingresa el nombre" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="cargo" label="Cargo">
+            <Input />
+          </Form.Item>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Form.Item name="telefono" label="Teléfono">
+              <Input placeholder="+56..." />
+            </Form.Item>
+            <Form.Item name="correo" label="Correo">
+              <Input placeholder="correo@empresa.cl" />
+            </Form.Item>
+            <Form.Item name="principal" label="Contacto principal">
+              <Select
+                options={[
+                  { label: "Sí", value: true },
+                  { label: "No", value: false },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="activo" label="Estado">
+              <Select
+                options={[
+                  { label: "Activo", value: true },
+                  { label: "Inactivo", value: false },
+                ]}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item name="observaciones" label="Observaciones">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal

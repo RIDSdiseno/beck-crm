@@ -25,9 +25,15 @@ import dayjs, { Dayjs } from "dayjs";
 import {
   funnelBeckAPI,
   firematProductosAPI,
+  clientesBeckAPI,
   type FunnelBeckOpportunity,
   type ProductoFiremat,
+  type ClienteBeck,
+  type ContactoClienteBeck,
+  type ClienteBeckPayload,
+  type ContactoClienteBeckPayload,
 } from "../services/api";
+import { regionesComunasChile } from "../data/regionesComunasChile";
 import type {
   CotizacionLinea,
   EstadoCotizacion,
@@ -42,6 +48,12 @@ export type CotizacionEditorValues = {
   numero?: number;
   codigo?: string;
   funnelBeckId?: string;
+  clienteBeckId?: string | null;
+  contactoBeckId?: string | null;
+  nombreContactoManual?: string;
+  telefonoContactoManual?: string;
+  correoContactoManual?: string;
+  cargoContactoManual?: string;
   cliente: string;
   proyecto?: string;
   origen: "BECK" | "FIREMAT";
@@ -55,9 +67,6 @@ export type CotizacionEditorValues = {
   descuento: number;
   aplicaImpuesto: boolean;
   lineas?: LineaCotizacion[];
-  tipoEntidad?: string;
-  filtroOrigenCliente?: string;
-  entidad?: string;
 };
 
 type CotizacionEditorModalProps = {
@@ -126,6 +135,31 @@ const getOpportunityLabel = (opportunity: FunnelBeckOpportunity) => {
   return empresa ? `${proyecto} - ${empresa}` : proyecto;
 };
 
+const validarRut = (rut: string): boolean => {
+  const clean = rut.replace(/\./g, "").replace(/-/g, "").trim().toUpperCase();
+  if (clean.length < 2) return false;
+  const body = clean.slice(0, -1);
+  const dv = clean.slice(-1);
+  if (!/^\d+$/.test(body)) return false;
+  if (!/^[\dK]$/.test(dv)) return false;
+  return true;
+};
+
+const formatRut = (raw: string): string => {
+  const clean = raw.replace(/[^0-9kK]/g, "").toUpperCase();
+  if (clean.length < 2) return clean;
+  const dv = clean.slice(-1);
+  const body = clean.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${body}-${dv}`;
+};
+
+const TIPOS_CLIENTE_OPTIONS = [
+  { value: "EMPRESA", label: "Empresa" },
+  { value: "PERSONA_NATURAL", label: "Persona Natural" },
+  { value: "GOBIERNO", label: "Gobierno" },
+  { value: "ONG", label: "ONG" },
+];
+
 const TIPO_LINEA_OPTIONS = [
   { label: "Manual", value: "MANUAL" },
   { label: "Prod. Firemat", value: "PRODUCTO_FIREMAT" },
@@ -144,12 +178,23 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   canManageGanancia = false,
 }) => {
   const [form] = Form.useForm<CotizacionEditorValues>();
+  const [formEmpresa] = Form.useForm();
+  const [formNuevoContacto] = Form.useForm<ContactoClienteBeckPayload>();
   const [modalWidth, setModalWidth] = useState(980);
   const [lineas, setLineas] = useState<LineaTabla[]>([]);
   const [opportunities, setOpportunities] = useState<FunnelBeckOpportunity[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(false);
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
   const [productosLoading, setProductosLoading] = useState(false);
+  const [clientes, setClientes] = useState<ClienteBeck[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(false);
+  const [contactos, setContactos] = useState<ContactoClienteBeck[]>([]);
+  const [contactosLoading, setContactosLoading] = useState(false);
+  const [modalEmpresaOpen, setModalEmpresaOpen] = useState(false);
+  const [savingEmpresa, setSavingEmpresa] = useState(false);
+  const [comunasEmpresa, setComunasEmpresa] = useState<string[]>([]);
+  const [modalNuevoContactoOpen, setModalNuevoContactoOpen] = useState(false);
+  const [savingNuevoContacto, setSavingNuevoContacto] = useState(false);
 
   const descuento =
     (Form.useWatch("descuento", form) as number | undefined) ?? 0;
@@ -157,6 +202,12 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     (Form.useWatch("aplicaImpuesto", form) as boolean | undefined) ?? true;
   const moneda =
     (Form.useWatch("moneda", form) as "CLP" | "USD" | undefined) ?? "CLP";
+  const clienteBeckIdWatched =
+    (Form.useWatch("clienteBeckId", form) as string | null | undefined) ?? null;
+  const contactoBeckIdWatched =
+    (Form.useWatch("contactoBeckId", form) as string | null | undefined) ?? null;
+  const contextoOrigen: "BECK" | "FIREMAT" =
+    initialValues?.origen === "FIREMAT" ? "FIREMAT" : "BECK";
 
   useEffect(() => {
     const updateWidth = () => {
@@ -182,12 +233,15 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
     form.resetFields();
     form.setFieldsValue({
-      tipoEntidad: initialValues?.tipoEntidad || "Empresa",
-      filtroOrigenCliente: initialValues?.filtroOrigenCliente || "Todos",
-      entidad: initialValues?.entidad,
       numero: initialValues?.numero,
       codigo: initialValues?.codigo,
       funnelBeckId: initialValues?.funnelBeckId,
+      clienteBeckId: initialValues?.clienteBeckId ?? null,
+      contactoBeckId: initialValues?.contactoBeckId ?? null,
+      nombreContactoManual: initialValues?.nombreContactoManual || "",
+      telefonoContactoManual: initialValues?.telefonoContactoManual || "",
+      correoContactoManual: initialValues?.correoContactoManual || "",
+      cargoContactoManual: initialValues?.cargoContactoManual || "",
       cliente: initialValues?.cliente || "",
       proyecto: initialValues?.proyecto || "",
       origen: initialValues?.origen || "BECK",
@@ -231,6 +285,57 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     if (!open) return;
     let ignore = false;
 
+    const loadClientes = async () => {
+      setClientesLoading(true);
+      try {
+        const data = await clientesBeckAPI.listar({ activo: true });
+        if (!ignore) setClientes(data);
+      } catch {
+        if (!ignore) setClientes([]);
+      } finally {
+        if (!ignore) setClientesLoading(false);
+      }
+    };
+
+    void loadClientes();
+    return () => { ignore = true; };
+  }, [open]);
+
+  useEffect(() => {
+    if (!clienteBeckIdWatched) {
+      setContactos([]);
+      return;
+    }
+
+    let ignore = false;
+    const found = clientes.find((c) => c.id === clienteBeckIdWatched);
+
+    if (found?.contactos !== undefined) {
+      setContactos(found.contactos.filter((c) => c.activo));
+      return;
+    }
+
+    setContactosLoading(true);
+    clientesBeckAPI
+      .obtener(clienteBeckIdWatched)
+      .then((data) => {
+        if (!ignore) setContactos((data.contactos ?? []).filter((c) => c.activo));
+      })
+      .catch(() => {
+        if (!ignore) setContactos([]);
+      })
+      .finally(() => {
+        if (!ignore) setContactosLoading(false);
+      });
+
+    return () => { ignore = true; };
+  }, [clienteBeckIdWatched, clientes]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (contextoOrigen !== "FIREMAT") return;
+    let ignore = false;
+
     const loadProductos = async () => {
       try {
         setProductosLoading(true);
@@ -245,7 +350,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
     void loadProductos();
     return () => { ignore = true; };
-  }, [open]);
+  }, [open, contextoOrigen]);
 
   const patchLinea = (key: string, fields: Partial<Omit<LineaTabla, "key">>) => {
     setLineas((prev) =>
@@ -285,12 +390,41 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     ]);
   };
 
+  const handleClienteChange = (value?: string) => {
+    form.setFieldValue("contactoBeckId", null);
+    if (!value) return;
+    const found = clientes.find((c) => c.id === value);
+    if (found) {
+      const nombre = found.nombreEmpresa || found.razonSocial;
+      form.setFieldValue("cliente", nombre);
+    }
+  };
+
+  const handleQuitarCliente = () => {
+    form.setFieldValue("clienteBeckId", null);
+    form.setFieldValue("contactoBeckId", null);
+    form.setFieldValue("cliente", "");
+  };
+
   const handleOpportunityChange = (value?: string) => {
     form.setFieldValue("funnelBeckId", value);
     if (!value) return;
 
     const selectedOpportunity = opportunities.find((o) => o.id === value);
     if (!selectedOpportunity) return;
+
+    // Si la oportunidad tiene clienteBeckId y no hay cliente seleccionado, autoseleccionar
+    const oppClienteId = selectedOpportunity.clienteBeckId as string | null | undefined;
+    if (oppClienteId && !clienteBeckIdWatched) {
+      form.setFieldValue("clienteBeckId", oppClienteId);
+      form.setFieldValue("contactoBeckId", null);
+      const found = clientes.find((c) => c.id === oppClienteId);
+      if (found) {
+        const nombre = found.nombreEmpresa || found.razonSocial;
+        const currentCliente = String(form.getFieldValue("cliente") || "").trim();
+        if (!currentCliente) form.setFieldValue("cliente", nombre);
+      }
+    }
 
     const currentCliente = String(form.getFieldValue("cliente") || "").trim();
     const currentProyecto = String(form.getFieldValue("proyecto") || "").trim();
@@ -303,6 +437,106 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     if (!currentCliente && nextCliente) form.setFieldValue("cliente", nextCliente);
     if ((mode === "create" || !currentProyecto) && nextProyecto)
       form.setFieldValue("proyecto", nextProyecto);
+  };
+
+  const filteredOpportunities = useMemo(() => {
+    if (!clienteBeckIdWatched) return opportunities;
+    return opportunities.filter((o) => {
+      const oppClienteId = o.clienteBeckId as string | null | undefined;
+      return !oppClienteId || oppClienteId === clienteBeckIdWatched;
+    });
+  }, [opportunities, clienteBeckIdWatched]);
+
+  const selectedContact = useMemo(
+    () => contactos.find((c) => c.id === contactoBeckIdWatched) ?? null,
+    [contactos, contactoBeckIdWatched]
+  );
+
+  const handleCrearEmpresa = async () => {
+    try {
+      await formEmpresa.validateFields();
+    } catch {
+      return;
+    }
+
+    const values = formEmpresa.getFieldsValue() as ClienteBeckPayload & { activo: boolean };
+    if (!validarRut(String(values.rut || ""))) {
+      void message.error("RUT inválido");
+      return;
+    }
+
+    setSavingEmpresa(true);
+    try {
+      const payload: ClienteBeckPayload = {
+        rut: String(values.rut),
+        razonSocial: values.razonSocial,
+        nombreEmpresa: values.nombreEmpresa || null,
+        telefono: values.telefono || null,
+        correo: values.correo || null,
+        region: values.region || null,
+        comuna: values.comuna || null,
+        tipoCliente: values.tipoCliente || null,
+        activo: values.activo !== false,
+      };
+
+      const nuevoCliente = await clientesBeckAPI.crear(payload);
+      const updatedClientes = await clientesBeckAPI.listar({ activo: true });
+      setClientes(updatedClientes);
+
+      form.setFieldValue("clienteBeckId", nuevoCliente.id);
+      form.setFieldValue("contactoBeckId", null);
+      const nombre = nuevoCliente.nombreEmpresa || nuevoCliente.razonSocial;
+      form.setFieldValue("cliente", nombre);
+      setContactos([]);
+
+      setModalEmpresaOpen(false);
+      void message.success(`Empresa "${nombre}" creada y seleccionada`);
+    } catch {
+      void message.error("No se pudo crear la empresa");
+    } finally {
+      setSavingEmpresa(false);
+    }
+  };
+
+  const handleCrearContacto = async () => {
+    try {
+      await formNuevoContacto.validateFields();
+    } catch {
+      return;
+    }
+
+    if (!clienteBeckIdWatched) return;
+
+    setSavingNuevoContacto(true);
+    try {
+      const values = formNuevoContacto.getFieldsValue() as ContactoClienteBeckPayload;
+      const nuevoContacto = await clientesBeckAPI.agregarContacto(
+        clienteBeckIdWatched,
+        {
+          nombre: values.nombre,
+          cargo: values.cargo || null,
+          telefono: values.telefono || null,
+          correo: values.correo || null,
+          principal: false,
+          activo: true,
+        }
+      );
+
+      const clienteActualizado = await clientesBeckAPI.obtener(clienteBeckIdWatched);
+      const contactosActualizados = (clienteActualizado.contactos ?? []).filter(
+        (c) => c.activo
+      );
+      setContactos(contactosActualizados);
+      form.setFieldValue("contactoBeckId", nuevoContacto.id);
+
+      setModalNuevoContactoOpen(false);
+      formNuevoContacto.resetFields();
+      void message.success(`Contacto "${values.nombre}" creado y seleccionado`);
+    } catch {
+      void message.error("No se pudo crear el contacto");
+    } finally {
+      setSavingNuevoContacto(false);
+    }
   };
 
   const productosOptions = useMemo(
@@ -325,7 +559,11 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
           size="small"
           value={value}
           style={{ width: "100%" }}
-          options={TIPO_LINEA_OPTIONS}
+          options={
+                  contextoOrigen === "FIREMAT"
+                    ? TIPO_LINEA_OPTIONS
+                    : TIPO_LINEA_OPTIONS.filter((o) => o.value !== "PRODUCTO_FIREMAT")
+                }
           onChange={(nextValue: TipoLineaCotizacion) => {
             const updates: Partial<LineaTabla> = { tipoLinea: nextValue };
             if (nextValue !== "PRODUCTO_FIREMAT") {
@@ -562,6 +800,256 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 Informacion del cliente
               </h3>
 
+              {/* Cliente / empresa registrada */}
+              <Form.Item<CotizacionEditorValues>
+                name="clienteBeckId"
+                label={
+                  <span className="text-xs font-medium text-slate-800">
+                    Cliente / empresa registrada
+                  </span>
+                }
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  size="small"
+                  loading={clientesLoading}
+                  disabled={submitting}
+                  placeholder="Seleccionar cliente por RUT, razón social o nombre empresa"
+                  optionFilterProp="label"
+                  options={clientes.map((c) => ({
+                    label: `${c.nombreEmpresa || c.razonSocial} — ${c.rut}`,
+                    value: c.id,
+                  }))}
+                  onChange={(value) => handleClienteChange(value)}
+                  notFoundContent={
+                    clientesLoading ? "Cargando..." : "Sin resultados"
+                  }
+                />
+              </Form.Item>
+
+              {/* Cliente / empresa no registrada — solo visible si no hay cliente registrado */}
+              {!clienteBeckIdWatched && (
+                <Form.Item<CotizacionEditorValues>
+                  name="cliente"
+                  dependencies={["clienteBeckId"]}
+                  label={
+                    <span className="text-xs font-medium text-slate-800">
+                      Cliente / empresa no registrada
+                    </span>
+                  }
+                  rules={[
+                    {
+                      validator: async (_, value) => {
+                        const regId = form.getFieldValue(
+                          "clienteBeckId"
+                        ) as string | null;
+                        const nombre = String(value || "").trim();
+                        if (!regId && !nombre) {
+                          return Promise.reject(
+                            new Error(
+                              "Selecciona un cliente registrado o escribe el nombre"
+                            )
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <Input
+                    size="small"
+                    prefix={<UserOutlined className="mr-1 text-slate-400" />}
+                    placeholder="Constructora XYZ, Cliente particular…"
+                  />
+                </Form.Item>
+              )}
+
+              {clienteBeckIdWatched && (
+                <div className="mb-2 flex justify-end">
+                  <Button
+                    size="small"
+                    danger
+                    type="text"
+                    className="text-[11px]"
+                    onClick={handleQuitarCliente}
+                  >
+                    Quitar cliente asociado
+                  </Button>
+                </div>
+              )}
+
+              {/* Contacto — híbrido: dropdown si hay cliente Beck, inputs manuales si no */}
+              {clienteBeckIdWatched ? (
+                <>
+                  <Form.Item<CotizacionEditorValues>
+                    name="contactoBeckId"
+                    label={
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[11px] text-slate-600">
+                          Contacto asociado
+                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<PlusOutlined />}
+                          className="text-[11px] p-0 h-auto leading-none"
+                          disabled={submitting}
+                          onClick={() => {
+                            formNuevoContacto.resetFields();
+                            setModalNuevoContactoOpen(true);
+                          }}
+                        >
+                          Nuevo contacto
+                        </Button>
+                      </div>
+                    }
+                  >
+                    <Select
+                      showSearch
+                      allowClear
+                      size="small"
+                      loading={contactosLoading}
+                      disabled={submitting}
+                      placeholder="Seleccionar contacto"
+                      optionFilterProp="label"
+                      options={contactos.map((c) => ({
+                        label: `${c.nombre}${c.cargo ? ` — ${c.cargo}` : ""}`,
+                        value: c.id,
+                      }))}
+                      notFoundContent="Este cliente no tiene contactos registrados"
+                    />
+                  </Form.Item>
+                  {selectedContact && (
+                    <div className="mb-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 space-y-0.5">
+                      {selectedContact.telefono && (
+                        <div>
+                          <span className="font-medium">Teléfono:</span>{" "}
+                          {selectedContact.telefono}
+                        </div>
+                      )}
+                      {selectedContact.correo && (
+                        <div>
+                          <span className="font-medium">Correo:</span>{" "}
+                          {selectedContact.correo}
+                        </div>
+                      )}
+                      {selectedContact.cargo && (
+                        <div>
+                          <span className="font-medium">Cargo:</span>{" "}
+                          {selectedContact.cargo}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="mb-1">
+                    <span className="text-[11px] font-medium text-slate-500">
+                      Contacto manual
+                    </span>
+                  </div>
+                  <Form.Item<CotizacionEditorValues>
+                    name="nombreContactoManual"
+                    label={
+                      <span className="text-[11px] text-slate-600">
+                        Nombre contacto
+                      </span>
+                    }
+                  >
+                    <Input
+                      size="small"
+                      placeholder="Ej: Juan Pérez"
+                      disabled={submitting}
+                    />
+                  </Form.Item>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Form.Item<CotizacionEditorValues>
+                      name="telefonoContactoManual"
+                      label={
+                        <span className="text-[11px] text-slate-600">
+                          Teléfono contacto
+                        </span>
+                      }
+                      rules={[
+                        {
+                          validator: (_, value: string) => {
+                            if (!value) return Promise.resolve();
+                            if (!/^(9\d{8}|56\d{9}|\+56\d{9})$/.test(value))
+                              return Promise.reject(
+                                new Error("Ej: 912345678 / 56912345678 / +56912345678")
+                              );
+                            return Promise.resolve();
+                          },
+                        },
+                      ]}
+                    >
+                      <Input
+                        size="small"
+                        placeholder="912345678"
+                        disabled={submitting}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const hasPlus = raw.startsWith("+");
+                          const digits = raw.replace(/\D/g, "");
+                          const maxDigits =
+                            hasPlus || digits.startsWith("56") ? 11 : 9;
+                          const limited = digits.slice(0, maxDigits);
+                          form.setFieldValue(
+                            "telefonoContactoManual",
+                            hasPlus ? `+${limited}` : limited
+                          );
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item<CotizacionEditorValues>
+                      name="correoContactoManual"
+                      label={
+                        <span className="text-[11px] text-slate-600">
+                          Correo contacto
+                        </span>
+                      }
+                      rules={[
+                        {
+                          validator: (_, value: string) => {
+                            if (!value) return Promise.resolve();
+                            if (
+                              !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(
+                                value.trim()
+                              )
+                            )
+                              return Promise.reject(
+                                new Error("Correo inválido")
+                              );
+                            return Promise.resolve();
+                          },
+                        },
+                      ]}
+                    >
+                      <Input
+                        size="small"
+                        placeholder="contacto@empresa.cl"
+                        disabled={submitting}
+                      />
+                    </Form.Item>
+                  </div>
+                  <Form.Item<CotizacionEditorValues>
+                    name="cargoContactoManual"
+                    label={
+                      <span className="text-[11px] text-slate-600">Cargo</span>
+                    }
+                  >
+                    <Input
+                      size="small"
+                      placeholder="Ej: Supervisor de obra"
+                      disabled={submitting}
+                    />
+                  </Form.Item>
+                </>
+              )}
+
+              {/* Oportunidad Beck */}
               <Form.Item<CotizacionEditorValues>
                 name="funnelBeckId"
                 label={
@@ -576,82 +1064,40 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                   size="small"
                   disabled={lockFunnelSelection || submitting}
                   loading={opportunitiesLoading}
-                  placeholder="Selecciona una oportunidad"
+                  placeholder={
+                    clienteBeckIdWatched
+                      ? "Oportunidades de este cliente"
+                      : "Seleccionar oportunidad Beck"
+                  }
                   optionFilterProp="label"
-                  options={opportunities.map((opportunity) => ({
+                  options={filteredOpportunities.map((opportunity) => ({
                     label: getOpportunityLabel(opportunity),
                     value: opportunity.id,
                   }))}
+                  notFoundContent={
+                    clienteBeckIdWatched
+                      ? "Sin oportunidades para este cliente"
+                      : "Sin oportunidades"
+                  }
                   onChange={(value) => handleOpportunityChange(value)}
                 />
               </Form.Item>
 
-              <Form.Item<CotizacionEditorValues>
-                name="tipoEntidad"
-                label={
-                  <span className="text-[11px] text-slate-600">
-                    Tipo de entidad
-                  </span>
-                }
-              >
-                <Select
-                  size="small"
-                  options={[
-                    { label: "Empresa", value: "Empresa" },
-                    { label: "Persona natural", value: "Persona" },
-                    { label: "Otro", value: "Otro" },
-                  ]}
-                />
-              </Form.Item>
-
-              <Form.Item<CotizacionEditorValues>
-                name="filtroOrigenCliente"
-                label={
-                  <span className="text-[11px] text-slate-600">
-                    Filtrar por origen
-                  </span>
-                }
-              >
-                <Select
-                  size="small"
-                  options={[
-                    { label: "Todos los origenes", value: "Todos" },
-                    { label: "BECK", value: "BECK" },
-                    { label: "FIREMAT", value: "FIREMAT" },
-                  ]}
-                />
-              </Form.Item>
-
+              {/* Crear empresa */}
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 block
                 size="small"
                 className="mt-1 mb-2 border-none bg-sky-500 text-xs hover:bg-sky-600"
+                onClick={() => {
+                  formEmpresa.resetFields();
+                  setComunasEmpresa([]);
+                  setModalEmpresaOpen(true);
+                }}
               >
                 Crear empresa
               </Button>
-
-              <Form.Item<CotizacionEditorValues>
-                name="cliente"
-                label={
-                  <span className="text-[11px] text-slate-600">
-                    Entidad / cliente
-                  </span>
-                }
-                rules={[
-                  {
-                    required: true,
-                    message: "Ingrese o seleccione el cliente",
-                  },
-                ]}
-              >
-                <Input
-                  size="small"
-                  prefix={<UserOutlined className="mr-1 text-slate-400" />}
-                  placeholder="Nombre de la empresa o cliente"
-                />
-              </Form.Item>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -705,10 +1151,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 >
                   <Select
                     size="small"
-                    options={[
-                      { label: "BECK", value: "BECK" },
-                      { label: "FIREMAT", value: "FIREMAT" },
-                    ]}
+                    options={[{ label: "BECK", value: "BECK" }]}
                   />
                 </Form.Item>
 
@@ -817,14 +1260,16 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               >
                 + Linea manual
               </Button>
-              <Button
-                size="small"
-                className="border-orange-200 text-orange-600"
-                icon={<FireOutlined />}
-                onClick={() => agregarLinea("PRODUCTO_FIREMAT", "", 0)}
-              >
-                + Producto Firemat
-              </Button>
+              {contextoOrigen === "FIREMAT" && (
+                <Button
+                  size="small"
+                  className="border-orange-200 text-orange-600"
+                  icon={<FireOutlined />}
+                  onClick={() => agregarLinea("PRODUCTO_FIREMAT", "", 0)}
+                >
+                  + Producto Firemat
+                </Button>
+              )}
               <Button
                 size="small"
                 className="border-emerald-200 text-emerald-600"
@@ -956,6 +1401,235 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
           </div>
         </div>
       </Form>
+
+      {/* Modal rápido: Nuevo contacto */}
+      <Modal
+        open={modalNuevoContactoOpen}
+        onCancel={() => {
+          if (!savingNuevoContacto) setModalNuevoContactoOpen(false);
+        }}
+        title="Agregar contacto al cliente"
+        footer={null}
+        width={420}
+        destroyOnHidden
+      >
+        <Form form={formNuevoContacto} layout="vertical" size="small">
+          <Form.Item
+            name="nombre"
+            label="Nombre"
+            rules={[{ required: true, message: "El nombre es requerido" }]}
+          >
+            <Input placeholder="Ej: Juan Pérez" />
+          </Form.Item>
+
+          <Form.Item name="cargo" label="Cargo">
+            <Input placeholder="Ej: Jefe de compras" />
+          </Form.Item>
+
+          <div className="grid grid-cols-2 gap-x-3">
+            <Form.Item
+              name="telefono"
+              label="Teléfono"
+              rules={[
+                {
+                  validator: (_, value: string) => {
+                    if (!value) return Promise.resolve();
+                    if (!/^(9\d{8}|56\d{9}|\+56\d{9})$/.test(value))
+                      return Promise.reject(
+                        new Error("Ej: 912345678 / 56912345678")
+                      );
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <Input
+                placeholder="912345678"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const hasPlus = raw.startsWith("+");
+                  const digits = raw.replace(/\D/g, "");
+                  const maxDigits =
+                    hasPlus || digits.startsWith("56") ? 11 : 9;
+                  const limited = digits.slice(0, maxDigits);
+                  formNuevoContacto.setFieldValue(
+                    "telefono",
+                    hasPlus ? `+${limited}` : limited
+                  );
+                }}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="correo"
+              label="Correo"
+              rules={[
+                {
+                  validator: (_, value: string) => {
+                    if (!value) return Promise.resolve();
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim()))
+                      return Promise.reject(new Error("Correo inválido"));
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <Input placeholder="contacto@empresa.cl" />
+            </Form.Item>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-3 border-t border-slate-200 pt-3">
+            <Button
+              size="small"
+              onClick={() => setModalNuevoContactoOpen(false)}
+              disabled={savingNuevoContacto}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              loading={savingNuevoContacto}
+              className="bg-sky-500 border-none hover:bg-sky-600"
+              onClick={() => {
+                void handleCrearContacto();
+              }}
+            >
+              Agregar contacto
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* Modal rápido: Crear empresa Beck */}
+      <Modal
+        open={modalEmpresaOpen}
+        onCancel={() => {
+          if (!savingEmpresa) setModalEmpresaOpen(false);
+        }}
+        title="Crear empresa / cliente Beck"
+        footer={null}
+        width={520}
+        destroyOnHidden
+      >
+        <Form form={formEmpresa} layout="vertical" size="small">
+          <div className="grid grid-cols-2 gap-x-3">
+            <Form.Item
+              name="rut"
+              label="RUT"
+              className="col-span-2"
+              normalize={(v) => (v ? formatRut(String(v)) : v)}
+              rules={[
+                { required: true, message: "RUT requerido" },
+                {
+                  validator: (_, value) =>
+                    !value || validarRut(String(value))
+                      ? Promise.resolve()
+                      : Promise.reject(new Error("RUT inválido")),
+                },
+              ]}
+            >
+              <Input placeholder="12.345.678-9" />
+            </Form.Item>
+
+            <Form.Item
+              name="razonSocial"
+              label="Razón social"
+              className="col-span-2"
+              rules={[{ required: true, message: "Razón social requerida" }]}
+            >
+              <Input placeholder="Nombre legal" />
+            </Form.Item>
+
+            <Form.Item
+              name="nombreEmpresa"
+              label="Nombre empresa"
+              className="col-span-2"
+            >
+              <Input placeholder="Nombre comercial (opcional)" />
+            </Form.Item>
+
+            <Form.Item name="telefono" label="Teléfono">
+              <Input placeholder="+56 9 1234 5678" />
+            </Form.Item>
+
+            <Form.Item
+              name="correo"
+              label="Correo"
+              rules={[{ type: "email", message: "Correo inválido" }]}
+            >
+              <Input placeholder="contacto@empresa.cl" />
+            </Form.Item>
+
+            <Form.Item name="region" label="Región">
+              <Select
+                allowClear
+                placeholder="Selecciona región"
+                onChange={(value: string) => {
+                  const found = regionesComunasChile.find(
+                    (r) => r.nombre === value
+                  );
+                  setComunasEmpresa(found?.comunas ?? []);
+                  formEmpresa.setFieldValue("comuna", undefined);
+                }}
+                options={regionesComunasChile.map((r) => ({
+                  label: r.nombre,
+                  value: r.nombre,
+                }))}
+              />
+            </Form.Item>
+
+            <Form.Item name="comuna" label="Comuna">
+              <Select
+                allowClear
+                placeholder="Selecciona comuna"
+                disabled={!comunasEmpresa.length}
+                options={comunasEmpresa.map((c) => ({ label: c, value: c }))}
+              />
+            </Form.Item>
+
+            <Form.Item name="tipoCliente" label="Tipo cliente">
+              <Select
+                allowClear
+                placeholder="Selecciona tipo"
+                options={TIPOS_CLIENTE_OPTIONS}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="activo"
+              label="Estado activo"
+              valuePropName="checked"
+              initialValue={true}
+            >
+              <Switch
+                size="small"
+                checkedChildren="Activo"
+                unCheckedChildren="Inactivo"
+              />
+            </Form.Item>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-3 border-t border-slate-200 pt-3">
+            <Button
+              size="small"
+              onClick={() => setModalEmpresaOpen(false)}
+              disabled={savingEmpresa}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              loading={savingEmpresa}
+              className="bg-sky-500 border-none hover:bg-sky-600"
+              onClick={() => { void handleCrearEmpresa(); }}
+            >
+              Crear empresa
+            </Button>
+          </div>
+        </Form>
+      </Modal>
     </Modal>
   );
 };

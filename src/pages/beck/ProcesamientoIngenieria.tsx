@@ -127,11 +127,51 @@ const normalizeCieloModular = (value: number): 1 | 2 | 3 => {
   return 1;
 };
 
-const getFotosRegistro = (r: RegistroSello): string[] => {
-  const urls: string[] = [];
-  if (Array.isArray(r.fotosUrls)) urls.push(...(r.fotosUrls.filter(Boolean) as string[]));
-  if (urls.length === 0 && r.fotoUrl) urls.push(r.fotoUrl);
-  return urls;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotoUrl = (foto: any): string | null => {
+  if (!foto) return null;
+
+  if (typeof foto === "string") {
+    const clean = foto.trim();
+    return clean.startsWith("http") ? clean : null;
+  }
+
+  if (typeof foto === "object") {
+    const candidate =
+      foto.url ||
+      foto.secure_url ||
+      foto.fotoUrl ||
+      foto.src ||
+      null;
+
+    if (typeof candidate === "string") {
+      const clean = candidate.trim();
+      return clean.startsWith("http") ? clean : null;
+    }
+  }
+
+  return null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotosRegistro = (record: any): string[] => {
+  const raw = [
+    ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),
+    ...(Array.isArray(record.fotos_urls) ? record.fotos_urls : []),
+    ...(Array.isArray(record.fotos_registro) ? record.fotos_registro : []),
+    ...(Array.isArray(record.fotos) ? record.fotos : []),
+    record.fotoUrl,
+    record.foto_url,
+  ];
+
+  const result = [...new Set(raw.map(getFotoUrl).filter((x): x is string => !!x))];
+
+  if (import.meta.env.DEV) {
+    console.log("RAW FOTOS", record);
+    console.log("NORMALIZADAS", result);
+  }
+
+  return result;
 };
 
 const getEjeNumerico = (r: RegistroSello): string => {
@@ -169,16 +209,8 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
   const factorHolgura = normalizeFactorHolgura(holguraCm);
 
-  const fotosDesdeRegistro = (r.fotos_registro ?? [])
-    .map((f) => f.url)
-    .filter((u): u is string => !!u);
-  const fotosBase =
-    r.fotosUrls?.filter((u): u is string => !!u) ??
-    r.fotos_urls?.filter((u): u is string => !!u) ??
-    (r.fotos?.map((f) => f.url).filter((u): u is string => !!u) ?? []);
-  const allFotos = Array.from(new Set([...fotosBase, ...fotosDesdeRegistro]));
-  const fotoUrl = allFotos[0] ?? r.fotoUrl ?? r.foto_url ?? undefined;
-  const fotosUrls = allFotos.length > 0 ? allFotos : fotoUrl ? [fotoUrl] : [];
+  const fotosUrls = getFotosRegistro(r);
+  const fotoUrl = fotosUrls[0];
 
   return {
     id: r.id,
@@ -426,7 +458,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const estado = normalizeEstado(record.estado);
     const loadingEstado = changingEstadoId === String(record.id);
     return (
-      <div className="flex min-w-[260px] flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap gap-1">
         <Button
           size="small"
           className="px-2"
@@ -510,8 +542,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const columnaAcciones: ColumnsType<RegistroSello>[number] = {
     title: "Acciones",
     key: "acciones",
-    width: 300,
-    fixed: "right",
+    width: 260,
     render: renderAcciones,
   };
 
@@ -676,7 +707,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1480px] space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="pt-1">
         <h1 className="text-xl font-semibold text-slate-900">
           Procesamiento Ingeniería
@@ -781,6 +812,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           size="small"
           loading={loading}
           scroll={{ x: "max-content" }}
+          tableLayout="auto"
           pagination={{ pageSize: 10, showSizeChanger: false }}
         />
       </Card>

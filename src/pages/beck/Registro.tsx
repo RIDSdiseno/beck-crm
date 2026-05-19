@@ -119,8 +119,22 @@ type ImportarResultadoHoja = {
 type ImportarResponse = {
   success: boolean;
   totalInsertados?: number;
+  creados?: number;
+  duplicadosOmitidos?: number;
+  advertencias?: string[];
   resultados?: ImportarResultadoHoja[];
   message?: string;
+};
+
+const isNetworkOrTimeoutError = (err: unknown): boolean => {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; message?: string };
+  return (
+    e.code === "ECONNABORTED" ||
+    e.code === "ERR_NETWORK" ||
+    e.code === "ERR_CANCELED" ||
+    (typeof e.message === "string" && e.message.toLowerCase().includes("timeout"))
+  );
 };
 
 const normalizeEstado = (estado?: string | null): RegistroEstado => {
@@ -207,6 +221,53 @@ const getEjeNumerico = (r: { ejeNumerico?: number | string | null; eje_numerico?
     : "-";
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotoUrl = (foto: any): string | null => {
+  if (!foto) return null;
+
+  if (typeof foto === "string") {
+    const clean = foto.trim();
+    return clean.startsWith("http") ? clean : null;
+  }
+
+  if (typeof foto === "object") {
+    const candidate =
+      foto.url ||
+      foto.secure_url ||
+      foto.fotoUrl ||
+      foto.src ||
+      null;
+
+    if (typeof candidate === "string") {
+      const clean = candidate.trim();
+      return clean.startsWith("http") ? clean : null;
+    }
+  }
+
+  return null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotosRegistro = (record: any): string[] => {
+  const raw = [
+    ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),
+    ...(Array.isArray(record.fotos_urls) ? record.fotos_urls : []),
+    ...(Array.isArray(record.fotos_registro) ? record.fotos_registro : []),
+    ...(Array.isArray(record.fotos) ? record.fotos : []),
+    record.fotoUrl,
+    record.foto_url,
+  ];
+
+  const result = [...new Set(raw.map(getFotoUrl).filter((x): x is string => !!x))];
+
+  if (import.meta.env.DEV) {
+    console.log("RAW FOTOS", record);
+    console.log("NORMALIZADAS", result);
+  }
+
+  return result;
+};
+
 const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
   if (value === 1.2 || value === 1.4 || value === 1.8) return value;
   return 1;
@@ -240,20 +301,8 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const accesibilidad = Number(r.accesibilidad ?? 0);
   const obraNombre = r.obra?.nombre ?? r.obra_nombre ?? "Sin obra";
   const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
-  const fotoUrl =
-    r.fotosUrls?.[0] ??
-    r.fotos_urls?.[0] ??
-    r.fotoUrl ??
-    r.foto_url ??
-    r.fotos?.[0]?.url ??
-    undefined;
-  const fotosUrls: string[] = (() => {
-    const from: string[] =
-      r.fotosUrls?.filter((u): u is string => !!u) ??
-      r.fotos_urls?.filter((u): u is string => !!u) ??
-      (r.fotos?.map((f) => f.url).filter((u): u is string => !!u) ?? []);
-    return from.length > 0 ? from : fotoUrl ? [fotoUrl] : [];
-  })();
+  const fotosUrls = getFotosRegistro(r);
+  const fotoUrl = fotosUrls[0];
 
   return {
     id: r.id,
@@ -561,7 +610,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Tipo registro",
       dataIndex: "tipoRegistro",
       key: "tipoRegistro",
-      fixed: "left",
       width: 150,
       render: (value: string | undefined) => (
         <Tag
@@ -579,17 +627,20 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Itemizado BECK",
       dataIndex: "itemizadoBeck",
       key: "itemizadoBeck",
-      fixed: "left",
-      width: 130,
+      width: 220,
       render: (text: string) => (
-        <span className="font-semibold text-orange-700">{text}</span>
+        <div className="max-w-[220px] truncate">
+          <span className="font-semibold text-orange-700">{text}</span>
+        </div>
       ),
     },
     {
       title: "Itemizado SACYR",
       key: "itemizadoSacyr",
-      width: 150,
-      render: (_: unknown, r: RegistroSello) => getItemizadoSacyr(r),
+      width: 220,
+      render: (_: unknown, r: RegistroSello) => (
+        <div className="max-w-[220px] truncate">{getItemizadoSacyr(r)}</div>
+      ),
     },
     {
       title: "Obra",
@@ -744,11 +795,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "foto",
       width: 160,
       render: (_value: RegistroSello["fotoUrl"], record: RegistroSello) => {
-        const count = record.fotosUrls?.length ?? (record.fotoUrl ? 1 : 0);
+        const fotos = getFotosRegistro(record);
+        const count = fotos.length;
         if (count === 0) {
           return <span className="text-[11px] text-slate-500">Sin foto</span>;
         }
-        const thumbUrl = record.fotosUrls?.[0] ?? record.fotoUrl;
+        const thumbUrl = fotos[0];
         return (
           <div className="flex items-center gap-3">
             <div className="relative h-10 w-16 overflow-hidden rounded-md border border-slate-200">
@@ -867,11 +919,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "fotoJunta",
       width: 160,
       render: (_: unknown, r: RegistroSello) => {
-        const count = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
+        const fotos = getFotosRegistro(r);
+        const count = fotos.length;
         if (count === 0) {
           return <span className="text-[11px] text-slate-500">Sin foto</span>;
         }
-        const thumbUrl = r.fotosUrls?.[0] ?? r.fotoUrl;
+        const thumbUrl = fotos[0];
         return (
           <div className="flex items-center gap-3">
             <div className="relative h-10 w-16 overflow-hidden rounded-md border border-slate-200">
@@ -998,20 +1051,27 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (importando) return;
+
     const archivo = e.target.files?.[0];
     if (!archivo) return;
-    e.target.value = "";
 
     const formData = new FormData();
     formData.append("file", archivo);
 
     setImportando(true);
-    const hide = message.loading("Importando registros...", 0);
+    const hide = message.loading(
+      "Importando Excel, esto puede tardar si hay fotos...",
+      0
+    );
     try {
       const res = await api.post<ImportarResponse>(
         "/registros/importar",
         formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 300000,
+        }
       );
       hide();
       const resultado = res.data;
@@ -1021,8 +1081,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     } catch (error) {
       hide();
       console.error(error);
-      message.error("Error al importar el archivo");
+      if (isNetworkOrTimeoutError(error)) {
+        message.warning({
+          content:
+            "La importación pudo haber quedado procesándose. Actualiza la vista antes de volver a importar.",
+          duration: 10,
+        });
+      } else {
+        message.error("Error al importar el archivo");
+      }
     } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setImportando(false);
     }
   };
@@ -1261,7 +1330,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   };
 
   const handleExportExcel = async () => {
-    if (!filteredData.length) return;
+    const baseExportData = data.filter((r) => {
+      let ok = true;
+      if (filtroPiso) ok = ok && r.piso === filtroPiso;
+      if (filtroFechas) {
+        const d = dayjs(r.fechaEjecucion);
+        const [start, end] = filtroFechas;
+        ok = ok && !d.isBefore(start, "day") && !d.isAfter(end, "day");
+      }
+      return ok;
+    });
+    if (!baseExportData.length) return;
 
     setExportando(true);
     const hide = message.loading("Generando Excel profesional…", 0);
@@ -1302,159 +1381,225 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         }
       } catch { /* logo no disponible */ }
 
-      const ws = workbook.addWorksheet("Registros");
+      // ── Separar por tipo ──────────────────────────────────────────────────
+      const sellos = baseExportData.filter((r) => getTipoRegistro(r) === "sello_cortafuego");
+      const juntas = baseExportData.filter((r) => getTipoRegistro(r) === "junta_lineal_espuma");
 
-      const COLS: { header: string; key: string; width: number }[] = [
-        { header: "Código",           key: "codigo",          width: 14 },
-        { header: "Tipo",             key: "tipo",            width: 14 },
-        { header: "Itemizado SACYR",  key: "itemizadoSacyr",  width: 22 },
-        { header: "Obra",             key: "obra",            width: 20 },
-        { header: "Fecha",         key: "fecha",         width: 13 },
-        { header: "Piso",          key: "piso",          width: 10 },
-        { header: "Eje alfa",      key: "ejeAlfa",       width: 10 },
-        { header: "Eje núm",       key: "ejeNum",        width: 10 },
-        { header: "Sellador",      key: "sellador",      width: 20 },
-        { header: "Recinto",       key: "recinto",       width: 18 },
-        { header: "Cant. sellos",  key: "sellos",        width: 14 },
-        { header: "Metros lin.",   key: "metros",        width: 13 },
-        { header: "Holgura (cm)",  key: "holgura",       width: 13 },
-        { header: "Accesibilidad", key: "accesibilidad", width: 14 },
-        { header: "Estado",        key: "estado",        width: 14 },
-        { header: "Observaciones", key: "observaciones", width: 30 },
-        { header: "Foto",          key: "foto",          width: 18 },
-      ];
-      const NCOLS = COLS.length;
-
-      ws.columns = COLS.map((c) => ({ key: c.key, width: c.width }));
-
-      const LOGO_ROW   = 1;
-      const HEADER_ROW = 3;
-      const DATA_START = 4;
-      const FOTO_COL     = NCOLS;
-      const FOTO_COL_IDX = NCOLS - 1;
-      const numericCols  = new Set([11, 12, 13, 14]);
-
-      ws.mergeCells(LOGO_ROW, 1, LOGO_ROW, NCOLS);
-      const bannerCell = ws.getCell(LOGO_ROW, 1);
-      bannerCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-      const BANNER_H = Math.max(60, logoH + 14);
-      ws.getRow(LOGO_ROW).height = BANNER_H;
-
-      if (logoBase64) {
-        const logoId = workbook.addImage({ base64: logoBase64, extension: "png" });
-        ws.addImage(logoId, {
-          tl: { col: 0.2, row: 0.15 },
-          ext: { width: LOGO_W, height: logoH },
-          editAs: "oneCell",
-        } as unknown as ExcelJS.ImageRange);
-      }
-
-      ws.getRow(2).height = 10;
-
-      const headerRow = ws.getRow(HEADER_ROW);
-      headerRow.height = 28;
-      COLS.forEach((col, i) => {
-        const cell = headerRow.getCell(i + 1);
-        cell.value = col.header;
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFACC15" } };
-        cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
-        cell.border = {
-          top:    { style: "thin",   color: { argb: "FFD97706" } },
-          left:   { style: "thin",   color: { argb: "FFD97706" } },
-          bottom: { style: "medium", color: { argb: "FFD97706" } },
-          right:  { style: "thin",   color: { argb: "FFD97706" } },
-        };
-        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      });
-
-      ws.views = [{ state: "frozen", ySplit: HEADER_ROW }];
-      const lastColLetter = String.fromCharCode(64 + NCOLS);
-      ws.autoFilter = `A${HEADER_ROW}:${lastColLetter}${HEADER_ROW}`;
-
-      const thumbData = await Promise.all(
-        filteredData.map((r) => {
+      // ── Thumbnails separados ──────────────────────────────────────────────
+      const sellosThumbs = await Promise.all(
+        sellos.map((r) => {
+          const url = r.fotosUrls?.[0] ?? r.fotoUrl ?? null;
+          return url ? fetchImageAsBase64(url) : Promise.resolve(null);
+        })
+      );
+      const juntasThumbs = await Promise.all(
+        juntas.map((r) => {
           const url = r.fotosUrls?.[0] ?? r.fotoUrl ?? null;
           return url ? fetchImageAsBase64(url) : Promise.resolve(null);
         })
       );
 
-      filteredData.forEach((r, idx) => {
-        const excelRowNum = DATA_START + idx;
-        const esSello = !r.tipoRegistro || r.tipoRegistro === "sello_cortafuego";
-        const esJunta = r.tipoRegistro === "junta_lineal_espuma";
-        const totalFotos  = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
-        const extraPhotos = Math.max(0, totalFotos - 1);
+      type ColDef = { header: string; key: string; width: number };
+      type ImgData = { base64: string; ext: "jpeg" | "png" | "gif" } | null;
 
-        const fotoTexto = totalFotos === 0
-          ? "Sin foto"
-          : extraPhotos > 0
-          ? `+${extraPhotos} fotos`
-          : "";
+      const BANNER_H = Math.max(60, logoH + 14);
 
-        const values: Record<string, string | number | null> = {
-          codigo:          r.codigo ?? `REG-${String(r.id).slice(0, 6)}`,
-          tipo:            getTipoRegistroLabel(r.tipoRegistro),
-          itemizadoSacyr:  getItemizadoSacyr(r),
-          obra:            r.obraNombre ?? "",
-          fecha:         dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
-          piso:          r.piso,
-          ejeAlfa:       r.ejeAlfabetico,
-          ejeNum:        getEjeNumerico(r),
-          sellador:      r.nombreSellador,
-          recinto:       r.recinto,
-          sellos:        esSello ? r.cantidadSellos : null,
-          metros:        esJunta ? (getMetrosLineales(r) ?? null) : null,
-          holgura:       r.holguraCm,
-          accesibilidad: r.accesibilidad ?? null,
-          estado:        getEstadoLabel(r.estado),
-          observaciones: r.observaciones ?? "",
-          foto:          fotoTexto,
-        };
-
-        const dataRow = ws.getRow(excelRowNum);
-        dataRow.height = 62;
-
-        COLS.forEach((col, i) => {
-          const cell = dataRow.getCell(i + 1);
-          cell.value = values[col.key] ?? null;
-          cell.border = {
-            top:    { style: "thin", color: { argb: "FFE5E7EB" } },
-            left:   { style: "thin", color: { argb: "FFE5E7EB" } },
-            bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-            right:  { style: "thin", color: { argb: "FFE5E7EB" } },
-          };
-          if (numericCols.has(i + 1)) {
-            cell.alignment = { horizontal: "center", vertical: "middle" };
-            if (typeof cell.value === "number") {
-              cell.numFmt = col.key === "metros" ? "#,##0.00" : "#,##0";
-            }
-          } else if (col.key === "foto") {
-            cell.alignment = { horizontal: "center", vertical: "bottom" };
-            cell.font = { size: 9, italic: true, color: { argb: "FF64748B" } };
-          } else {
-            cell.alignment = {
-              vertical: "middle",
-              wrapText: col.key === "observaciones",
-            };
-          }
-        });
-
-        const img = thumbData[idx];
-        if (img) {
-          const imageId = workbook.addImage({ base64: img.base64, extension: img.ext });
-          ws.addImage(imageId, {
-            tl:     { col: FOTO_COL_IDX, row: excelRowNum - 1 },
-            ext:    { width: 90, height: 46 },
+      // ── Helper: banner con logo ───────────────────────────────────────────
+      const addBanner = (ws: ExcelJS.Worksheet, ncols: number) => {
+        ws.mergeCells(1, 1, 1, ncols);
+        ws.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
+        ws.getRow(1).height = BANNER_H;
+        if (logoBase64) {
+          const logoId = workbook.addImage({ base64: logoBase64, extension: "png" });
+          ws.addImage(logoId, {
+            tl: { col: 0.2, row: 0.15 },
+            ext: { width: LOGO_W, height: logoH },
             editAs: "oneCell",
           } as unknown as ExcelJS.ImageRange);
-          if (extraPhotos > 0) {
-            ws.getCell(excelRowNum, FOTO_COL).note =
-              `${totalFotos} fotos en total. Ver hoja "Fotos" para todas las imágenes.`;
-          }
         }
-      });
+      };
 
-      // Hoja "Fotos"
+      // ── Helper: headers amarillos + freeze + autoFilter ───────────────────
+      const addHeaders = (ws: ExcelJS.Worksheet, cols: ColDef[]) => {
+        ws.columns = cols.map((c) => ({ key: c.key, width: c.width }));
+        ws.getRow(2).height = 10;
+        const hRow = ws.getRow(3);
+        hRow.height = 28;
+        cols.forEach((col, i) => {
+          const cell = hRow.getCell(i + 1);
+          cell.value = col.header;
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFACC15" } };
+          cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
+          cell.border = {
+            top:    { style: "thin",   color: { argb: "FFD97706" } },
+            left:   { style: "thin",   color: { argb: "FFD97706" } },
+            bottom: { style: "medium", color: { argb: "FFD97706" } },
+            right:  { style: "thin",   color: { argb: "FFD97706" } },
+          };
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        });
+        ws.views = [{ state: "frozen", ySplit: 3 }];
+        const lastColLetter = String.fromCharCode(64 + cols.length);
+        ws.autoFilter = `A3:${lastColLetter}3`;
+      };
+
+      // ── Helper: filas de datos con thumbnails ─────────────────────────────
+      const fillDataRows = (
+        ws: ExcelJS.Worksheet,
+        cols: ColDef[],
+        data: RegistroSello[],
+        thumbs: ImgData[],
+        getValues: (r: RegistroSello) => Record<string, string | number | null>,
+        fotoKey: string,
+        numericKeys: Set<string>
+      ) => {
+        const fotoColIdx = cols.findIndex((c) => c.key === fotoKey);
+        data.forEach((r, idx) => {
+          const rowNum = 4 + idx;
+          const values = getValues(r);
+          const dataRow = ws.getRow(rowNum);
+          dataRow.height = 62;
+          cols.forEach((col, i) => {
+            const cell = dataRow.getCell(i + 1);
+            cell.value = values[col.key] ?? null;
+            cell.border = {
+              top:    { style: "thin", color: { argb: "FFE5E7EB" } },
+              left:   { style: "thin", color: { argb: "FFE5E7EB" } },
+              bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
+              right:  { style: "thin", color: { argb: "FFE5E7EB" } },
+            };
+            if (numericKeys.has(col.key)) {
+              cell.alignment = { horizontal: "center", vertical: "middle" };
+              if (typeof cell.value === "number") {
+                cell.numFmt = (col.key === "longitud" || col.key === "metros") ? "#,##0.00" : "#,##0";
+              }
+            } else if (col.key === fotoKey) {
+              cell.alignment = { horizontal: "center", vertical: "bottom" };
+              cell.font = { size: 9, italic: true, color: { argb: "FF64748B" } };
+            } else {
+              cell.alignment = { vertical: "middle", wrapText: col.key === "observaciones" };
+            }
+          });
+          const img = thumbs[idx];
+          if (img && fotoColIdx >= 0) {
+            const imageId = workbook.addImage({ base64: img.base64, extension: img.ext });
+            ws.addImage(imageId, {
+              tl:     { col: fotoColIdx, row: rowNum - 1 },
+              ext:    { width: 90, height: 46 },
+              editAs: "oneCell",
+            } as unknown as ExcelJS.ImageRange);
+          }
+        });
+      };
+
+      // ══════════════════════════════════════════════════════════════════════
+      // HOJA 1 · SELLOS CORTAFUEGOS
+      // ══════════════════════════════════════════════════════════════════════
+      const wsSellos = workbook.addWorksheet("SELLOS CORTAFUEGOS");
+      const SELLOS_COLS: ColDef[] = [
+        { header: "Código",          key: "codigo",         width: 14 },
+        { header: "Tipo",            key: "tipo",           width: 14 },
+        { header: "Itemizado SACYR", key: "itemizadoSacyr", width: 22 },
+        { header: "Obra",            key: "obra",           width: 20 },
+        { header: "Fecha",           key: "fecha",          width: 13 },
+        { header: "Piso",            key: "piso",           width: 10 },
+        { header: "Eje alfabético",  key: "ejeAlfa",        width: 12 },
+        { header: "Eje numérico",    key: "ejeNum",         width: 12 },
+        { header: "Sellador",        key: "sellador",       width: 20 },
+        { header: "Recinto",         key: "recinto",        width: 18 },
+        { header: "Cant. sellos",    key: "sellos",         width: 14 },
+        { header: "Metros lineales", key: "metros",         width: 14 },
+        { header: "Holgura (cm)",    key: "holgura",        width: 13 },
+        { header: "Accesibilidad",   key: "accesibilidad",  width: 14 },
+        { header: "Estado",          key: "estado",         width: 14 },
+        { header: "Observaciones",   key: "observaciones",  width: 30 },
+        { header: "FOLIO",           key: "folio",          width: 14 },
+        { header: "Foto",            key: "foto",           width: 18 },
+      ];
+      addBanner(wsSellos, SELLOS_COLS.length);
+      addHeaders(wsSellos, SELLOS_COLS);
+      fillDataRows(
+        wsSellos,
+        SELLOS_COLS,
+        sellos,
+        sellosThumbs,
+        (r) => {
+          const totalFotos = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
+          const extra = Math.max(0, totalFotos - 1);
+          return {
+            codigo:         r.codigo ?? `REG-${String(r.id).slice(0, 6)}`,
+            tipo:           getTipoRegistroLabel(r.tipoRegistro),
+            itemizadoSacyr: getItemizadoSacyr(r),
+            obra:           r.obraNombre ?? "",
+            fecha:          dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
+            piso:           r.piso,
+            ejeAlfa:        r.ejeAlfabetico,
+            ejeNum:         getEjeNumerico(r),
+            sellador:       r.nombreSellador,
+            recinto:        r.recinto,
+            sellos:         r.cantidadSellos,
+            metros:         getMetrosLineales(r) ?? null,
+            holgura:        r.holguraCm,
+            accesibilidad:  r.accesibilidad ?? null,
+            estado:         getEstadoLabel(r.estado),
+            observaciones:  r.observaciones ?? "",
+            folio:          r.numeroSello || "-",
+            foto:           totalFotos === 0 ? "Sin foto" : extra > 0 ? `+${extra} fotos` : "",
+          };
+        },
+        "foto",
+        new Set(["sellos", "metros", "holgura", "accesibilidad"])
+      );
+
+      // ══════════════════════════════════════════════════════════════════════
+      // HOJA 2 · JUNTA LINEAL ESPUMA
+      // ══════════════════════════════════════════════════════════════════════
+      const wsJuntas = workbook.addWorksheet("JUNTA LINEAL ESPUMA");
+      const JUNTAS_COLS: ColDef[] = [
+        { header: "Descripción",           key: "descripcion",   width: 26 },
+        { header: "Fecha ejecucion sello", key: "fecha",         width: 18 },
+        { header: "Día",                   key: "dia",           width: 12 },
+        { header: "Piso",                  key: "piso",          width: 10 },
+        { header: "Eje Alfabético",        key: "ejeAlfa",       width: 12 },
+        { header: "Eje Numérico",          key: "ejeNum",        width: 12 },
+        { header: "Nombre sellador",       key: "sellador",      width: 20 },
+        { header: "Foto",                  key: "foto",          width: 18 },
+        { header: "Recinto",               key: "recinto",       width: 18 },
+        { header: "Longitud (m)",          key: "longitud",      width: 13 },
+        { header: "Observaciones",         key: "observaciones", width: 30 },
+        { header: "FOLIO",                 key: "folio",         width: 14 },
+      ];
+      addBanner(wsJuntas, JUNTAS_COLS.length);
+      addHeaders(wsJuntas, JUNTAS_COLS);
+      fillDataRows(
+        wsJuntas,
+        JUNTAS_COLS,
+        juntas,
+        juntasThumbs,
+        (r) => {
+          const totalFotos = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
+          return {
+            descripcion:   r.descripcionMaterial || "-",
+            fecha:         dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
+            dia:           r.dia || "-",
+            piso:          r.piso,
+            ejeAlfa:       r.ejeAlfabetico,
+            ejeNum:        getEjeNumerico(r),
+            sellador:      r.nombreSellador,
+            foto:          totalFotos === 0 ? "Sin foto" : totalFotos > 1 ? `Ver fotos (${totalFotos})` : "Ver hoja Fotos",
+            recinto:       r.recinto,
+            longitud:      getMetrosLineales(r) ?? null,
+            observaciones: r.observaciones ?? "",
+            folio:         r.numeroSello || "-",
+          };
+        },
+        "foto",
+        new Set(["longitud"])
+      );
+
+      // ══════════════════════════════════════════════════════════════════════
+      // HOJA · Fotos (ambos tipos)
+      // ══════════════════════════════════════════════════════════════════════
       const fotosWs = workbook.addWorksheet("Fotos");
       fotosWs.columns = [
         { key: "col_a", width: 46 },
@@ -1464,7 +1609,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       ];
 
       const allImgsData = await Promise.all(
-        filteredData.map((r) => {
+        baseExportData.map((r) => {
           const urls: string[] = r.fotosUrls?.length
             ? r.fotosUrls
             : r.fotoUrl
@@ -1474,17 +1619,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         })
       );
 
-      const FOTO_IMG_W      = 320;
-      const FOTO_IMG_H      = 220;
-      const FOTO_IMG_ROW_H  = 168;
-      const FOTO_HDR_H      = 36;
-      const FOTO_SUB_H      = 22;
-      const FOTO_SPACER_H   = 10;
+      const FOTO_IMG_W     = 320;
+      const FOTO_IMG_H     = 220;
+      const FOTO_IMG_ROW_H = 168;
+      const FOTO_HDR_H     = 36;
+      const FOTO_SUB_H     = 22;
+      const FOTO_SPACER_H  = 10;
 
       fotosWs.mergeCells(1, 1, 1, 4);
-      const fotosBannerCell = fotosWs.getCell(1, 1);
-      fotosBannerCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-      fotosWs.getRow(1).height = Math.max(60, logoH + 14);
+      fotosWs.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
+      fotosWs.getRow(1).height = BANNER_H;
       if (logoBase64) {
         const fotosLogoId = workbook.addImage({ base64: logoBase64, extension: "png" });
         fotosWs.addImage(fotosLogoId, {
@@ -1495,8 +1639,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       }
       let fotoRow = 2;
 
-      for (let i = 0; i < filteredData.length; i++) {
-        const r    = filteredData[i];
+      for (let i = 0; i < baseExportData.length; i++) {
+        const r    = baseExportData[i];
         const imgs = allImgsData[i];
         const codigo = r.codigo ?? `REG-${String(r.id).slice(0, 6)}`;
 
@@ -1580,10 +1724,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         fotoRow++;
       }
 
-      // Hoja "Resumen"
+      // ══════════════════════════════════════════════════════════════════════
+      // HOJA · Resumen
+      // ══════════════════════════════════════════════════════════════════════
       const summaryWs = workbook.addWorksheet("Resumen");
       summaryWs.columns = [
-        { key: "metrica", width: 32 },
+        { key: "metrica", width: 36 },
         { key: "valor",   width: 16 },
       ];
 
@@ -1612,13 +1758,15 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       });
 
       const summaryData = [
-        { metrica: "Total registros",       valor: filteredData.length },
-        { metrica: "Total sellos",          valor: filteredData.reduce((a, r) => a + r.cantidadSellos, 0) },
-        { metrica: "Total metros lineales", valor: Number(filteredData.reduce((a, r) => a + (getMetrosLineales(r) ?? 0), 0).toFixed(2)) },
-        { metrica: "Validados",             valor: filteredData.filter((r) => r.estado === "validado").length },
-        { metrica: "Pendientes",            valor: filteredData.filter((r) => r.estado === "pendiente").length },
-        { metrica: "En revisión",           valor: filteredData.filter((r) => r.estado === "en_revision").length },
-        { metrica: "Rechazados",            valor: filteredData.filter((r) => r.estado === "rechazado").length },
+        { metrica: "Total registros",                 valor: baseExportData.length },
+        { metrica: "Sellos cortafuego (registros)",   valor: sellos.length },
+        { metrica: "Junta lineal espuma (registros)", valor: juntas.length },
+        { metrica: "Total sellos (cantidad)",         valor: sellos.reduce((a, r) => a + r.cantidadSellos, 0) },
+        { metrica: "Total metros lineales",           valor: Number(juntas.reduce((a, r) => a + (getMetrosLineales(r) ?? 0), 0).toFixed(2)) },
+        { metrica: "Validados",                       valor: baseExportData.filter((r) => r.estado === "validado").length },
+        { metrica: "Pendientes",                      valor: baseExportData.filter((r) => r.estado === "pendiente").length },
+        { metrica: "En revisión",                     valor: baseExportData.filter((r) => r.estado === "en_revision").length },
+        { metrica: "Rechazados",                      valor: baseExportData.filter((r) => r.estado === "rechazado").length },
       ];
 
       summaryData.forEach((item, i) => {
@@ -1692,12 +1840,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 type="file"
                 accept=".xlsx,.xls"
                 className="hidden"
+                disabled={importando}
                 onChange={(e) => void handleFileChange(e)}
               />
               <Button
                 icon={<FileExcelOutlined />}
                 className="text-xs"
                 loading={descargandoPlantilla}
+                disabled={importando}
                 onClick={() => void handleDescargarPlantilla()}
               >
                 Descargar plantilla Excel
@@ -1706,9 +1856,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 icon={<UploadOutlined />}
                 className="text-xs"
                 loading={importando}
-                onClick={() => fileInputRef.current?.click()}
+                disabled={importando}
+                onClick={() => {
+                  if (!importando) fileInputRef.current?.click();
+                }}
               >
-                Importar Excel
+                {importando ? "Importando..." : "Importar Excel"}
               </Button>
             </>
           )}
@@ -1891,7 +2044,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         className="border bg-white border-slate-200 shadow-sm"
         styles={{ body: { padding: 12 } }}
       >
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 text-xs">
           <div className="flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 border border-amber-100">
             <FilterOutlined className="text-amber-600 text-[11px]" />
             <span className="text-slate-800">Filtros rápidos</span>
@@ -1901,7 +2054,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             allowClear
             size="small"
             placeholder="Piso"
-            className="min-w-[130px]"
+            className="w-full sm:w-auto sm:min-w-[130px]"
             value={filtroPiso}
             onChange={(value) => setFiltroPiso(value)}
             options={pisosDisponibles.map((p) => ({
@@ -1928,7 +2081,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             Limpiar filtros
           </Button>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="sm:ml-auto flex items-center gap-2">
             <span className="text-[11px] text-slate-500">
               Vista compacta / completa
             </span>
@@ -1967,7 +2120,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           dataSource={filteredData}
           rowKey="id"
           size="small"
-          scroll={{ x: 1500 }}
+          scroll={{ x: "max-content" }}
+          tableLayout="auto"
           pagination={{ pageSize: 8 }}
           onRow={(record) => ({
             onClick: () => {
@@ -1988,12 +2142,38 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       >
         {importResult && (
           <div className="space-y-3 text-sm">
-            <p className="font-semibold text-slate-800">
-              Total insertados:{" "}
-              <span className="text-emerald-600">
-                {importResult.totalInsertados ?? 0}
-              </span>
-            </p>
+            <div className="flex flex-wrap gap-4">
+              <p className="font-semibold text-slate-800">
+                Total insertados:{" "}
+                <span className="text-emerald-600">
+                  {importResult.creados ?? importResult.totalInsertados ?? 0}
+                </span>
+              </p>
+              {importResult.duplicadosOmitidos != null &&
+                importResult.duplicadosOmitidos > 0 && (
+                  <p className="font-semibold text-slate-800">
+                    Duplicados omitidos:{" "}
+                    <span className="text-amber-600">
+                      {importResult.duplicadosOmitidos}
+                    </span>
+                  </p>
+                )}
+            </div>
+
+            {importResult.advertencias && importResult.advertencias.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-700 mb-1">
+                  Advertencias ({importResult.advertencias.length}):
+                </p>
+                <ul className="space-y-1">
+                  {importResult.advertencias.map((adv, i) => (
+                    <li key={i} className="text-xs text-amber-700">
+                      {adv}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {importResult.resultados && importResult.resultados.length > 0 && (
               <div className="space-y-3">

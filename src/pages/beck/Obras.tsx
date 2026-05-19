@@ -15,9 +15,9 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useAuth } from "../../context/useAuth";
-import { obrasAPI, type Obra } from "../../services/api";
+import { obrasAPI, type Obra, type ObraEstado } from "../../services/api";
 
-type EstadoForm = "activa" | "inactiva" | "pausada" | "finalizada";
+type EstadoForm = ObraEstado;
 
 type ObraFormValues = {
   nombre: string;
@@ -30,9 +30,9 @@ type ObraFormValues = {
 
 const estadoOptions: Array<{ label: string; value: EstadoForm }> = [
   { label: "Activa", value: "activa" },
-  { label: "Inactiva", value: "inactiva" },
   { label: "Pausada", value: "pausada" },
   { label: "Finalizada", value: "finalizada" },
+  { label: "Inactiva", value: "inactiva" },
 ];
 
 const getObraEstado = (obra: Obra): EstadoForm => {
@@ -87,6 +87,7 @@ const Obras: React.FC = () => {
   const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
   const [obraSeleccionada, setObraSeleccionada] = useState<Obra | null>(null);
   const [saving, setSaving] = useState(false);
+  const [updatingEstadoId, setUpdatingEstadoId] = useState<string | null>(null);
   const [form] = Form.useForm<ObraFormValues>();
 
   const cargarObras = async () => {
@@ -213,6 +214,45 @@ const Obras: React.FC = () => {
     });
   };
 
+  const handleCambiarEstado = (obra: Obra, estado: EstadoForm) => {
+    if (!canManageObras) return;
+
+    const estadoActual = getObraEstado(obra);
+    if (estadoActual === estado) return;
+
+    Modal.confirm({
+      title: "Cambiar estado de obra",
+      content: `¿Cambiar "${obra.nombre}" de ${getEstadoLabel(
+        estadoActual
+      )} a ${getEstadoLabel(estado)}?`,
+      okText: "Cambiar estado",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        setUpdatingEstadoId(obra.id);
+        try {
+          const obraActualizada = await obrasAPI.actualizarEstado(obra.id, estado);
+          setObras((prev) =>
+            prev.map((item) =>
+              item.id === obra.id
+                ? {
+                    ...item,
+                    ...obraActualizada,
+                    estado,
+                    activa: estado === "activa",
+                  }
+                : item
+            )
+          );
+          message.success("Estado actualizado");
+        } catch (error) {
+          message.error(getErrorMessage(error, "No se pudo actualizar el estado"));
+        } finally {
+          setUpdatingEstadoId(null);
+        }
+      },
+    });
+  };
+
   const columns: ColumnsType<Obra> = [
     {
       title: "Código",
@@ -236,9 +276,25 @@ const Obras: React.FC = () => {
     {
       title: "Estado",
       key: "estado",
-      width: 120,
+      width: 150,
       render: (_: unknown, record: Obra) => {
         const estado = getObraEstado(record);
+        if (canManageObras) {
+          return (
+            <Select
+              size="small"
+              value={estado}
+              options={estadoOptions}
+              disabled={updatingEstadoId === record.id}
+              loading={updatingEstadoId === record.id}
+              style={{ width: 130 }}
+              onChange={(nextEstado) =>
+                handleCambiarEstado(record, nextEstado as EstadoForm)
+              }
+            />
+          );
+        }
+
         return (
           <Tag color={getEstadoColor(estado)} style={{ marginInlineEnd: 0 }}>
             {getEstadoLabel(estado)}

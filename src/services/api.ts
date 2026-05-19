@@ -195,6 +195,8 @@ export interface CotizacionUpsertPayload {
   clienteNombre: string;
   obraId?: string;
   funnelBeckId?: string | null;
+  clienteBeckId?: string | null;
+  contactoBeckId?: string | null;
   subtotal: number;
   impuesto: number;
   total: number;
@@ -263,6 +265,9 @@ export interface FunnelBeckUpsertPayload {
   fechaReactivacion?: string;
   documentoRespaldo?: string;
   flujoPosterior?: string;
+  // Cliente Beck asociado
+  clienteBeckId?: string | null;
+  contactoBeckId?: string | null;
 }
 
 export const funnelBeckAPI = {
@@ -550,13 +555,15 @@ export interface Obra {
   updated_at: string;
 }
 
+export type ObraEstado = "activa" | "inactiva" | "pausada" | "finalizada";
+
 export interface CrearObraInput {
   nombre: string;
   codigo?: string | null;
   direccion?: string | null;
   cliente?: string | null;
   descripcion?: string | null;
-  estado: "activa" | "inactiva" | "pausada" | "finalizada";
+  estado: ObraEstado;
   usuariosIds?: string[];
 }
 
@@ -586,6 +593,11 @@ export const obrasAPI = {
 
   eliminar: async (id: string) => {
     const response = await api.delete(`/obras/${id}`);
+    return response.data;
+  },
+
+  actualizarEstado: async (id: string, estado: ObraEstado) => {
+    const response = await api.patch<Obra>(`/obras/${id}/estado`, { estado });
     return response.data;
   },
 
@@ -763,6 +775,101 @@ export interface DashboardStats {
   }[];
 }
 
+export type DashboardBeckRango = "hoy" | "semana" | "mes" | "completa";
+
+export interface DashboardBeckParams {
+  obraId?: string;
+  rango?: DashboardBeckRango;
+}
+
+export interface DashboardBeckObra {
+  id: string;
+  nombre: string;
+  codigo?: string | null;
+}
+
+export interface DashboardBeckKpis {
+  sellosEjecutados?: number;
+  totalSellos?: number;
+  sellos?: number;
+  metrosLineales?: number;
+  metros?: number;
+  pendientesIngenieria?: number;
+  pendientes?: number;
+  validados?: number;
+  enRevision?: number;
+  rechazados?: number;
+  pisosConRegistros?: number;
+  selladoresDistintos?: number;
+}
+
+export interface DashboardBeckProduccionPiso {
+  piso?: string | null;
+  sellos?: number | null;
+  sellosEjecutados?: number | null;
+  metrosLineales?: number | null;
+  metros?: number | null;
+  registros?: number | null;
+}
+
+export interface DashboardBeckProduccionSellador {
+  sellador?: string | null;
+  nombreSellador?: string | null;
+  nombre?: string | null;
+  sellos?: number | null;
+  sellosEjecutados?: number | null;
+  metrosLineales?: number | null;
+  metros?: number | null;
+  registros?: number | null;
+}
+
+export interface DashboardBeckRegistro {
+  id?: string | number;
+  fecha?: string | null;
+  createdAt?: string | null;
+  created_at?: string | null;
+  obra?: string | { nombre?: string | null } | null;
+  obraNombre?: string | null;
+  obra_nombre?: string | null;
+  piso?: string | null;
+  sellador?: string | null;
+  nombreSellador?: string | null;
+  cantidad?: number | null;
+  cantidadSellos?: number | null;
+  cantidad_sellos?: number | null;
+  metros?: number | null;
+  metrosLineales?: number | null;
+  estado?: string | null;
+  tipoRegistro?: string | null;
+  tipo_registro?: string | null;
+}
+
+export interface DashboardBeckResponse {
+  obras: DashboardBeckObra[];
+  kpis?: DashboardBeckKpis;
+  resumen?: DashboardBeckKpis;
+  produccionPorPiso?: DashboardBeckProduccionPiso[];
+  porPiso?: DashboardBeckProduccionPiso[];
+  pisos?: DashboardBeckProduccionPiso[];
+  produccionPorSellador?: DashboardBeckProduccionSellador[];
+  produccionPorPersona?: DashboardBeckProduccionSellador[];
+  porSellador?: DashboardBeckProduccionSellador[];
+  selladores?: DashboardBeckProduccionSellador[];
+  ultimosRegistros?: DashboardBeckRegistro[];
+  registros?: DashboardBeckRegistro[];
+}
+
+export const dashboardBeckAPI = {
+  obtener: async (
+    params?: DashboardBeckParams
+  ): Promise<DashboardBeckResponse> => {
+    const response = await api.get<
+      ApiResponseEnvelope<DashboardBeckResponse> | DashboardBeckResponse
+    >("/dashboard/beck", { params });
+    return unwrapItem(response.data);
+  },
+};
+
 export const statsAPI = {
   dashboard: async () => {
     const response = await api.get<DashboardStats>("/stats/dashboard");
@@ -918,9 +1025,15 @@ export type FirematCotizacion = {
 };
 
 export type FirematCotizacionPayload = {
+  clienteId?: string | null;
+  clienteFirematId?: string | null;
+  contactoId?: string | null;
+  contactoFirematId?: string | null;
   cliente: string;
   contacto?: string | null;
-  tipoCliente: FirematCotizacionTipoCliente;
+  telefono?: string | null;
+  correo?: string | null;
+  tipoCliente: FirematCotizacionTipoCliente | string;
   responsable?: string | null;
   fechaVencimiento?: string | null;
   fechaSeguimiento?: string | null;
@@ -1072,6 +1185,8 @@ export type FirematFunnelEtapa =
 
 export type FirematFunnelOportunidad = {
   id: string;
+  clienteId?: string | null;
+  clienteFirematId?: string | null;
   cliente: string;
   contacto?: string | null;
   telefono?: string | null;
@@ -1100,6 +1215,8 @@ export type FirematFunnelOportunidad = {
 };
 
 export type FirematFunnelPayload = {
+  clienteId?: string | null;
+  clienteFirematId?: string | null;
   cliente: string;
   contacto?: string | null;
   telefono?: string | null;
@@ -1490,4 +1607,241 @@ export const movimientosCrmAPI = {
     return result.data;
   },
 };
- 
+
+// ── Clientes Beck ─────────────────────────────────────────────────────────────
+
+export interface ContactoClienteBeck {
+  id: string;
+  clienteId: string;
+  nombre: string;
+  cargo?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  principal: boolean;
+  activo: boolean;
+  observaciones?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClienteBeck {
+  id: string;
+  rut: string;
+  razonSocial: string;
+  nombreEmpresa?: string | null;
+  direccion?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  tipoCliente?: string | null;
+  origen?: string | null;
+  observaciones?: string | null;
+  activo: boolean;
+  contactos?: ContactoClienteBeck[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClienteBeckPayload {
+  rut: string;
+  razonSocial: string;
+  nombreEmpresa?: string | null;
+  direccion?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  tipoCliente?: string | null;
+  origen?: string | null;
+  observaciones?: string | null;
+  activo?: boolean;
+}
+
+export interface ContactoClienteBeckPayload {
+  nombre: string;
+  cargo?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  principal?: boolean;
+  activo?: boolean;
+  observaciones?: string | null;
+}
+
+// Helpers para normalizar respuestas que pueden ser array directo o envelope
+const unwrapArray = <T>(payload: ApiResponseEnvelope<T[]> | T[]): T[] => {
+  if (Array.isArray(payload)) return payload;
+  return unwrapApiResponse(payload);
+};
+
+const unwrapItem = <T>(payload: ApiResponseEnvelope<T> | T): T => {
+  if (payload !== null && typeof payload === "object" && "success" in (payload as object)) {
+    return unwrapApiResponse(payload as ApiResponseEnvelope<T>);
+  }
+  return payload as T;
+};
+
+export const clientesBeckAPI = {
+  listar: async (params?: { q?: string; activo?: boolean }): Promise<ClienteBeck[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteBeck[]> | ClienteBeck[]>("/clientes-beck", { params });
+    return unwrapArray(response.data);
+  },
+
+  buscar: async (q: string): Promise<ClienteBeck[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteBeck[]> | ClienteBeck[]>("/clientes-beck/buscar", { params: { q } });
+    return unwrapArray(response.data);
+  },
+
+  obtener: async (id: string): Promise<ClienteBeck> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteBeck> | ClienteBeck>(`/clientes-beck/${id}`);
+    return unwrapItem(response.data);
+  },
+
+  crear: async (payload: ClienteBeckPayload): Promise<ClienteBeck> => {
+    const response = await api.post<ApiResponseEnvelope<ClienteBeck> | ClienteBeck>("/clientes-beck", payload);
+    return unwrapItem(response.data);
+  },
+
+  actualizar: async (id: string, payload: ClienteBeckPayload): Promise<ClienteBeck> => {
+    const response = await api.put<ApiResponseEnvelope<ClienteBeck> | ClienteBeck>(`/clientes-beck/${id}`, payload);
+    return unwrapItem(response.data);
+  },
+
+  toggleEstado: async (id: string, activo: boolean): Promise<ClienteBeck> => {
+    const response = await api.patch<ApiResponseEnvelope<ClienteBeck> | ClienteBeck>(`/clientes-beck/${id}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
+
+  agregarContacto: async (clienteId: string, payload: ContactoClienteBeckPayload): Promise<ContactoClienteBeck> => {
+    const response = await api.post<ApiResponseEnvelope<ContactoClienteBeck> | ContactoClienteBeck>(`/clientes-beck/${clienteId}/contactos`, payload);
+    return unwrapItem(response.data);
+  },
+
+  actualizarContacto: async (contactoId: string, payload: ContactoClienteBeckPayload): Promise<ContactoClienteBeck> => {
+    const response = await api.put<ApiResponseEnvelope<ContactoClienteBeck> | ContactoClienteBeck>(`/clientes-beck/contactos/${contactoId}`, payload);
+    return unwrapItem(response.data);
+  },
+
+  toggleEstadoContacto: async (contactoId: string, activo: boolean): Promise<ContactoClienteBeck> => {
+    const response = await api.patch<ApiResponseEnvelope<ContactoClienteBeck> | ContactoClienteBeck>(`/clientes-beck/contactos/${contactoId}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
+
+  oportunidades: async (clienteId: string): Promise<unknown[]> => {
+    const response = await api.get<ApiResponseEnvelope<unknown[]> | unknown[]>(`/clientes-beck/${clienteId}/oportunidades`);
+    return unwrapArray(response.data as ApiResponseEnvelope<unknown[]> | unknown[]);
+  },
+};
+
+// ── Clientes Firemat ──────────────────────────────────────────────────────────
+
+export interface ContactoClienteFiremat {
+  id: string;
+  clienteId: string;
+  nombre: string;
+  cargo?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  principal: boolean;
+  activo: boolean;
+  observaciones?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClienteFiremat {
+  id: string;
+  rut?: string | null;
+  nombre: string;
+  razonSocial?: string | null;
+  nombreEmpresa?: string | null;
+  direccion?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  email?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  tipoCliente?: string | null;
+  canalVenta?: string | null;
+  activo: boolean;
+  contactos?: ContactoClienteFiremat[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClienteFirematPayload {
+  rut?: string | null;
+  nombre: string;
+  razonSocial?: string | null;
+  nombreEmpresa?: string | null;
+  direccion?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  tipoCliente?: string | null;
+  canalVenta?: string | null;
+  activo?: boolean;
+}
+
+export interface ContactoClienteFirematPayload {
+  nombre: string;
+  cargo?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+  principal?: boolean;
+  activo?: boolean;
+  observaciones?: string | null;
+}
+
+export const clientesFirematAPI = {
+  listar: async (params?: { q?: string; activo?: boolean }): Promise<ClienteFiremat[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteFiremat[]> | ClienteFiremat[]>("/firemat/clientes", { params });
+    return unwrapArray(response.data);
+  },
+
+  buscar: async (q: string): Promise<ClienteFiremat[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteFiremat[]> | ClienteFiremat[]>("/firemat/clientes/buscar", { params: { q } });
+    return unwrapArray(response.data);
+  },
+
+  obtener: async (id: string): Promise<ClienteFiremat> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteFiremat> | ClienteFiremat>(`/firemat/clientes/${id}`);
+    return unwrapItem(response.data);
+  },
+
+  crear: async (payload: ClienteFirematPayload): Promise<ClienteFiremat> => {
+    const response = await api.post<ApiResponseEnvelope<ClienteFiremat> | ClienteFiremat>("/firemat/clientes", payload);
+    return unwrapItem(response.data);
+  },
+
+  actualizar: async (id: string, payload: ClienteFirematPayload): Promise<ClienteFiremat> => {
+    const response = await api.put<ApiResponseEnvelope<ClienteFiremat> | ClienteFiremat>(`/firemat/clientes/${id}`, payload);
+    return unwrapItem(response.data);
+  },
+
+  toggleEstado: async (id: string, activo: boolean): Promise<ClienteFiremat> => {
+    const response = await api.patch<ApiResponseEnvelope<ClienteFiremat> | ClienteFiremat>(`/firemat/clientes/${id}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
+
+  agregarContacto: async (clienteId: string, payload: ContactoClienteFirematPayload): Promise<ContactoClienteFiremat> => {
+    const response = await api.post<ApiResponseEnvelope<ContactoClienteFiremat> | ContactoClienteFiremat>(`/firemat/clientes/${clienteId}/contactos`, payload);
+    return unwrapItem(response.data);
+  },
+
+  actualizarContacto: async (contactoId: string, payload: ContactoClienteFirematPayload): Promise<ContactoClienteFiremat> => {
+    const response = await api.put<ApiResponseEnvelope<ContactoClienteFiremat> | ContactoClienteFiremat>(`/firemat/clientes/contactos/${contactoId}`, payload);
+    return unwrapItem(response.data);
+  },
+
+  toggleEstadoContacto: async (contactoId: string, activo: boolean): Promise<ContactoClienteFiremat> => {
+    const response = await api.patch<ApiResponseEnvelope<ContactoClienteFiremat> | ContactoClienteFiremat>(`/firemat/clientes/contactos/${contactoId}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
+
+  oportunidades: async (clienteId: string): Promise<unknown[]> => {
+    const response = await api.get<ApiResponseEnvelope<unknown[]> | unknown[]>(`/firemat/clientes/${clienteId}/oportunidades`);
+    return unwrapArray(response.data as ApiResponseEnvelope<unknown[]> | unknown[]);
+  },
+};

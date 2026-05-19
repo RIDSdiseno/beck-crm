@@ -1,3 +1,7 @@
+import type { ClienteBeck, ContactoClienteBeck } from "../services/api";
+
+export type { ClienteBeck, ContactoClienteBeck };
+
 export type FunnelCurrency = "CLP" | "UF" | "USD";
 
 export type FunnelLeadSource =
@@ -59,4 +63,9 @@ export type FunnelDeal = {
   fechaReactivacion?: string;
   documentoRespaldo?: string;
   flujoPosterior?: string;
+  // Cliente Beck asociado
+  clienteBeckId?: string | null;
+  contactoBeckId?: string | null;
+  clienteBeck?: ClienteBeck;
+  contactoBeck?: ContactoClienteBeck;
 };

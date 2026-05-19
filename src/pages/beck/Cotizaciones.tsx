@@ -55,6 +55,8 @@ type CotizacionListItem = {
   numero: string;
   codigo: string;
   funnelBeckId?: string;
+  clienteBeckId?: string | null;
+  contactoBeckId?: string | null;
   cliente: string;
   proyecto: string;
   origen: string;
@@ -360,6 +362,13 @@ const mapCotizacion = (
     lineas[0]?.descripcion || ""
   );
 
+  const clienteBeckId =
+    toText(pickValue(source, ["clienteBeckId", "cliente_beck_id"]), "") ||
+    null;
+  const contactoBeckId =
+    toText(pickValue(source, ["contactoBeckId", "contacto_beck_id"]), "") ||
+    null;
+
   return {
     id: toText(source.id),
     numero: numeroValue !== undefined ? toText(numeroValue) : codigo || String(index + 1),
@@ -367,6 +376,8 @@ const mapCotizacion = (
     funnelBeckId:
       toText(pickValue(source, ["funnelBeckId", "funnel_beck_id"]), "") ||
       undefined,
+    clienteBeckId,
+    contactoBeckId,
     cliente: extractCliente(source),
     proyecto,
     origen: toText(pickValue(source, ["origen"]), "Sin origen"),
@@ -741,6 +752,8 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         numero: values.numero || undefined,
         clienteNombre: values.cliente,
         funnelBeckId: values.funnelBeckId || null,
+        clienteBeckId: values.clienteBeckId || null,
+        contactoBeckId: values.contactoBeckId || null,
         subtotal,
         impuesto,
         total,
@@ -846,6 +859,8 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
     ? {
         numero: Number(editingRecord.numero) || undefined,
         funnelBeckId: editingRecord.funnelBeckId,
+        clienteBeckId: editingRecord.clienteBeckId ?? null,
+        contactoBeckId: editingRecord.contactoBeckId ?? null,
         cliente: editingRecord.cliente,
         proyecto: editingRecord.proyecto,
         origen: editingRecord.origen === "FIREMAT" ? "FIREMAT" : "BECK",

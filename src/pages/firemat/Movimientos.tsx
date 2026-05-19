@@ -202,20 +202,21 @@ const FirematMovimientos: React.FC = () => {
 
       {/* Filtros */}
       <section className="firemat-panel p-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
           <Input
             prefix={<SearchOutlined className="text-beck-muted" />}
             placeholder="Buscar por producto"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             allowClear
-            style={{ width: 220 }}
+            className="w-full sm:w-auto sm:min-w-[180px]"
           />
           <Select
             value={tipo}
             onChange={(v) => setTipo(v as string)}
             options={TIPO_OPTIONS}
             style={{ width: 130 }}
+            className="!w-full sm:!w-[130px]"
             placeholder="Tipo"
           />
           <DatePicker.RangePicker
@@ -223,7 +224,7 @@ const FirematMovimientos: React.FC = () => {
             onChange={(v) => setRango(v as RangeValue)}
             format="DD-MM-YYYY"
             placeholder={["Desde", "Hasta"]}
-            style={{ width: 240 }}
+            className="!w-full sm:!w-auto"
           />
           {hayFiltros && (
             <Button icon={<ClearOutlined />} onClick={limpiar}>

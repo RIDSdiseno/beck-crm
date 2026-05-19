@@ -16,7 +16,7 @@ export type SegmentoCliente = "A" | "B" | "C";
 export type Cliente = {
   id: string;
   razonSocial: string;
-  nombreFantasia?: string;
+  nombreEmpresa?: string;
   rut?: string;
   segmento?: SegmentoCliente;
   industria?: TipoCliente;

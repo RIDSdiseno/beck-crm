@@ -286,20 +286,21 @@ const FirematInventario: React.FC = () => {
 
       {/* Filtros */}
       <section className="firemat-panel p-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
           <Input
             prefix={<SearchOutlined className="text-beck-muted" />}
             placeholder="Buscar por nombre o descripción"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             allowClear
-            style={{ width: 260 }}
+            className="w-full sm:w-auto sm:min-w-[200px]"
           />
           <Select
             value={activo}
             onChange={(v) => setActivo(v as "" | "true" | "false")}
             options={ESTADO_OPTIONS}
             style={{ width: 130 }}
+            className="!w-full sm:!w-[130px]"
             placeholder="Estado"
           />
           <Select
@@ -307,6 +308,7 @@ const FirematInventario: React.FC = () => {
             onChange={(v) => setBajoStock(v as "" | "true")}
             options={STOCK_OPTIONS}
             style={{ width: 150 }}
+            className="!w-full sm:!w-[150px]"
             placeholder="Stock"
           />
           <Select
@@ -314,6 +316,7 @@ const FirematInventario: React.FC = () => {
             onChange={(v) => setCriticidad(v as string)}
             options={CRITICIDAD_OPTIONS}
             style={{ width: 130 }}
+            className="!w-full sm:!w-[130px]"
             placeholder="Criticidad"
           />
           {hayFiltros && (

@@ -28,6 +28,7 @@ import {
   BeckRegistro,
   BeckProcesamientoIngenieria,
   BeckUsuariosParametros,
+  BeckClientes,
 } from "./pages/beck";
 
 // Firemat pages
@@ -41,6 +42,7 @@ import {
   FirematReportes,
   FirematMovimientos,
   FirematUsuariosParametros,
+  FirematClientes,
 } from "./pages/firemat";
 
 import type { ThemeMode } from "./hooks/useSystemTheme";
@@ -58,21 +60,22 @@ const isCrmBlockedRole = (rol: RolUsuario): boolean =>
 const NO_FIREMAT: Pick<RoleAccess,
   "firemat" | "firematDashboard" | "firematFunnel" | "firematCotizaciones" |
   "firematProductos" | "firematCategorias" | "firematInventario" |
-  "firematKardex" | "firematVentas" | "firematReportes" | "firematMovimientos"
+  "firematKardex" | "firematVentas" | "firematReportes" | "firematMovimientos" |
+  "firematClientes"
 > = {
   firemat: false, firematDashboard: false, firematFunnel: false,
   firematCotizaciones: false, firematProductos: false, firematCategorias: false,
   firematInventario: false, firematKardex: false, firematVentas: false,
-  firematReportes: false, firematMovimientos: false,
+  firematReportes: false, firematMovimientos: false, firematClientes: false,
 };
 
 const NO_BECK: Pick<RoleAccess,
   "dashboard" | "funnel" | "registro" | "ingenieria" | "reportes" |
-  "cotizaciones" | "movimientos" | "obras" | "configuracion"
+  "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes"
 > = {
   dashboard: false, funnel: false, registro: false, ingenieria: false,
   reportes: false, cotizaciones: false, movimientos: false, obras: false,
-  configuracion: false,
+  configuracion: false, clientes: false,
 };
 
 const getRoleAccess = (rol: RolUsuario): RoleAccess => {
@@ -81,29 +84,29 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
       return {
         dashboard: true, funnel: true, registro: true, ingenieria: true,
         reportes: true, cotizaciones: true, movimientos: true, obras: true,
-        configuracion: true,
+        configuracion: true, clientes: true,
         firemat: true, firematDashboard: true, firematFunnel: true,
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
         firematInventario: true, firematKardex: true, firematVentas: true,
-        firematReportes: true, firematMovimientos: true,
+        firematReportes: true, firematMovimientos: true, firematClientes: true,
       };
     case "Vendedor":
       return {
         dashboard: false, funnel: true, registro: false, ingenieria: false,
         reportes: true, cotizaciones: true, movimientos: false, obras: false,
-        configuracion: false, ...NO_FIREMAT,
+        configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "Ingenieria":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: true,
         reportes: true, cotizaciones: false, movimientos: false, obras: true,
-        configuracion: false, ...NO_FIREMAT,
+        configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "Visualizador":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: false,
         reportes: true, cotizaciones: true, movimientos: false, obras: true,
-        configuracion: false, ...NO_FIREMAT,
+        configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "VendedorFiremat":
       return {
@@ -112,6 +115,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
         firematInventario: false, firematKardex: false,
         firematVentas: true, firematReportes: false, firematMovimientos: false,
+        firematClientes: true,
       };
     case "Bodeguero":
       return {
@@ -120,6 +124,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         firematCotizaciones: false, firematProductos: true, firematCategorias: true,
         firematInventario: true, firematKardex: true,
         firematVentas: false, firematReportes: false, firematMovimientos: true,
+        firematClientes: false,
       };
     case "VisualizadorFiremat":
       return {
@@ -128,6 +133,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
         firematInventario: true, firematKardex: false,
         firematVentas: true, firematReportes: false, firematMovimientos: false,
+        firematClientes: true,
       };
     case "Terreno":
     case "JefeObra":
@@ -192,6 +198,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/cotizaciones") return access.cotizaciones;
   if (pathname === "/beck/movimientos") return access.movimientos;
   if (pathname === "/beck/obras") return access.obras;
+  if (pathname === "/beck/clientes") return access.clientes;
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
 
   if (pathname === "/firemat/dashboard") return access.firematDashboard;
@@ -201,6 +208,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/firemat/inventario") return access.firematInventario;
   if (pathname === "/firemat/ventas") return access.firematVentas;
   if (pathname === "/firemat/movimientos") return access.firematMovimientos || access.firematKardex;
+  if (pathname === "/firemat/clientes") return access.firematClientes;
   if (pathname === "/firemat/reportes") return access.firematReportes;
   if (pathname === "/firemat/usuarios-parametros") return access.firemat && access.configuracion;
   if (pathname.startsWith("/firemat/")) return access.firemat;
@@ -356,7 +364,7 @@ const AppShell: React.FC = () => {
       <SessionWatcher />
       <Layout
         className={`${themeClass} bg-beck-bg-light text-beck-ink`}
-        style={{ minHeight: "100vh" }}
+        style={{ minHeight: "100vh", overflowX: "hidden" }}
       >
         {isMobile && collapsed && (
           <button
@@ -383,16 +391,18 @@ const AppShell: React.FC = () => {
             marginLeft: isMobile ? 0 : currentSidebarWidth,
             transition: "margin-left 0.2s ease",
             minHeight: "100vh",
+            minWidth: 0,
+            overflow: "hidden",
           }}
         >
           <Content
             className={isFiremat ? "bg-firemat-bg" : "bg-beck-bg-light"}
             style={{
-              padding: 16,
-              paddingTop: isMobile && collapsed ? 56 : 16,
+              padding: "12px 12px",
+              paddingTop: isMobile && collapsed ? 56 : 12,
             }}
           >
-            <div className="mx-auto max-w-6xl">
+            <div className="w-full min-w-0">
               <Routes>
                 <Route path="/auth/callback" element={<AuthCallback />} />
 
@@ -492,6 +502,16 @@ const AppShell: React.FC = () => {
                   }
                 />
                 <Route
+                  path="/beck/clientes"
+                  element={
+                    access.clientes ? (
+                      <BeckClientes />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
                   path="/beck/usuarios-parametros"
                   element={
                     access.configuracion ? (
@@ -509,6 +529,7 @@ const AppShell: React.FC = () => {
                 <Route path="/firemat/productos" element={firematRoute(access.firematProductos, <FirematProductos />)} />
                 <Route path="/firemat/inventario" element={firematRoute(access.firematInventario, <FirematInventario />)} />
                 <Route path="/firemat/ventas" element={firematRoute(access.firematVentas, <FirematVentas />)} />
+                <Route path="/firemat/clientes" element={firematRoute(access.firematClientes, <FirematClientes />)} />
                 <Route path="/firemat/reportes" element={firematRoute(access.firematReportes, <FirematReportes />)} />
                 <Route path="/firemat/movimientos" element={firematRoute(access.firematMovimientos || access.firematKardex, <FirematMovimientos />)} />
                 <Route

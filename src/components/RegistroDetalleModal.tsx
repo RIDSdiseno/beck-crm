@@ -92,6 +92,46 @@ const getTipoBadgeClass = (tipoRegistro?: string | null): string => {
   return "border border-amber-200 bg-amber-50 text-amber-700";
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotoUrl = (foto: any): string | null => {
+  if (!foto) return null;
+
+  if (typeof foto === "string") {
+    const clean = foto.trim();
+    return clean.startsWith("http") ? clean : null;
+  }
+
+  if (typeof foto === "object") {
+    const candidate =
+      foto.url ||
+      foto.secure_url ||
+      foto.fotoUrl ||
+      foto.src ||
+      null;
+
+    if (typeof candidate === "string") {
+      const clean = candidate.trim();
+      return clean.startsWith("http") ? clean : null;
+    }
+  }
+
+  return null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFotosRegistro = (record: any): string[] => {
+  const raw = [
+    ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),
+    ...(Array.isArray(record.fotos_urls) ? record.fotos_urls : []),
+    ...(Array.isArray(record.fotos_registro) ? record.fotos_registro : []),
+    ...(Array.isArray(record.fotos) ? record.fotos : []),
+    record.fotoUrl,
+    record.foto_url,
+  ];
+
+  return [...new Set(raw.map(getFotoUrl).filter((x): x is string => !!x))];
+};
+
 const FieldView: React.FC<{ label: string; value: React.ReactNode; span?: number }> = ({
   label,
   value,
@@ -215,25 +255,20 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
 
   const fecha = dayjs(registro.fechaEjecucion).format("DD-MM-YYYY");
 
-  const fotos: string[] =
-    registro.fotosUrls && registro.fotosUrls.length > 0
-      ? (registro.fotosUrls.filter(Boolean) as string[])
-      : registro.fotoUrl
-      ? [registro.fotoUrl]
-      : [];
+  const fotos = getFotosRegistro(registro);
 
   return (
     <Modal
       open={visible}
       onCancel={onClose}
       footer={null}
-      width={760}
+      width="min(760px, 95vw)"
       centered
       title={null}
       className="registro-detalle-modal"
       styles={{
         header: { display: "none" },
-        body: { padding: 0, backgroundColor: "#ffffff" },
+        body: { padding: 0, backgroundColor: "#ffffff", maxHeight: "85vh", overflowY: "auto" },
       }}
     >
       {/* Header */}
@@ -282,12 +317,15 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
           {/* Fotos */}
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
             {fotos.length > 0 ? (
-              <Image.PreviewGroup>
+              <Image.PreviewGroup
+                items={fotos.map((url) => ({ src: url }))}
+              >
                 {/* Main image */}
                 <div className="relative">
                   <Image
                     src={fotos[0]}
                     alt="Foto registro"
+                    preview={{ src: fotos[0] }}
                     style={{
                       height: fotos.length > 1 ? 172 : 224,
                       width: "100%",
@@ -310,6 +348,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                         key={i}
                         src={url}
                         alt={`Foto ${i + 2}`}
+                        preview={{ src: url }}
                         width={64}
                         height={48}
                         style={{ objectFit: "cover", flexShrink: 0, display: "block" }}
@@ -327,7 +366,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             ) : (
               <div className="flex h-56 flex-col items-center justify-center text-xs text-slate-500">
                 <CameraOutlined className="mb-1 text-lg" />
-                Sin foto asociada
+                Sin fotos
               </div>
             )}
           </div>

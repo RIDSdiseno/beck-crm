@@ -94,35 +94,65 @@ const FirematDashboard: React.FC = () => {
   const [ventasMes, setVentasMes] = useState<VentasMesState>("loading");
 
   useEffect(() => {
-    setInventarioLoading(true);
-    firematInventarioAPI
-      .listar({ activo: true })
-      .then((res) => {
+    let cancelled = false;
+
+    const cargarInventario = async () => {
+      try {
+        setInventarioLoading(true);
+        const res = await firematInventarioAPI.listar({ activo: true });
+        if (cancelled) return;
         setInventarioData(res.data);
         setInventarioResumen(res.resumen);
-      })
-      .catch(() => setInventarioError(true))
-      .finally(() => setInventarioLoading(false));
+      } catch {
+        if (!cancelled) setInventarioError(true);
+      } finally {
+        if (!cancelled) setInventarioLoading(false);
+      }
+    };
+
+    void cargarInventario();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!esBodeguero) return;
-    setMovimientosLoading(true);
-    firematInventarioAPI
-      .movimientos()
-      .then((res) => setMovimientos(res.data ?? []))
-      .catch(() => {})
-      .finally(() => setMovimientosLoading(false));
+
+    let cancelled = false;
+
+    const cargarMovimientos = async () => {
+      try {
+        setMovimientosLoading(true);
+        const res = await firematInventarioAPI.movimientos();
+        if (cancelled) return;
+        setMovimientos(res.data ?? []);
+      } catch {
+        // silently ignore
+      } finally {
+        if (!cancelled) setMovimientosLoading(false);
+      }
+    };
+
+    void cargarMovimientos();
+
+    return () => {
+      cancelled = true;
+    };
   }, [esBodeguero]);
 
   useEffect(() => {
-    if (esBodeguero) {
-      setVentasMes("forbidden");
-      return;
-    }
-    firematVentasAPI
-      .listar()
-      .then((res) => {
+    let cancelled = false;
+
+    const cargarVentas = async () => {
+      if (esBodeguero) {
+        if (!cancelled) setVentasMes("forbidden");
+        return;
+      }
+      try {
+        const res = await firematVentasAPI.listar();
+        if (cancelled) return;
         const hoy = new Date();
         const mes = hoy.getMonth();
         const año = hoy.getFullYear();
@@ -134,12 +164,20 @@ const FirematDashboard: React.FC = () => {
           monto: delMes.reduce((acc, v) => acc + Number(v.total || 0), 0),
           cantidad: delMes.length,
         });
-      })
-      .catch((err) => {
-        setVentasMes(
-          isAxiosError(err) && err.response?.status === 403 ? "forbidden" : "error"
-        );
-      });
+      } catch (err) {
+        if (!cancelled) {
+          setVentasMes(
+            isAxiosError(err) && err.response?.status === 403 ? "forbidden" : "error"
+          );
+        }
+      }
+    };
+
+    void cargarVentas();
+
+    return () => {
+      cancelled = true;
+    };
   }, [esBodeguero]);
 
   /* datos derivados para bodeguero */

@@ -17,6 +17,7 @@ import {
   ShoppingCartOutlined,
   SwapOutlined,
   CheckOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
@@ -33,6 +34,7 @@ export type RoleAccess = {
   movimientos: boolean;
   obras: boolean;
   configuracion: boolean;
+  clientes: boolean;
   // Firemat modules
   firemat: boolean;
   firematDashboard: boolean;
@@ -45,6 +47,7 @@ export type RoleAccess = {
   firematVentas: boolean;
   firematReportes: boolean;
   firematMovimientos: boolean;
+  firematClientes: boolean;
 };
 
 type Company = "beck" | "firemat";
@@ -166,12 +169,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "movimientos", to: "/beck/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.movimientos },
     { key: "obras", to: "/beck/obras", icon: <BuildOutlined />, label: "Obras", access: access.obras },
     { key: "funnel", to: "/beck/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.funnel },
+    { key: "clientes", to: "/beck/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.clientes },
   ];
 
   const firematNav = [
     { key: "dashboard", to: "/firemat/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
     { key: "funnel", to: "/firemat/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
     { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
+    { key: "clientes", to: "/firemat/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
     { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
     { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firematInventario },
     { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firematVentas },

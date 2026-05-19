@@ -165,7 +165,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
       open={open}
       onClose={onClose}
       afterOpenChange={handleAfterOpenChange}
-      size="large"
+      width="min(736px, 100vw)"
       styles={{
         body: { paddingBottom: 24, backgroundColor: "#f9fafb" },
       }}
