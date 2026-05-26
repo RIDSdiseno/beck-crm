@@ -224,6 +224,58 @@ export interface FunnelBeckOpportunity {
   [key: string]: unknown;
 }
 
+export type FunnelBeckArchivoTipo =
+  | "DOCUMENTO_RECIBIDO"
+  | "PLANO"
+  | "FOTOGRAFIA"
+  | "ORDEN_COMPRA"
+  | "CONTRATO"
+  | "CORREO_ACEPTACION"
+  | "ANTICIPO"
+  | "DOCUMENTO_REQUERIDO"
+  | "DOCUMENTO_RESPALDO";
+
+export interface FunnelBeckArchivo {
+  id: string;
+  oportunidadId: string;
+  tipo: FunnelBeckArchivoTipo;
+  url: string;
+  publicId: string;
+  nombreArchivo?: string;
+  mimeType?: string;
+  bytes?: number;
+  createdAt: string;
+}
+
+export interface FunnelBeckGanadaSinObra {
+  id: string;
+  nombreProyecto: string;
+  empresa: string;
+  rutEmpresa?: string;
+  montoFinalGanado?: number;
+  fechaCierre?: string;
+  documentoRespaldo?: string;
+  flujoPosterior?: string;
+  clienteBeck?: {
+    id: string;
+    rut: string;
+    razonSocial: string;
+    nombreEmpresa?: string;
+    direccion?: string;
+    telefono?: string;
+    correo?: string;
+    region?: string;
+    comuna?: string;
+  };
+  contactoBeck?: {
+    id: string;
+    nombre: string;
+    cargo?: string;
+    telefono?: string;
+    correo?: string;
+  };
+}
+
 export interface FunnelBeckUpsertPayload {
   nombreProyecto: string;
   empresa?: string;
@@ -252,11 +304,60 @@ export interface FunnelBeckUpsertPayload {
   proximaAccion?: string;
   fechaProximaAccion?: string;
   comentariosPrimerContacto?: string;
+  // Visita / levantamiento tecnico
+  fechaVisita?: string;
+  responsableTecnico?: string;
+  asistentes?: string;
+  lugarVisita?: string;
+  antecedentesLevantados?: string;
+  documentosRecibidos?: string;
+  planos?: string;
+  basesTecnicas?: string;
+  especificaciones?: string;
+  fotografias?: string;
+  observacionesTecnicas?: string;
+  necesidadOficinaTecnica?: boolean;
+  proximosPasos?: string;
+  // Desarrollo de propuesta
+  estadoDesarrolloPropuesta?: string;
+  informacionPendiente?: string;
+  documentosRequeridos?: string;
+  riesgoTecnico?: string;
+  condicionesEspeciales?: string;
+  necesidadValidacionGerencial?: boolean;
+  fechaComprometidaEnvio?: string;
+  comentariosInternos?: string;
+  // Propuesta enviada / negociacion
+  fechaEnvioPropuesta?: string;
+  versionPropuesta?: string;
+  numeroPropuesta?: string;
+  montoPropuesto?: number;
+  fechaVencimientoPropuesta?: string;
+  comentariosCliente?: string;
   // Negociacion
   probabilidadCierre?: number;
   objeciones?: string;
   contrapropuestas?: string;
   ajustesSolicitados?: string;
+  // Documentacion de venta
+  ordenCompra?: string;
+  contrato?: string;
+  correoAceptacion?: string;
+  anticipo?: string;
+  aprobacionInternaCliente?: string;
+  condicionesPago?: string;
+  documentosAdministrativosPendientes?: string;
+  responsableAdministrativo?: string;
+  fechaFirma?: string;
+  fechaInicioProyecto?: string;
+  traspasadoOperaciones?: boolean;
+  fechaTraspasoOperaciones?: string;
+  responsableTraspasoOperaciones?: string;
+  observacionesTraspasoOperaciones?: string;
+  traspasadoAdministracion?: boolean;
+  fechaTraspasoAdministracion?: string;
+  responsableTraspasoAdministracion?: string;
+  observacionesTraspasoAdministracion?: string;
   // Cierre
   estadoCierre?: string;
   motivoPerdida?: string;
@@ -265,6 +366,8 @@ export interface FunnelBeckUpsertPayload {
   fechaReactivacion?: string;
   documentoRespaldo?: string;
   flujoPosterior?: string;
+  montoFinalGanado?: number;
+  fechaCierre?: string;
   // Cliente Beck asociado
   clienteBeckId?: string | null;
   contactoBeckId?: string | null;
@@ -274,6 +377,21 @@ export const funnelBeckAPI = {
   listar: async (): Promise<FunnelBeckOpportunity[]> => {
     const response = await api.get<ApiResponseEnvelope<FunnelBeckOpportunity[]>>(
       "/funnel-beck"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  ganadasSinObra: async (): Promise<FunnelBeckGanadaSinObra[]> => {
+    const response = await api.get<ApiResponseEnvelope<FunnelBeckGanadaSinObra[]>>(
+      "/funnel-beck/ganadas-sin-obra"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  vincularObra: async (id: string, obraId: string): Promise<FunnelBeckOpportunity> => {
+    const response = await api.patch<ApiResponseEnvelope<FunnelBeckOpportunity>>(
+      `/funnel-beck/${id}/obra`,
+      { obraId }
     );
     return unwrapApiResponse(response.data);
   },
@@ -311,6 +429,43 @@ export const funnelBeckAPI = {
       `/funnel-beck/${id}/cotizaciones`
     );
     return unwrapApiResponse(response.data);
+  },
+
+  listarArchivos: async (oportunidadId: string): Promise<FunnelBeckArchivo[]> => {
+    const response = await api.get<ApiResponseEnvelope<FunnelBeckArchivo[]>>(
+      `/funnel-beck/${oportunidadId}/archivos`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  subirArchivos: async (
+    oportunidadId: string,
+    tipo: FunnelBeckArchivoTipo,
+    files: File[]
+  ): Promise<FunnelBeckArchivo[]> => {
+    const formData = new FormData();
+    formData.append("tipo", tipo);
+    files.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    const response = await api.post<ApiResponseEnvelope<FunnelBeckArchivo[]>>(
+      `/funnel-beck/${oportunidadId}/archivos`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  eliminarArchivo: async (archivoId: string): Promise<void> => {
+    const response = await api.delete<ApiResponseEnvelope<{ message?: string }>>(
+      `/funnel-beck/archivos/${archivoId}`
+    );
+    unwrapApiResponse(response.data);
   },
 };
 
@@ -540,7 +695,20 @@ export interface Obra {
   descripcion?: string | null;
   direccion?: string | null;
   ciudad?: string | null;
+  region?: string | null;
+  comuna?: string | null;
   cliente?: string | null;
+  funnelBeckId?: string | null;
+  funnelBeck?: {
+    id: string;
+    nombreProyecto?: string | null;
+    empresa?: string | null;
+  } | null;
+  oportunidad?: {
+    id: string;
+    nombreProyecto?: string | null;
+    empresa?: string | null;
+  } | null;
   activa: boolean;
   estado?: "activa" | "inactiva" | "pausada" | "finalizada";
   usuarios?: Array<{
@@ -561,10 +729,13 @@ export interface CrearObraInput {
   nombre: string;
   codigo?: string | null;
   direccion?: string | null;
+  region?: string | null;
+  comuna?: string | null;
   cliente?: string | null;
   descripcion?: string | null;
   estado: ObraEstado;
   usuariosIds?: string[];
+  funnelBeckId?: string;
 }
 
 export const obrasAPI = {
@@ -658,6 +829,45 @@ export const itemizadosAPI = {
   },
 };
 
+export interface ItemizadoMandante {
+  id: string;
+  codigoBeck: string | null;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ItemizadoMandantePayload = {
+  codigoBeck?: string | null;
+  nombre: string;
+  descripcion?: string | null;
+  activo?: boolean;
+};
+
+export const itemizadosMandanteAPI = {
+  listar: async (params?: { incluirInactivos?: boolean }) => {
+    const response = await api.get<ItemizadoMandante[]>("/itemizados-mandante", { params });
+    return response.data;
+  },
+
+  crear: async (data: ItemizadoMandantePayload) => {
+    const response = await api.post<ItemizadoMandante>("/itemizados-mandante", data);
+    return response.data;
+  },
+
+  actualizar: async (id: string, data: Partial<ItemizadoMandantePayload>) => {
+    const response = await api.put<ItemizadoMandante>(`/itemizados-mandante/${id}`, data);
+    return response.data;
+  },
+
+  eliminar: async (id: string) => {
+    const response = await api.delete<ItemizadoMandante>(`/itemizados-mandante/${id}`);
+    return response.data;
+  },
+};
+
 export type UsuarioApiRol =
   | "administrador"
   | "vendedor"
@@ -679,6 +889,56 @@ export interface UsuarioApi {
   createdAt: string;
 }
 
+export type UsuarioResumen = Pick<
+  UsuarioApi,
+  "id" | "nombre" | "email" | "rol" | "activo"
+>;
+
+export type EstadoSolicitudOficinaTecnica =
+  | "pendiente"
+  | "en_revision"
+  | "aprobada"
+  | "rechazada"
+  | "informacion_pendiente"
+  | string;
+
+export interface SolicitudOficinaTecnica {
+  id: string;
+  oportunidadId: string;
+  estado: EstadoSolicitudOficinaTecnica;
+  responsableTecnico?: string | null;
+  antecedentesLevantados?: string | null;
+  basesTecnicas?: string | null;
+  especificaciones?: string | null;
+  observacionesTecnicas?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  fechaSolicitud?: string;
+  [key: string]: unknown;
+}
+
+export interface CrearSolicitudOficinaTecnicaPayload {
+  oportunidadId: string;
+  responsableTecnico?: string;
+  antecedentesLevantados?: string;
+  basesTecnicas?: string;
+  especificaciones?: string;
+  observacionesTecnicas?: string;
+}
+
+export interface ActualizarSolicitudOficinaTecnicaPayload
+  extends Partial<CrearSolicitudOficinaTecnicaPayload> {
+  estado?: EstadoSolicitudOficinaTecnica;
+  comentariosRevision?: string;
+  fechaRevision?: string;
+}
+
+export interface OficinaTecnicaPreventaFilters {
+  estado?: EstadoSolicitudOficinaTecnica | "";
+  responsableTecnico?: string;
+  q?: string;
+}
+
 export interface ActualizarUsuarioInput {
   nombre?: string;
   email?: string;
@@ -698,8 +958,15 @@ export interface EliminarUsuarioResponse {
 }
 
 export const usuariosAPI = {
-  listar: async () => {
-    const response = await api.get<UsuarioApi[]>("/usuarios");
+  listar: async (params?: { rol?: UsuarioApiRol; activo?: boolean }) => {
+    const response = await api.get<UsuarioApi[]>("/usuarios", { params });
+    return response.data;
+  },
+
+  listarJefesObra: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<UsuarioResumen[]>("/usuarios", {
+      params: { rol: "jefeobra", activo: true },
+    });
     return response.data;
   },
 
@@ -716,6 +983,43 @@ export const usuariosAPI = {
   eliminar: async (id: string) => {
     const response = await api.delete<EliminarUsuarioResponse>(`/usuarios/${id}`);
     return response.data;
+  },
+};
+
+export const oficinaTecnicaPreventaAPI = {
+  crear: async (
+    payload: CrearSolicitudOficinaTecnicaPayload
+  ): Promise<SolicitudOficinaTecnica> => {
+    const response = await api.post<
+      ApiResponseEnvelope<SolicitudOficinaTecnica> | SolicitudOficinaTecnica
+    >("/oficina-tecnica-preventa", payload);
+    return unwrapItem(response.data);
+  },
+
+  listar: async (
+    filters?: OficinaTecnicaPreventaFilters
+  ): Promise<SolicitudOficinaTecnica[]> => {
+    const response = await api.get<
+      ApiResponseEnvelope<SolicitudOficinaTecnica[]> | SolicitudOficinaTecnica[]
+    >("/oficina-tecnica-preventa", { params: filters });
+    return unwrapArray(response.data as ApiResponseEnvelope<SolicitudOficinaTecnica[]> | SolicitudOficinaTecnica[]);
+  },
+
+  obtener: async (id: string): Promise<SolicitudOficinaTecnica> => {
+    const response = await api.get<
+      ApiResponseEnvelope<SolicitudOficinaTecnica> | SolicitudOficinaTecnica
+    >(`/oficina-tecnica-preventa/${id}`);
+    return unwrapItem(response.data);
+  },
+
+  actualizar: async (
+    id: string,
+    payload: ActualizarSolicitudOficinaTecnicaPayload
+  ): Promise<SolicitudOficinaTecnica> => {
+    const response = await api.patch<
+      ApiResponseEnvelope<SolicitudOficinaTecnica> | SolicitudOficinaTecnica
+    >(`/oficina-tecnica-preventa/${id}`, payload);
+    return unwrapItem(response.data);
   },
 };
 
@@ -1668,6 +1972,26 @@ export interface ContactoClienteBeckPayload {
   observaciones?: string | null;
 }
 
+export interface ImportarClientesResult {
+  procesados: number;
+  creados: number;
+  duplicadosOmitidos: number;
+  errores: number;
+  duplicados?: string[];
+  detallesErrores?: string[];
+  advertencias?: string[];
+}
+
+type ImportarClientesRawResult = Partial<ImportarClientesResult> & {
+  totalProcesados?: number;
+  totalCreados?: number;
+  totalDuplicados?: number;
+  totalErrores?: number;
+  creados?: number | Array<{ rut?: string; razonSocial?: string }>;
+  duplicadosOmitidos?: number | Array<string | { rut?: string; razonSocial?: string }>;
+  errores?: number | Array<string | { fila?: number; error?: string; mensaje?: string }>;
+};
+
 // Helpers para normalizar respuestas que pueden ser array directo o envelope
 const unwrapArray = <T>(payload: ApiResponseEnvelope<T[]> | T[]): T[] => {
   if (Array.isArray(payload)) return payload;
@@ -1680,6 +2004,44 @@ const unwrapItem = <T>(payload: ApiResponseEnvelope<T> | T): T => {
   }
   return payload as T;
 };
+
+const countFrom = (value: unknown, fallback?: number): number => {
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) return value.length;
+  return fallback ?? 0;
+};
+
+const toImportDetail = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const item = value as { rut?: string; razonSocial?: string; fila?: number; error?: string; mensaje?: string };
+    if (item.rut && item.razonSocial) return `${item.rut} - ${item.razonSocial}`;
+    if (item.rut) return item.rut;
+    if (item.fila && (item.error || item.mensaje)) return `Fila ${item.fila}: ${item.error ?? item.mensaje}`;
+    if (item.error || item.mensaje) return item.error ?? item.mensaje ?? "";
+  }
+  return String(value);
+};
+
+const normalizeImportarClientesResult = (payload: ImportarClientesRawResult): ImportarClientesResult => ({
+  procesados: countFrom(payload.procesados, payload.totalProcesados),
+  creados: countFrom(payload.creados, payload.totalCreados),
+  duplicadosOmitidos: countFrom(payload.duplicadosOmitidos, payload.totalDuplicados),
+  errores: countFrom(payload.errores, payload.totalErrores),
+  duplicados: Array.isArray(payload.duplicados)
+    ? payload.duplicados.map(toImportDetail)
+    : Array.isArray(payload.duplicadosOmitidos)
+      ? payload.duplicadosOmitidos.map(toImportDetail)
+      : undefined,
+  detallesErrores: Array.isArray(payload.detallesErrores)
+    ? payload.detallesErrores.map(toImportDetail)
+    : Array.isArray(payload.errores)
+      ? payload.errores.map(toImportDetail)
+      : undefined,
+  advertencias: Array.isArray(payload.advertencias)
+    ? payload.advertencias.map(toImportDetail)
+    : undefined,
+});
 
 export const clientesBeckAPI = {
   listar: async (params?: { q?: string; activo?: boolean }): Promise<ClienteBeck[]> => {
@@ -1730,6 +2092,102 @@ export const clientesBeckAPI = {
   oportunidades: async (clienteId: string): Promise<unknown[]> => {
     const response = await api.get<ApiResponseEnvelope<unknown[]> | unknown[]>(`/clientes-beck/${clienteId}/oportunidades`);
     return unwrapArray(response.data as ApiResponseEnvelope<unknown[]> | unknown[]);
+  },
+
+  importar: async (file: File): Promise<ImportarClientesResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ApiResponseEnvelope<ImportarClientesRawResult> | ImportarClientesRawResult>(
+      "/clientes-beck/importar",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    return normalizeImportarClientesResult(unwrapItem(response.data));
+  },
+};
+
+// ── Configuracion campos registro ─────────────────────────────────────────────
+
+export type RolConfiguracionCamposRegistro = "jefeobra" | "trabajador";
+export type ColorConfiguracionCampoRegistro = "verde" | "azul" | "rojo";
+
+export interface CampoConfiguracionRegistro {
+  campo: string;
+  rol?: RolConfiguracionCamposRegistro | "terreno" | string;
+  label?: string;
+  nombre?: string;
+  color: ColorConfiguracionCampoRegistro;
+  visible: boolean;
+  descripcion?: string | null;
+  configurable?: boolean;
+  prohibido?: boolean;
+  [key: string]: unknown;
+}
+
+export type ActualizarConfiguracionCamposRegistroPayload = Array<{
+  obraId?: string;
+  campo: string;
+  rol: RolConfiguracionCamposRegistro;
+  visible: boolean;
+}>;
+
+const extractCamposRegistro = (payload: unknown): CampoConfiguracionRegistro[] => {
+  if (Array.isArray(payload)) return payload as CampoConfiguracionRegistro[];
+
+  if (!payload || typeof payload !== "object") return [];
+
+  const record = payload as Record<string, unknown>;
+  const candidates = [
+    record.data,
+    record.campos,
+    record.items,
+    record.configuracion,
+    record.registros,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate as CampoConfiguracionRegistro[];
+
+    if (candidate && typeof candidate === "object") {
+      const nested = candidate as Record<string, unknown>;
+      const nestedCandidates = [
+        nested.data,
+        nested.campos,
+        nested.items,
+        nested.configuracion,
+        nested.registros,
+        nested.jefeobra,
+        nested.trabajador,
+        nested.terreno,
+      ];
+
+      for (const nestedCandidate of nestedCandidates) {
+        if (Array.isArray(nestedCandidate)) {
+          return nestedCandidate as CampoConfiguracionRegistro[];
+        }
+      }
+    }
+  }
+
+  return [];
+};
+
+export const configuracionCamposRegistroAPI = {
+  obtenerPorRol: async (
+    rol: RolConfiguracionCamposRegistro,
+    obraId?: string
+  ): Promise<CampoConfiguracionRegistro[]> => {
+    const response = await api.get<unknown>("/configuracion-campos-registro", {
+      params: { rol, obraId },
+    });
+    return extractCamposRegistro(response.data);
+  },
+
+  actualizar: async (
+    payload: ActualizarConfiguracionCamposRegistroPayload
+  ): Promise<CampoConfiguracionRegistro[]> => {
+    const response = await api.put<unknown>("/configuracion-campos-registro", payload);
+    return extractCamposRegistro(response.data);
   },
 };
 
@@ -1843,5 +2301,16 @@ export const clientesFirematAPI = {
   oportunidades: async (clienteId: string): Promise<unknown[]> => {
     const response = await api.get<ApiResponseEnvelope<unknown[]> | unknown[]>(`/firemat/clientes/${clienteId}/oportunidades`);
     return unwrapArray(response.data as ApiResponseEnvelope<unknown[]> | unknown[]);
+  },
+
+  importar: async (file: File): Promise<ImportarClientesResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ApiResponseEnvelope<ImportarClientesRawResult> | ImportarClientesRawResult>(
+      "/firemat/clientes/importar",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    return normalizeImportarClientesResult(unwrapItem(response.data));
   },
 };

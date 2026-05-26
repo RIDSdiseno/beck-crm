@@ -133,6 +133,43 @@ body {
   color: var(--beck-ink) !important;
 }
 
+.beck-obra-filter-select.ant-select {
+  width: 320px !important;
+  min-width: 280px !important;
+  max-width: 320px;
+  flex: 0 0 320px;
+}
+
+.beck-obra-filter-select--compact.ant-select {
+  width: 300px !important;
+  min-width: 300px !important;
+  max-width: 300px;
+  flex: 0 0 300px;
+}
+
+.beck-obra-filter-select .ant-select-selector {
+  padding-right: 56px !important;
+}
+
+.beck-obra-filter-select .ant-select-selection-item {
+  padding-right: 28px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.beck-obra-filter-select .ant-select-selection-search {
+  inset-inline-end: 56px !important;
+}
+
+.beck-obra-filter-select .ant-select-clear {
+  inset-inline-end: 30px;
+}
+
+.beck-obra-filter-select .ant-select-arrow {
+  inset-inline-end: 11px;
+}
+
 .theme-firemat .ant-btn-primary {
   background-color: #4b5563 !important;
   border-color: #4b5563 !important;

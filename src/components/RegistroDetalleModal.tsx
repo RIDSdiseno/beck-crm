@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
+import type { ItemizadoMandante } from "../services/api";
 
 export type RegistroDetalleUpdateValues = {
   descripcionMaterial: string;
@@ -25,6 +26,8 @@ export type RegistroDetalleUpdateValues = {
   accesibilidad: number;
   observaciones: string;
   estado: "pendiente" | "en_revision" | "validado" | "rechazado";
+  itemizadoMandanteId?: string;
+  codigoBeck?: string;
 };
 
 type RegistroDetalleModalProps = {
@@ -37,6 +40,7 @@ type RegistroDetalleModalProps = {
   onEdit?: () => void;
   onSave?: (values: RegistroDetalleUpdateValues) => void | Promise<void>;
   onDownloadPdf?: (registro: RegistroSello) => void | Promise<void>;
+  itemizadosMandante?: ItemizadoMandante[];
 };
 
 const estadoOptions = [
@@ -212,6 +216,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   onEdit,
   onSave,
   onDownloadPdf,
+  itemizadosMandante = [],
 }) => {
   const [form] = Form.useForm<RegistroDetalleUpdateValues>();
   const visible = open && !!registro;
@@ -236,6 +241,8 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       accesibilidad: registro.accesibilidad ?? registro.cieloModular,
       observaciones: registro.observaciones ?? "",
       estado: normalizeEstado(registro.estado),
+      itemizadoMandanteId: registro.itemizadoMandanteId,
+      codigoBeck: registro.codigoBeck,
     });
   }, [form, registro]);
 
@@ -451,6 +458,32 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             }}
             className="grid grid-cols-1 gap-x-3 md:grid-cols-2"
           >
+            <Form.Item
+              name="itemizadoMandanteId"
+              label="Itemizado Mandante"
+              className="mb-3"
+            >
+              <Select
+                allowClear
+                showSearch
+                placeholder="Selecciona itemizado mandante"
+                optionFilterProp="label"
+                options={itemizadosMandante.map((item) => ({
+                  value: item.id,
+                  label: item.codigoBeck ? `${item.codigoBeck} · ${item.nombre}` : item.nombre,
+                }))}
+                onChange={(value) => {
+                  const item = itemizadosMandante.find((i) => i.id === value);
+                  form.setFieldsValue({
+                    codigoBeck: item?.codigoBeck ?? "",
+                    descripcionMaterial: item?.nombre ?? form.getFieldValue("descripcionMaterial"),
+                  });
+                }}
+              />
+            </Form.Item>
+            <Form.Item name="codigoBeck" label="Código BECK" className="mb-3">
+              <Input disabled />
+            </Form.Item>
             <Form.Item
               name="descripcionMaterial"
               label="Descripción material"

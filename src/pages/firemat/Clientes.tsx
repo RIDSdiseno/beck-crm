@@ -17,22 +17,29 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
 } from "antd";
+import type { UploadFile } from "antd";
 import {
   CheckOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  InboxOutlined,
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import * as XLSX from "xlsx";
 import {
   clientesFirematAPI,
   type ClienteFiremat,
   type ClienteFirematPayload,
   type ContactoClienteFiremat,
   type ContactoClienteFirematPayload,
+  type ImportarClientesResult,
 } from "../../services/api";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 
@@ -124,6 +131,13 @@ const ClientesFiremat: React.FC = () => {
   const [editingContacto, setEditingContacto] = useState<ContactoClienteFiremat | null>(null);
   const [contactoLoading, setContactoLoading] = useState(false);
   const [contactoForm] = Form.useForm<ContactoClienteFirematPayload>();
+
+  const [importarModalOpen, setImportarModalOpen] = useState(false);
+  const [importarFile, setImportarFile] = useState<File | null>(null);
+  const [importarFileList, setImportarFileList] = useState<UploadFile[]>([]);
+  const [importarLoading, setImportarLoading] = useState(false);
+  const [resultadoImportar, setResultadoImportar] = useState<ImportarClientesResult | null>(null);
+  const [resultadoModalOpen, setResultadoModalOpen] = useState(false);
 
   const fetchClientes = useCallback(
     async (params: { q?: string; activo?: boolean } = {}) => {
@@ -318,6 +332,65 @@ const ClientesFiremat: React.FC = () => {
   };
 
   // ── Columnas tabla principal ──────────────────────────────────────────────
+
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      [
+        "RUT",
+        "Nombre",
+        "Razón Social",
+        "Nombre Empresa",
+        "Teléfono",
+        "Email",
+        "Región",
+        "Comuna",
+        "Dirección",
+        "Tipo Cliente",
+        "Canal Venta",
+      ],
+      [
+        "77.777.777-7",
+        "Demo",
+        "Demo SpA",
+        "Constructora Demo",
+        "+56912345678",
+        "demo@empresa.cl",
+        "Región Metropolitana",
+        "Providencia",
+        "Av Demo 123",
+        "Cliente final",
+        "Venta directa",
+      ],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes Firemat");
+    XLSX.writeFile(wb, "plantilla_clientes_firemat.xlsx");
+  };
+
+  const handleImportar = async () => {
+    if (!importarFile) {
+      message.error("Selecciona un archivo .xlsx o .csv primero");
+      return;
+    }
+
+    setImportarLoading(true);
+    message.loading({ content: "Importando clientes Firemat...", key: "importar-firemat", duration: 0 });
+    try {
+      const resultado = await clientesFirematAPI.importar(importarFile);
+      setImportarModalOpen(false);
+      setImportarFile(null);
+      setImportarFileList([]);
+      await fetchClientes(buildParams(searchInput, filtroActivo));
+      setResultadoImportar(resultado);
+      setResultadoModalOpen(true);
+    } catch (err: unknown) {
+      message.error({ content: extractBackendMsg(err, "Error al importar clientes Firemat"), key: "importar-firemat" });
+    } finally {
+      message.destroy("importar-firemat");
+      setImportarLoading(false);
+    }
+  };
 
   const columns: ColumnsType<ClienteFiremat> = [
     {
@@ -645,14 +718,30 @@ const ClientesFiremat: React.FC = () => {
             Maestro de clientes · Nombre como identificador principal
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={abrirCrear}
-          danger
-        >
-          Nuevo cliente
-        </Button>
+        <Space wrap>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={descargarPlantilla}
+            disabled={importarLoading}
+          >
+            Descargar plantilla Excel
+          </Button>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => setImportarModalOpen(true)}
+            disabled={importarLoading}
+          >
+            Importar Excel
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={abrirCrear}
+            danger
+          >
+            Nuevo cliente
+          </Button>
+        </Space>
       </div>
 
       {/* Filtros */}
@@ -993,7 +1082,169 @@ const ClientesFiremat: React.FC = () => {
         </Spin>
       </Drawer>
 
-      {/* ── Modal agregar / editar contacto ── */}
+      {/* Modal importar clientes */}
+      <Modal
+        title="Importar clientes Firemat"
+        open={importarModalOpen}
+        onCancel={() => {
+          if (!importarLoading) {
+            setImportarModalOpen(false);
+            setImportarFile(null);
+            setImportarFileList([]);
+          }
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setImportarModalOpen(false);
+              setImportarFile(null);
+              setImportarFileList([]);
+            }}
+            disabled={importarLoading}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="import"
+            type="primary"
+            icon={<UploadOutlined />}
+            loading={importarLoading}
+            onClick={() => void handleImportar()}
+            danger
+          >
+            Importar
+          </Button>,
+        ]}
+        width={560}
+        destroyOnClose
+      >
+        <div className="flex flex-col gap-4 mt-3">
+          <Text type="secondary" className="text-sm">
+            Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con los clientes Firemat a importar.
+            Los duplicados serán omitidos automáticamente.
+          </Text>
+
+          <div>
+            <Text className="text-xs font-semibold text-slate-600 block mb-1">Columnas esperadas:</Text>
+            <div className="flex flex-wrap gap-1">
+              {[
+                "RUT",
+                "Nombre",
+                "Razón Social",
+                "Nombre Empresa",
+                "Teléfono",
+                "Email",
+                "Región",
+                "Comuna",
+                "Dirección",
+                "Tipo Cliente",
+                "Canal Venta",
+              ].map((col) => (
+                <Tag key={col} className="text-xs">{col}</Tag>
+              ))}
+            </div>
+          </div>
+
+          <Upload.Dragger
+            accept=".xlsx,.csv"
+            maxCount={1}
+            fileList={importarFileList}
+            beforeUpload={(file) => {
+              const isValid = /\.(xlsx|csv)$/i.test(file.name);
+              if (!isValid) {
+                message.error("Solo se permiten archivos .xlsx o .csv");
+                return Upload.LIST_IGNORE;
+              }
+              setImportarFile(file);
+              setImportarFileList([file]);
+              return false;
+            }}
+            onRemove={() => {
+              setImportarFile(null);
+              setImportarFileList([]);
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">Click o arrastra el archivo aquí</p>
+            <p className="ant-upload-hint">Soporta .xlsx y .csv · Máximo 1 archivo</p>
+          </Upload.Dragger>
+        </div>
+      </Modal>
+
+      {/* Modal resultado importación */}
+      <Modal
+        title="Resultado de la importación"
+        open={resultadoModalOpen}
+        onCancel={() => setResultadoModalOpen(false)}
+        footer={
+          <Button type="primary" danger onClick={() => setResultadoModalOpen(false)}>
+            Cerrar
+          </Button>
+        }
+        width={480}
+        destroyOnClose
+      >
+        {resultadoImportar && (
+          <div className="flex flex-col gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-slate-800">{resultadoImportar.procesados}</div>
+                <div className="text-xs text-slate-500">Procesados</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-green-600">{resultadoImportar.creados}</div>
+                <div className="text-xs text-slate-500">Creados</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-amber-500">{resultadoImportar.duplicadosOmitidos}</div>
+                <div className="text-xs text-slate-500">Duplicados</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-red-500">{resultadoImportar.errores}</div>
+                <div className="text-xs text-slate-500">Errores</div>
+              </Card>
+            </div>
+
+            {resultadoImportar.duplicados && resultadoImportar.duplicados.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-amber-600 block mb-1">Duplicados omitidos:</Text>
+                <div className="flex flex-wrap gap-1">
+                  {resultadoImportar.duplicados.map((duplicado) => (
+                    <Tag key={duplicado} color="orange" className="text-xs">{duplicado}</Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {resultadoImportar.detallesErrores && resultadoImportar.detallesErrores.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-red-600 block mb-1">Errores:</Text>
+                <ul className="text-xs text-red-600 pl-4 list-disc">
+                  {resultadoImportar.detallesErrores.map((error, index) => (
+                    <li key={`${error}-${index}`}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {resultadoImportar.advertencias && resultadoImportar.advertencias.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-amber-600 block mb-1">Advertencias:</Text>
+                <ul className="text-xs text-amber-600 pl-4 list-disc">
+                  {resultadoImportar.advertencias.map((advertencia, index) => (
+                    <li key={`${advertencia}-${index}`}>{advertencia}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal agregar / editar contacto */}
       <Modal
         title={editingContacto ? "Editar contacto" : "Nuevo contacto"}
         open={contactoModalOpen}

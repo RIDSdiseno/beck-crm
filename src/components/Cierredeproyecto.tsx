@@ -1,4 +1,5 @@
 import React from "react";
+import { Select, Typography } from "antd";
 
 type CierreDeProyectoProps = {
   open: boolean;
@@ -9,6 +10,8 @@ type CierreDeProyectoProps = {
   fechaReactivacion: string;
   documentoRespaldo: string;
   flujoPosterior: string;
+  montoFinalGanado: string;
+  fechaCierre: string;
   onChangeEstado: (value: "ganada" | "perdida" | "postergada") => void;
   onChangeMotivo: (value: string) => void;
   onChangeEtapaPerdida: (value: string) => void;
@@ -16,6 +19,8 @@ type CierreDeProyectoProps = {
   onChangeFechaReactivacion: (value: string) => void;
   onChangeDocumentoRespaldo: (value: string) => void;
   onChangeFlujoPosterior: (value: string) => void;
+  onChangeMontoFinalGanado: (value: string) => void;
+  onChangeFechaCierre: (value: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -24,6 +29,28 @@ const inputCls =
   "w-full rounded-xl border border-beck-border-light p-3 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]";
 
 const radioClassName = "h-4 w-4 accent-[#c7a114] focus:ring-[#f6ebba]";
+
+const flujoPosteriorOptions = [
+  "Traspaso a operaciones",
+  "Oficina técnica",
+  "Administración",
+  "Facturación",
+  "Planificación de proyecto",
+  "ERP",
+  "Otro",
+] as const;
+
+const parseFlujoPosterior = (value?: string | null): string[] => {
+  if (!value) return [];
+
+  return value
+    .split(/[,;\n|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const serializeFlujoPosterior = (values: string[]): string =>
+  values.map((item) => item.trim()).filter(Boolean).join(", ");
 
 const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
   open,
@@ -34,6 +61,8 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
   fechaReactivacion,
   documentoRespaldo,
   flujoPosterior,
+  montoFinalGanado,
+  fechaCierre,
   onChangeEstado,
   onChangeMotivo,
   onChangeEtapaPerdida,
@@ -41,10 +70,21 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
   onChangeFechaReactivacion,
   onChangeDocumentoRespaldo,
   onChangeFlujoPosterior,
+  onChangeMontoFinalGanado,
+  onChangeFechaCierre,
   onConfirm,
   onCancel,
 }) => {
   if (!open) return null;
+
+  const flujoPosteriorValues = parseFlujoPosterior(flujoPosterior);
+  const optionValues = new Set<string>(flujoPosteriorOptions);
+  const flujoPosteriorSelectOptions = [
+    ...flujoPosteriorOptions.map((option) => ({ value: option, label: option })),
+    ...flujoPosteriorValues
+      .filter((value) => !optionValues.has(value))
+      .map((value) => ({ value, label: value })),
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -140,20 +180,57 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
 
         {estadoCierre !== "" && (
           <div className="space-y-3 border-t border-beck-border-light pt-3">
+            {estadoCierre === "ganada" && (
+              <>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Monto final ganado"
+                  value={montoFinalGanado}
+                  onChange={(e) => onChangeMontoFinalGanado(e.target.value)}
+                  className={inputCls}
+                />
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Fecha de cierre
+                  </label>
+                  <input
+                    type="date"
+                    value={fechaCierre}
+                    onChange={(e) => onChangeFechaCierre(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </>
+            )}
             <input
               type="text"
-              placeholder="Documento de respaldo (opcional)"
+              placeholder={
+                estadoCierre === "ganada"
+                  ? "Documento de respaldo"
+                  : "Documento de respaldo (opcional)"
+              }
               value={documentoRespaldo}
               onChange={(e) => onChangeDocumentoRespaldo(e.target.value)}
               className={inputCls}
             />
-            <input
-              type="text"
-              placeholder="Flujo posterior (opcional)"
-              value={flujoPosterior}
-              onChange={(e) => onChangeFlujoPosterior(e.target.value)}
-              className={inputCls}
-            />
+            <div>
+              <Typography.Text className="mb-1.5 block text-xs font-medium text-slate-600">
+                {estadoCierre === "ganada"
+                  ? "Flujo posterior"
+                  : "Flujo posterior (opcional)"}
+              </Typography.Text>
+              <Select
+                mode="multiple"
+                value={flujoPosteriorValues}
+                onChange={(values) =>
+                  onChangeFlujoPosterior(serializeFlujoPosterior(values))
+                }
+                className="w-full"
+                placeholder="Selecciona uno o más flujos"
+                options={flujoPosteriorSelectOptions}
+              />
+            </div>
           </div>
         )}
 

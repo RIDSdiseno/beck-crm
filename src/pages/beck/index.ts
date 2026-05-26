@@ -6,5 +6,6 @@ export { default as BeckReportes } from "./Reportes";
 export { default as BeckMovimientos } from "./Movimientos";
 export { default as BeckRegistro } from "./Registro";
 export { default as BeckProcesamientoIngenieria } from "./ProcesamientoIngenieria";
+export { default as BeckOficinaTecnica } from "./OficinaTecnica";
 export { default as BeckUsuariosParametros } from "./UsuariosParametros";
 export { default as BeckClientes } from "./Clientes";

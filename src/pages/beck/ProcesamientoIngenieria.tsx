@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Table, Tag, Tabs, message } from "antd";
-import { FireOutlined, DashboardOutlined } from "@ant-design/icons";
+import { Button, Card, DatePicker, Select, Table, Tag, message } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import type { ThemeMode } from "../../hooks/useSystemTheme";
 import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
 } from "../../components/RegistroDetalleModal";
 import type { RegistroSello } from "../../types/registroSello";
-import { api } from "../../services/api";
+import { api, obrasAPI, type Obra } from "../../services/api";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -49,6 +49,11 @@ type RegistroApiRecord = {
   itemizado_sacyr?: string | null;
   nombreSellador?: string | null;
   nombre_sellador?: string | null;
+  obraNombre?: string | null;
+  nombreObra?: string | null;
+  empresa?: string | null;
+  nombreEmpresa?: string | null;
+  nombre_empresa?: string | null;
   holgura?: number | string | null;
   accesibilidad?: number | string | null;
   estado?: string | null;
@@ -63,6 +68,12 @@ type RegistroApiRecord = {
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
+};
+
+type RegistroIngenieria = RegistroSello & {
+  nombreObra?: string;
+  empresa?: string;
+  nombreEmpresa?: string;
 };
 
 type RegistrosApiResponse = {
@@ -181,12 +192,39 @@ const getEjeNumerico = (r: RegistroSello): string => {
     : "-";
 };
 
-const getMetrosLineales = (r: RegistroSello): number | null => {
-  const num = Number(r.metrosLineales ?? null);
-  return Number.isFinite(num) && num > 0 ? num : null;
+const normalizeSearchText = (value?: string | null): string =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const getRegistroObraNombre = (r: RegistroApiRecord): string =>
+  r.obraNombre ??
+  r.nombreObra ??
+  r.obra?.nombre ??
+  r.obra_nombre ??
+  "Sin obra";
+
+const getRegistroObraEmpresaSearchText = (r: RegistroIngenieria): string =>
+  normalizeSearchText(
+    [
+      r.obraNombre,
+      r.nombreObra,
+      r.empresa,
+      r.nombreEmpresa,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+const getObraOptionLabel = (obra: Obra): string => {
+  const cliente = obra.cliente?.trim();
+  return cliente ? `${obra.nombre} / ${cliente}` : obra.nombre;
 };
 
-const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
+const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
   const obraId = r.obraId ?? r.obra_id ?? "";
   const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
   const fecha = r.fecha ?? "";
@@ -205,7 +243,10 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const nombreSellador = r.nombreSellador ?? r.nombre_sellador ?? "";
   const holguraCm = Number(r.holgura ?? 0);
   const accesibilidad = Number(r.accesibilidad ?? 0);
-  const obraNombre = r.obra?.nombre ?? r.obra_nombre ?? "Sin obra";
+  const obraNombre = getRegistroObraNombre(r);
+  const nombreObra = r.nombreObra ?? r.obra?.nombre ?? r.obra_nombre ?? "";
+  const empresa = r.empresa ?? "";
+  const nombreEmpresa = r.nombreEmpresa ?? r.nombre_empresa ?? "";
   const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
   const factorHolgura = normalizeFactorHolgura(holguraCm);
 
@@ -224,6 +265,9 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     descripcionMaterial,
     accesibilidad,
     obraNombre,
+    nombreObra,
+    empresa,
+    nombreEmpresa,
     usuarioNombre,
     itemizadoBeck:
       r.itemizadoBeck ?? r.itemizado_beck ??
@@ -283,15 +327,17 @@ const KpiCard: React.FC<{
 const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   void themeMode;
 
-  const [registros, setRegistros] = useState<RegistroSello[]>([]);
+  const [registros, setRegistros] = useState<RegistroIngenieria[]>([]);
+  const [obras, setObras] = useState<Obra[]>([]);
   const [loading, setLoading] = useState(false);
+  const [obrasLoading, setObrasLoading] = useState(false);
   const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
   const [savingDetalle, setSavingDetalle] = useState(false);
   const [registroDetalle, setRegistroDetalle] = useState<RegistroSello | null>(null);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
-  const [activeTab, setActiveTab] = useState<"sello_cortafuego" | "junta_lineal_espuma">(
-    "sello_cortafuego"
-  );
+  const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<"todos" | "sello_cortafuego" | "junta_lineal_espuma">("todos");
+  const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
@@ -315,13 +361,54 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     void cargarRegistros();
   }, [cargarRegistros]);
 
-  const filteredRegistros = useMemo(
+  const cargarObras = useCallback(async () => {
+    setObrasLoading(true);
+    try {
+      const data = await obrasAPI.listar();
+      setObras(data);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudieron cargar las obras");
+    } finally {
+      setObrasLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarObras();
+  }, [cargarObras]);
+
+  const obraOptions = useMemo(
     () =>
-      registros.filter(
-        (r) => (r.tipoRegistro ?? "sello_cortafuego") === activeTab
-      ),
-    [registros, activeTab]
+      obras
+        .map((obra) => ({
+          value: obra.nombre,
+          label: getObraOptionLabel(obra),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "es")),
+    [obras]
   );
+
+  const filteredRegistros = useMemo(() => {
+    const obraEmpresaQuery = normalizeSearchText(obraSeleccionada);
+
+    return registros.filter((r) => {
+      if (tipoSeleccionado !== "todos" && (r.tipoRegistro ?? "sello_cortafuego") !== tipoSeleccionado) return false;
+      if (obraEmpresaQuery && !getRegistroObraEmpresaSearchText(r).includes(obraEmpresaQuery)) return false;
+      if (rangoFechas) {
+        const d = dayjs(r.fechaEjecucion);
+        const [start, end] = rangoFechas;
+        if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
+      }
+      return true;
+    });
+  }, [registros, obraSeleccionada, tipoSeleccionado, rangoFechas]);
+
+  const limpiarFiltros = () => {
+    setObraSeleccionada("");
+    setTipoSeleccionado("todos");
+    setRangoFechas(null);
+  };
 
   const resumen = useMemo(() => ({
     pendientes: registros.filter((r) => normalizeEstado(r.estado) === "pendiente").length,
@@ -523,7 +610,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     );
   };
 
-  const columnaEstado: ColumnsType<RegistroSello>[number] = {
+  const columnaEstado: ColumnsType<RegistroIngenieria>[number] = {
     title: "Estado",
     dataIndex: "estado",
     key: "estado",
@@ -539,26 +626,44 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     ),
   };
 
-  const columnaAcciones: ColumnsType<RegistroSello>[number] = {
+  const columnaAcciones: ColumnsType<RegistroIngenieria>[number] = {
     title: "Acciones",
     key: "acciones",
     width: 260,
     render: renderAcciones,
   };
 
-  const columnasCortafuego: ColumnsType<RegistroSello> = [
+  const columnasUnificadas: ColumnsType<RegistroIngenieria> = [
     {
-      title: "Codigo BECK",
+      title: "Código BECK",
       key: "codigoBeck",
       width: 120,
       render: (_, r) => r.codigo || `REG-${String(r.id).slice(0, 6)}`,
     },
     {
+      title: "Tipo",
+      key: "tipoRegistro",
+      width: 140,
+      render: (_, r) => {
+        const tipo = r.tipoRegistro ?? "sello_cortafuego";
+        const isJunta = tipo === "junta_lineal_espuma";
+        return (
+          <Tag
+            color={isJunta ? "blue" : "gold"}
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${isJunta ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {isJunta ? "Junta lineal espuma" : "Sello cortafuego"}
+          </Tag>
+        );
+      },
+    },
+    {
       title: "Itemizado BECK",
-      dataIndex: "itemizadoBeck",
       key: "itemizadoBeck",
       width: 180,
       ellipsis: true,
+      render: (_, r) => r.itemizadoBeck || r.descripcionMaterial || "-",
     },
     {
       title: "Itemizado SACYR",
@@ -595,113 +700,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       width: 150,
     },
     { title: "Foto", key: "foto", width: 190, render: renderFotoCell },
-    {
-      title: "Recinto",
-      dataIndex: "recinto",
-      key: "recinto",
-      width: 150,
-      ellipsis: true,
-    },
-    {
-      title: "N° DEL SELLO",
-      dataIndex: "numeroSello",
-      key: "numeroSello",
-      width: 120,
-    },
-    {
-      title: "Cantidad de Sellos",
-      dataIndex: "cantidadSellos",
-      key: "cantidadSellos",
-      width: 130,
-    },
-    {
-      title: "Holgura (cm)",
-      dataIndex: "holguraCm",
-      key: "holguraCm",
-      width: 110,
-    },
-    {
-      title: "Observaciones",
-      dataIndex: "observaciones",
-      key: "observaciones",
-      width: 220,
-      ellipsis: true,
-    },
-    {
-      title: "FOLIO",
-      key: "folio",
-      width: 120,
-      render: (_, r) => r.codigo || `REG-${String(r.id).slice(0, 6)}`,
-    },
-    columnaEstado,
-    columnaAcciones,
-  ];
-
-  const columnasJuntaLineal: ColumnsType<RegistroSello> = [
-    {
-      title: "Descripción",
-      key: "descripcion",
-      width: 200,
-      ellipsis: true,
-      render: (_, r) => r.descripcionMaterial || "-",
-    },
-    {
-      title: "Fecha ejecución sello",
-      key: "fechaEjecucionSello",
-      width: 150,
-      render: (_, r) =>
-        r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
-    },
-    { title: "Día", dataIndex: "dia", key: "dia", width: 90 },
-    { title: "Piso", dataIndex: "piso", key: "piso", width: 80 },
-    {
-      title: "Eje Alfabético",
-      dataIndex: "ejeAlfabetico",
-      key: "ejeAlfabetico",
-      width: 110,
-    },
-    {
-      title: "Eje Numérico",
-      key: "ejeNumerico",
-      width: 110,
-      render: (_, r) => getEjeNumerico(r),
-    },
-    {
-      title: "Nombre sellador",
-      dataIndex: "nombreSellador",
-      key: "nombreSellador",
-      width: 150,
-    },
-    { title: "Foto", key: "foto", width: 190, render: renderFotoCell },
-    {
-      title: "Recinto",
-      dataIndex: "recinto",
-      key: "recinto",
-      width: 150,
-      ellipsis: true,
-    },
-    {
-      title: "Longitud (m)",
-      key: "longitud",
-      width: 110,
-      render: (_, r) => {
-        const m = getMetrosLineales(r);
-        return m !== null ? `${m.toFixed(2)} m` : "-";
-      },
-    },
-    {
-      title: "Observaciones",
-      dataIndex: "observaciones",
-      key: "observaciones",
-      width: 220,
-      ellipsis: true,
-    },
-    {
-      title: "FOLIO",
-      key: "folio",
-      width: 120,
-      render: (_, r) => r.numeroSello || "-",
-    },
     columnaEstado,
     columnaAcciones,
   ];
@@ -771,49 +769,60 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           </div>
         }
       >
-        <div className="border-b border-slate-200 px-4 pt-2">
-          <Tabs
-            activeKey={activeTab}
-            onChange={(k) =>
-              setActiveTab(k as "sello_cortafuego" | "junta_lineal_espuma")
+        <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 px-4 py-3">
+          <Select
+            showSearch
+            allowClear
+            className="beck-obra-filter-select"
+            suffixIcon={<SearchOutlined className="text-slate-400" />}
+            placeholder="Buscar obra / empresa"
+            value={obraSeleccionada || undefined}
+            onChange={(value) => setObraSeleccionada(String(value ?? ""))}
+            filterOption={(input, option) =>
+              normalizeSearchText(option?.label?.toString()).includes(
+                normalizeSearchText(input)
+              )
             }
-            items={[
-              {
-                key: "sello_cortafuego",
-                label: (
-                  <span className="flex items-center gap-1.5">
-                    <FireOutlined />
-                    Sellos Cortafuego
-                  </span>
-                ),
-              },
-              {
-                key: "junta_lineal_espuma",
-                label: (
-                  <span className="flex items-center gap-1.5">
-                    <DashboardOutlined />
-                    Junta Lineal Espuma
-                  </span>
-                ),
-              },
-            ]}
-            className="mb-0"
+            optionFilterProp="label"
+            options={obraOptions}
+            notFoundContent={obrasLoading ? "Cargando obras..." : "Sin obras"}
+            style={{ width: 320, minWidth: 280 }}
+            size="small"
           />
+          <Select
+            allowClear
+            placeholder="Todos los tipos"
+            value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
+            onChange={(v) => setTipoSeleccionado(v ?? "todos")}
+            options={[
+              { value: "sello_cortafuego", label: "Sellos Cortafuego" },
+              { value: "junta_lineal_espuma", label: "Junta Lineal Espuma" },
+            ]}
+            style={{ width: 200 }}
+            size="small"
+          />
+          <DatePicker.RangePicker
+            value={rangoFechas}
+            onChange={(v) => setRangoFechas(v as [Dayjs, Dayjs] | null)}
+            format="DD-MM-YYYY"
+            placeholder={["Fecha inicio", "Fecha fin"]}
+            size="small"
+            allowClear
+          />
+          <Button size="small" onClick={limpiarFiltros}>
+            Limpiar filtros
+          </Button>
         </div>
 
         <Table
-          columns={
-            activeTab === "sello_cortafuego"
-              ? columnasCortafuego
-              : columnasJuntaLineal
-          }
+          columns={columnasUnificadas}
           dataSource={filteredRegistros}
           rowKey="id"
           size="small"
           loading={loading}
           scroll={{ x: "max-content" }}
           tableLayout="auto"
-          pagination={{ pageSize: 10, showSizeChanger: false }}
+          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ["10", "20", "50"] }}
         />
       </Card>
 

@@ -23,10 +23,13 @@ import dayjs, { Dayjs } from "dayjs";
 import { useAuth } from "../context/useAuth";
 import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
+import type { ItemizadoMandante } from "../services/api";
 
 export type NuevoRegistroValues = {
   tipoRegistro: "sello_cortafuego" | "junta_lineal_espuma";
   obraId: string;
+  itemizadoMandanteId?: string;
+  codigoBeck?: string;
   itemizadoBeck: string;
   itemizadoSacyr?: string;
   fechaEjecucion: Dayjs;
@@ -50,6 +53,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onSubmit: (values: NuevoRegistroValues) => void;
+  itemizadosMandante?: ItemizadoMandante[];
 };
 
 type CreateObraValues = {
@@ -66,7 +70,7 @@ const createId = (): string => {
 
 const normalizeText = (value: string): string => value.trim().toLowerCase();
 
-const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
+const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit, itemizadosMandante = [] }) => {
   const { user } = useAuth();
   const isAdministrador = user?.rol === "Administrador";
 
@@ -283,7 +287,29 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit }) => {
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Identificación del itemizado
               </p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Form.Item name="itemizadoMandanteId" label="Itemizado Mandante">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Selecciona itemizado mandante"
+                    optionFilterProp="label"
+                    options={itemizadosMandante.map((item) => ({
+                      value: item.id,
+                      label: item.codigoBeck ? `${item.codigoBeck} · ${item.nombre}` : item.nombre,
+                    }))}
+                    onChange={(value) => {
+                      const item = itemizadosMandante.find((i) => i.id === value);
+                      form.setFieldsValue({
+                        codigoBeck: item?.codigoBeck ?? "",
+                        itemizadoBeck: item?.nombre ?? form.getFieldValue("itemizadoBeck"),
+                      } as Partial<NuevoRegistroValues>);
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item name="codigoBeck" label="Código BECK">
+                  <Input disabled placeholder="Se completa desde Itemizado Mandante" />
+                </Form.Item>
                 <Form.Item
                   name="itemizadoBeck"
                   label="Itemizado BECK"

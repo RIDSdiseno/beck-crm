@@ -11,6 +11,9 @@ export type RegistroSello = {
   accesibilidad?: number;
   obraNombre?: string;
   usuarioNombre?: string;
+  codigoBeck?: string;
+  itemizadoMandanteId?: string;
+  itemizadoMandanteNombre?: string;
   itemizadoBeck: string;
   itemizadoSacyr: string;
   fechaEjecucion: string; // ISO

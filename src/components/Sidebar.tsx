@@ -12,6 +12,7 @@ import {
   ProjectOutlined,
   HistoryOutlined,
   BuildOutlined,
+  ToolOutlined,
   AppstoreOutlined,
   InboxOutlined,
   ShoppingCartOutlined,
@@ -29,6 +30,7 @@ export type RoleAccess = {
   funnel: boolean;
   registro: boolean;
   ingenieria: boolean;
+  oficinaTecnica: boolean;
   reportes: boolean;
   cotizaciones: boolean;
   movimientos: boolean;
@@ -163,6 +165,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const beckNav = [
     { key: "dashboard", to: "/beck/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.dashboard },
     { key: "ingenieria", to: "/beck/procesamiento-ingenieria", icon: <FireOutlined />, label: "Procesamiento Ingeniería", access: access.ingenieria },
+    { key: "oficinaTecnica", to: "/beck/oficina-tecnica", icon: <ToolOutlined />, label: "Oficina Técnica", access: access.oficinaTecnica },
     { key: "registro", to: "/beck/registro", icon: <ProfileOutlined />, label: "Registro", access: access.registro },
     { key: "reportes", to: "/beck/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.reportes },
     { key: "cotizaciones", to: "/beck/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.cotizaciones },
@@ -314,12 +317,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </nav>
 
-        {access.configuracion && (
+        {(access.configuracion || (isBeck && access.ingenieria)) && (
           <div className="border-t border-inherit pt-4">
             {!collapsed && (
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
             <nav className={collapsed ? "flex flex-col items-center" : ""}>
+              {access.configuracion && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : "/firemat/usuarios-parametros"}
                 className={({ isActive }) =>
@@ -333,6 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <SettingOutlined />
                 {!collapsed && <span>Usuarios y parámetros</span>}
               </NavLink>
+              )}
             </nav>
           </div>
         )}

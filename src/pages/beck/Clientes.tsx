@@ -17,22 +17,29 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
 } from "antd";
+import type { UploadFile } from "antd";
 import {
   CheckOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  InboxOutlined,
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import * as XLSX from "xlsx";
 import {
   clientesBeckAPI,
   type ClienteBeck,
   type ClienteBeckPayload,
   type ContactoClienteBeck,
   type ContactoClienteBeckPayload,
+  type ImportarClientesResult,
 } from "../../services/api";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 
@@ -137,6 +144,14 @@ const Clientes: React.FC = () => {
   const [editingContacto, setEditingContacto] = useState<ContactoClienteBeck | null>(null);
   const [contactoLoading, setContactoLoading] = useState(false);
   const [contactoForm] = Form.useForm<ContactoClienteBeckPayload>();
+
+  // Modal importar
+  const [importarModalOpen, setImportarModalOpen] = useState(false);
+  const [importarFile, setImportarFile] = useState<File | null>(null);
+  const [importarFileList, setImportarFileList] = useState<UploadFile[]>([]);
+  const [importarLoading, setImportarLoading] = useState(false);
+  const [resultadoImportar, setResultadoImportar] = useState<ImportarClientesResult | null>(null);
+  const [resultadoModalOpen, setResultadoModalOpen] = useState(false);
 
   // ── Fetch helpers ─────────────────────────────────────────────────────────
 
@@ -335,6 +350,42 @@ const Clientes: React.FC = () => {
       }
     } catch {
       message.error("Error al cambiar estado del contacto");
+    }
+  };
+
+  // ── Handlers importar ─────────────────────────────────────────────────────
+
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ["RUT", "Razón Social", "Nombre Empresa", "Teléfono", "Correo", "Región", "Comuna", "Dirección", "Tipo Cliente"],
+      ["77.777.777-7", "Empresa Demo SpA", "Empresa Demo", "+56912345678", "contacto@empresa.cl", "Región Metropolitana de Santiago", "Providencia", "Av. Demo 123", "Empresa"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+    XLSX.writeFile(wb, "plantilla_clientes_beck.xlsx");
+  };
+
+  const handleImportar = async () => {
+    if (!importarFile) {
+      message.error("Selecciona un archivo primero");
+      return;
+    }
+    setImportarLoading(true);
+    message.loading({ content: "Importando clientes...", key: "importar", duration: 0 });
+    try {
+      const resultado = await clientesBeckAPI.importar(importarFile);
+      setImportarModalOpen(false);
+      setImportarFile(null);
+      setImportarFileList([]);
+      await fetchClientes(buildParams(searchInput, filtroActivo));
+      setResultadoImportar(resultado);
+      setResultadoModalOpen(true);
+    } catch (err: unknown) {
+      message.error({ content: extractBackendMsg(err, "Error al importar clientes"), key: "importar" });
+    } finally {
+      message.destroy("importar");
+      setImportarLoading(false);
     }
   };
 
@@ -642,14 +693,32 @@ const Clientes: React.FC = () => {
             Maestro de clientes · RUT como identificador principal
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={abrirCrear}
-          className="bg-amber-500 border-amber-500 hover:!bg-amber-600 hover:!border-amber-600"
-        >
-          Nuevo cliente
-        </Button>
+        <Space wrap>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={descargarPlantilla}
+            disabled={importarLoading}
+          >
+            Descargar plantilla Excel
+          </Button>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => setImportarModalOpen(true)}
+            disabled={importarLoading}
+            loading={importarLoading}
+          >
+            Importar Excel
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={abrirCrear}
+            disabled={importarLoading}
+            className="bg-amber-500 border-amber-500 hover:!bg-amber-600 hover:!border-amber-600"
+          >
+            Nuevo cliente
+          </Button>
+        </Space>
       </div>
 
       {/* Filtros */}
@@ -982,6 +1051,151 @@ const Clientes: React.FC = () => {
           )}
         </Spin>
       </Drawer>
+
+      {/* ── Modal importar clientes ── */}
+      <Modal
+        title="Importar clientes"
+        open={importarModalOpen}
+        onCancel={() => {
+          if (!importarLoading) {
+            setImportarModalOpen(false);
+            setImportarFile(null);
+            setImportarFileList([]);
+          }
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setImportarModalOpen(false);
+              setImportarFile(null);
+              setImportarFileList([]);
+            }}
+            disabled={importarLoading}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="import"
+            type="primary"
+            icon={<UploadOutlined />}
+            loading={importarLoading}
+            onClick={() => void handleImportar()}
+            className="bg-amber-500 border-amber-500 hover:!bg-amber-600 hover:!border-amber-600"
+          >
+            Importar
+          </Button>,
+        ]}
+        width={560}
+        destroyOnClose
+      >
+        <div className="flex flex-col gap-4 mt-3">
+          <Text type="secondary" className="text-sm">
+            Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con los clientes a importar.
+            Los RUTs duplicados serán omitidos automáticamente.
+          </Text>
+
+          <div>
+            <Text className="text-xs font-semibold text-slate-600 block mb-1">Columnas esperadas:</Text>
+            <div className="flex flex-wrap gap-1">
+              {["RUT", "Razón Social", "Nombre Empresa", "Teléfono", "Correo", "Región", "Comuna", "Dirección", "Tipo Cliente"].map((col) => (
+                <Tag key={col} className="text-xs">{col}</Tag>
+              ))}
+            </div>
+          </div>
+
+          <Upload.Dragger
+            accept=".xlsx,.csv"
+            maxCount={1}
+            fileList={importarFileList}
+            beforeUpload={(file) => {
+              setImportarFile(file);
+              setImportarFileList([file]);
+              return false;
+            }}
+            onRemove={() => {
+              setImportarFile(null);
+              setImportarFileList([]);
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">Click o arrastra el archivo aquí</p>
+            <p className="ant-upload-hint">Soporta .xlsx y .csv · Máximo 1 archivo</p>
+          </Upload.Dragger>
+        </div>
+      </Modal>
+
+      {/* ── Modal resultado importación ── */}
+      <Modal
+        title="Resultado de la importación"
+        open={resultadoModalOpen}
+        onCancel={() => setResultadoModalOpen(false)}
+        footer={
+          <Button type="primary" onClick={() => setResultadoModalOpen(false)}>
+            Cerrar
+          </Button>
+        }
+        width={480}
+        destroyOnClose
+      >
+        {resultadoImportar && (
+          <div className="flex flex-col gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-slate-800">{resultadoImportar.procesados}</div>
+                <div className="text-xs text-slate-500">Procesados</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-green-600">{resultadoImportar.creados}</div>
+                <div className="text-xs text-slate-500">Creados</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-amber-500">{resultadoImportar.duplicadosOmitidos}</div>
+                <div className="text-xs text-slate-500">Duplicados omitidos</div>
+              </Card>
+              <Card size="small" className="text-center">
+                <div className="text-2xl font-bold text-red-500">{resultadoImportar.errores}</div>
+                <div className="text-xs text-slate-500">Errores</div>
+              </Card>
+            </div>
+
+            {resultadoImportar.duplicados && resultadoImportar.duplicados.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-amber-600 block mb-1">RUTs duplicados omitidos:</Text>
+                <div className="flex flex-wrap gap-1">
+                  {resultadoImportar.duplicados.map((rut) => (
+                    <Tag key={rut} color="orange" className="text-xs">{rut}</Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {resultadoImportar.detallesErrores && resultadoImportar.detallesErrores.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-red-600 block mb-1">Errores:</Text>
+                <ul className="text-xs text-red-600 pl-4 list-disc">
+                  {resultadoImportar.detallesErrores.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {resultadoImportar.advertencias && resultadoImportar.advertencias.length > 0 && (
+              <div>
+                <Text className="text-xs font-semibold text-amber-600 block mb-1">Advertencias:</Text>
+                <ul className="text-xs text-amber-600 pl-4 list-disc">
+                  {resultadoImportar.advertencias.map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* ── Modal agregar / editar contacto ── */}
       <Modal

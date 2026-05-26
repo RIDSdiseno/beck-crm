@@ -1,6 +1,6 @@
 // src/pages/RegistroSellos.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Modal, Select, Table, Tag, Switch, message, Tabs } from "antd";
+import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, message } from "antd";
 import {
   PlusOutlined,
   FireOutlined,
@@ -12,16 +12,14 @@ import {
   TeamOutlined,
   UploadOutlined,
   FileExcelOutlined,
-  DashboardOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { ThemeMode } from "../../hooks/useSystemTheme";
-import dayjs, { Dayjs } from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
 import type { RegistroSello } from "../../types/registroSello";
-import DateRangeQuickFilter from "../../components/DateRangeQuickFilter";
 import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
 } from "../../components/RegistroDetalleModal";
@@ -29,7 +27,13 @@ import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
 } from "../../components/NuevoRegistroDrawer";
 import { loadObras } from "../../data/obrasStorage";
-import { api } from "../../services/api";
+import {
+  api,
+  itemizadosMandanteAPI,
+  obrasAPI,
+  type ItemizadoMandante,
+  type Obra,
+} from "../../services/api";
 import { useAuth } from "../../context/useAuth";
 
 type RegistroSellosProps = {
@@ -76,6 +80,12 @@ type RegistroApiRecord = {
   fotos?: Array<{ url?: string | null }> | null;
   itemizadoSacyr?: string | null;
   itemizado_sacyr?: string | null;
+  itemizadoMandanteId?: string | null;
+  itemizado_mandante_id?: string | null;
+  itemizadoMandanteNombre?: string | null;
+  itemizadoMandante?: { id?: string | null; nombre?: string | null; codigoBeck?: string | null } | null;
+  codigoBeck?: string | null;
+  codigo_beck?: string | null;
   obra?: { nombre?: string | null } | null;
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
@@ -106,6 +116,8 @@ type RegistroUpdatePayload = {
   accesibilidad: number;
   observaciones: string;
   estado: RegistroDetalleUpdateValues["estado"];
+  itemizadoMandanteId?: string;
+  codigoBeck?: string;
 };
 
 type RegistroEstado = "pendiente" | "en_revision" | "validado" | "rechazado";
@@ -208,6 +220,19 @@ const getMetrosLineales = (registro: {
 
 const formatFecha = (fecha?: string | null): string =>
   fecha ? dayjs(fecha).format("DD-MM-YYYY") : "-";
+
+const normalizeSearchText = (value?: string | null): string =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const getObraOptionLabel = (obra: Obra): string => {
+  const cliente = obra.cliente?.trim();
+  return cliente ? `${obra.nombre} / ${cliente}` : obra.nombre;
+};
 
 const getItemizadoSacyr = (r: { itemizadoSacyr?: string | null; itemizado_sacyr?: string | null }): string => {
   const value = r.itemizadoSacyr ?? r.itemizado_sacyr ?? "";
@@ -318,6 +343,9 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     obraNombre,
     usuarioNombre,
     itemizadoBeck: descripcionMaterial || `REG-${r.id.slice(0, 6)}`,
+    itemizadoMandanteId: r.itemizadoMandanteId ?? r.itemizado_mandante_id ?? r.itemizadoMandante?.id ?? undefined,
+    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizadoMandante?.nombre ?? undefined,
+    codigoBeck: r.codigoBeck ?? r.codigo_beck ?? r.itemizadoMandante?.codigoBeck ?? undefined,
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
     fechaEjecucion: fecha,
     dia: diaSemana,
@@ -377,12 +405,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const canCreateRegistro = user?.rol === "Administrador";
   const canDownloadPdf =
     user?.rol === "Administrador" || user?.rol === "Ingenieria";
+  const [itemizadosMandante, setItemizadosMandante] = useState<ItemizadoMandante[]>([]);
   void canReview;
 
-  // ── Tab activo ────────────────────────────────────────────────────────────
-  const [activeTipoRegistro, setActiveTipoRegistro] = useState<
-    "sello_cortafuego" | "junta_lineal_espuma"
-  >("sello_cortafuego");
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<
+    "todos" | "sello_cortafuego" | "junta_lineal_espuma"
+  >("todos");
 
   const [openDrawer, setOpenDrawer] = useState(false);
   const [exportando, setExportando] = useState(false);
@@ -393,6 +421,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [data, setData] = useState<RegistroSello[]>([]);
+  const [obras, setObras] = useState<Obra[]>([]);
+  const [obrasLoading, setObrasLoading] = useState(false);
   const [savingDetalle, setSavingDetalle] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
 
@@ -415,8 +445,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   }, [cargarRegistros]);
 
   // filtros
-  const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
-  const [filtroFechas, setFiltroFechas] = useState<[Dayjs, Dayjs] | null>(null);
+  const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
+  const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
   // vista compacta / completa
   const [vistaCompleta, setVistaCompleta] = useState(false);
@@ -426,37 +456,60 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     null
   );
 
-  const pisosDisponibles = useMemo(
+  const cargarObras = useCallback(async () => {
+    setObrasLoading(true);
+    try {
+      const response = await obrasAPI.listar();
+      setObras(response);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudieron cargar las obras");
+    } finally {
+      setObrasLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarObras();
+  }, [cargarObras]);
+
+  useEffect(() => {
+    const cargarItemizadosMandante = async () => {
+      try {
+        const response = await itemizadosMandanteAPI.listar();
+        setItemizadosMandante(response.filter((item) => item.activo));
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void cargarItemizadosMandante();
+  }, []);
+
+  const obrasDisponibles = useMemo(
     () =>
-      Array.from(
-        new Set(
-          data
-            .filter((r) => getTipoRegistro(r) === activeTipoRegistro)
-            .map((r) => r.piso)
-        )
-      ).sort(),
-    [data, activeTipoRegistro]
+      obras
+        .map((obra) => ({
+          value: obra.nombre,
+          label: getObraOptionLabel(obra),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "es")),
+    [obras]
   );
 
-  // Primero filtrar por tipo de registro, luego por piso/fecha
   const filteredData = useMemo(
     () =>
       data.filter((r) => {
-        if (getTipoRegistro(r) !== activeTipoRegistro) return false;
-
-        let ok = true;
-        if (filtroPiso) ok = ok && r.piso === filtroPiso;
-        if (filtroFechas) {
+        if (tipoSeleccionado !== "todos" && getTipoRegistro(r) !== tipoSeleccionado) return false;
+        if (obraSeleccionada && normalizeSearchText(r.obraNombre) !== normalizeSearchText(obraSeleccionada)) return false;
+        if (rangoFechas) {
           const d = dayjs(r.fechaEjecucion);
-          const [start, end] = filtroFechas;
-          ok =
-            ok &&
-            !d.isBefore(start, "day") &&
-            !d.isAfter(end, "day");
+          const [start, end] = rangoFechas;
+          if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
         }
-        return ok;
+        return true;
       }),
-    [data, filtroPiso, filtroFechas, activeTipoRegistro]
+    [data, tipoSeleccionado, obraSeleccionada, rangoFechas]
   );
 
   // KPIs — adaptados por tab
@@ -512,7 +565,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     };
   }, [filteredData]);
 
-  const esJuntaLineal = activeTipoRegistro === "junta_lineal_espuma";
+  const esJuntaLineal = tipoSeleccionado === "junta_lineal_espuma";
 
   const handleDescargarPdf = async (record: RegistroSello) => {
     const id = String(record.id);
@@ -555,9 +608,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
       accesibilidad: values.accesibilidad,
-      observaciones: values.observaciones,
-      estado: values.estado,
-    };
+        observaciones: values.observaciones,
+        estado: values.estado,
+        itemizadoMandanteId: values.itemizadoMandanteId,
+        codigoBeck: values.codigoBeck,
+      };
 
     setSavingDetalle(true);
     try {
@@ -587,6 +642,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             cantidadSellosConFactor: values.cantidadSellos * factorHolgura,
             observaciones: values.observaciones,
             estado: values.estado,
+            itemizadoMandanteId: values.itemizadoMandanteId,
+            itemizadoMandanteNombre:
+              itemizadosMandante.find((item) => item.id === values.itemizadoMandanteId)?.nombre ??
+              registroDetalle.itemizadoMandanteNombre,
+            codigoBeck: values.codigoBeck ?? registroDetalle.codigoBeck,
           };
 
       setData((prev) =>
@@ -622,6 +682,20 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           {getTipoRegistroLabel(value)}
         </Tag>
       ),
+    },
+    {
+      title: "Código BECK",
+      dataIndex: "codigoBeck",
+      key: "codigoBeck",
+      width: 140,
+      render: (text?: string) => text || "-",
+    },
+    {
+      title: "Itemizado Mandante",
+      dataIndex: "itemizadoMandanteNombre",
+      key: "itemizadoMandanteNombre",
+      width: 220,
+      render: (text?: string) => text || "-",
     },
     {
       title: "Itemizado BECK",
@@ -985,8 +1059,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     },
   ];
 
+  void columnasJuntaLineal;
+
   const clavesCompactas = new Set([
     "tipoRegistro",
+    "codigoBeck",
+    "itemizadoMandanteNombre",
     "itemizadoBeck",
     "itemizadoSacyr",
     "obraNombre",
@@ -1002,15 +1080,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "acciones",
   ]);
 
-  const columnasTabla = useMemo(() => {
-    if (activeTipoRegistro === "junta_lineal_espuma") return columnasJuntaLineal;
-    return vistaCompleta
-      ? todasLasColumnas
-      : todasLasColumnas.filter(
-          (c) => c.key && clavesCompactas.has(String(c.key))
-        );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vistaCompleta, activeTipoRegistro]);
+  const columnasTabla = useMemo(
+    () =>
+      vistaCompleta
+        ? todasLasColumnas
+        : todasLasColumnas.filter((c) => c.key && clavesCompactas.has(String(c.key))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vistaCompleta]
+  );
 
   const openNuevo = () => {
     setOpenDrawer(true);
@@ -1025,6 +1102,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       id: data.length + 1,
       obraId: values.obraId,
       obraNombre: obra?.nombre,
+      codigoBeck: values.codigoBeck,
+      itemizadoMandanteId: values.itemizadoMandanteId,
+      itemizadoMandanteNombre:
+        itemizadosMandante.find((item) => item.id === values.itemizadoMandanteId)?.nombre,
       itemizadoBeck: values.itemizadoBeck,
       itemizadoSacyr: values.itemizadoSacyr || "",
       fechaEjecucion: values.fechaEjecucion.format("YYYY-MM-DD"),
@@ -1330,16 +1411,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   };
 
   const handleExportExcel = async () => {
-    const baseExportData = data.filter((r) => {
-      let ok = true;
-      if (filtroPiso) ok = ok && r.piso === filtroPiso;
-      if (filtroFechas) {
-        const d = dayjs(r.fechaEjecucion);
-        const [start, end] = filtroFechas;
-        ok = ok && !d.isBefore(start, "day") && !d.isAfter(end, "day");
-      }
-      return ok;
-    });
+    const baseExportData = filteredData;
     if (!baseExportData.length) return;
 
     setExportando(true);
@@ -1886,36 +1958,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </div>
       </div>
 
-      {/* Tabs de tipo registro */}
-      <Tabs
-        activeKey={activeTipoRegistro}
-        onChange={(key) =>
-          setActiveTipoRegistro(
-            key as "sello_cortafuego" | "junta_lineal_espuma"
-          )
-        }
-        items={[
-          {
-            key: "sello_cortafuego",
-            label: (
-              <span className="flex items-center gap-1.5">
-                <FireOutlined />
-                Sellos Cortafuego
-              </span>
-            ),
-          },
-          {
-            key: "junta_lineal_espuma",
-            label: (
-              <span className="flex items-center gap-1.5">
-                <DashboardOutlined />
-                Junta Lineal Espuma
-              </span>
-            ),
-          },
-        ]}
-        className="mb-0"
-      />
 
       {/* KPIs principales */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -2044,52 +2086,108 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         className="border bg-white border-slate-200 shadow-sm"
         styles={{ body: { padding: 12 } }}
       >
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 text-xs">
-          <div className="flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 border border-amber-100">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div />
+            <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button
+              size="small"
+              onClick={() => {
+                setObraSeleccionada("");
+                setRangoFechas(null);
+                setTipoSeleccionado("todos");
+              }}
+            >
+              Limpiar filtros
+            </Button>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-[11px] text-slate-500">Vista compacta / completa</span>
+              <Switch
+                size="small"
+                checked={vistaCompleta}
+                onChange={setVistaCompleta}
+              />
+            </div>
+            </div>
+          </div>
+
+          <div className="flex w-full flex-wrap items-center gap-2 text-xs xl:flex-nowrap">
+          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1">
             <FilterOutlined className="text-amber-600 text-[11px]" />
             <span className="text-slate-800">Filtros rápidos</span>
           </div>
 
           <Select
+            size="small"
+            className="w-[160px] min-w-[150px] shrink-0"
+            allowClear
+            placeholder="Todos los tipos"
+            value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
+            onChange={(value) => setTipoSeleccionado(value ?? "todos")}
+            options={[
+              { value: "sello_cortafuego", label: "Sellos Cortafuego" },
+              { value: "junta_lineal_espuma", label: "Junta Lineal Espuma" },
+            ]}
+          />
+
+          <Select
+            showSearch
             allowClear
             size="small"
-            placeholder="Piso"
-            className="w-full sm:w-auto sm:min-w-[130px]"
-            value={filtroPiso}
-            onChange={(value) => setFiltroPiso(value)}
-            options={pisosDisponibles.map((p) => ({
-              value: p,
-              label: p,
-            }))}
+            className="beck-obra-filter-select beck-obra-filter-select--compact !w-[300px] min-w-[300px] shrink-0"
+            placeholder="Empresa / Obra"
+            value={obraSeleccionada || undefined}
+            onChange={(value) => setObraSeleccionada(String(value ?? ""))}
+            options={obrasDisponibles}
+            optionFilterProp="label"
+            notFoundContent={obrasLoading ? "Cargando obras..." : "Sin obras"}
+            filterOption={(input, opt) =>
+              normalizeSearchText(opt?.label?.toString()).includes(
+                normalizeSearchText(input)
+              )
+            }
           />
 
-          <DateRangeQuickFilter
-            value={filtroFechas}
-            onChange={setFiltroFechas}
-            isDark={false}
-          />
-
-          <Button
-            type="link"
+          <Segmented
             size="small"
-            className="text-[11px] text-slate-400"
-            onClick={() => {
-              setFiltroPiso(undefined);
-              setFiltroFechas(null);
+            className="shrink-0"
+            value={(() => {
+              if (!rangoFechas) return "todo";
+              const [s, e] = rangoFechas;
+              const hoy = dayjs();
+              if (s.isSame(hoy, "day") && e.isSame(hoy, "day")) return "hoy";
+              if (s.isSame(hoy.startOf("week"), "day") && e.isSame(hoy.endOf("week"), "day")) return "semana";
+              if (s.isSame(hoy.startOf("month"), "day") && e.isSame(hoy.endOf("month"), "day")) return "mes";
+              return "todo";
+            })()}
+            onChange={(val) => {
+              const hoy = dayjs();
+              if (val === "todo") { setRangoFechas(null); return; }
+              if (val === "hoy") { setRangoFechas([hoy.startOf("day"), hoy.endOf("day")]); return; }
+              if (val === "semana") { setRangoFechas([hoy.startOf("week"), hoy.endOf("week")]); return; }
+              if (val === "mes") { setRangoFechas([hoy.startOf("month"), hoy.endOf("month")]); }
             }}
-          >
-            Limpiar filtros
-          </Button>
+            options={[
+              { label: "Toda la obra", value: "todo" },
+              { label: "Hoy", value: "hoy" },
+              { label: "Semana", value: "semana" },
+              { label: "Mes", value: "mes" },
+            ]}
+          />
 
-          <div className="sm:ml-auto flex items-center gap-2">
-            <span className="text-[11px] text-slate-500">
-              Vista compacta / completa
-            </span>
-            <Switch
-              size="small"
-              checked={vistaCompleta}
-              onChange={setVistaCompleta}
-            />
+          <DatePicker.RangePicker
+            size="small"
+            format="DD-MM-YYYY"
+            value={rangoFechas as [Dayjs, Dayjs] | null}
+            onChange={(dates) => {
+              if (!dates || !dates[0] || !dates[1]) { setRangoFechas(null); return; }
+              setRangoFechas([dates[0], dates[1]]);
+            }}
+            placeholder={["Desde", "Hasta"]}
+            allowClear
+            className="w-[205px] shrink-0"
+          />
           </div>
         </div>
       </Card>
@@ -2101,7 +2199,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <div className="flex items-center gap-2 text-sm">
             <TableOutlined />
             <span>
-              {esJuntaLineal ? "Junta Lineal Espuma" : "Itemizado BECK / SACYR"}
+              {tipoSeleccionado === "junta_lineal_espuma"
+                ? "Junta Lineal Espuma"
+                : tipoSeleccionado === "sello_cortafuego"
+                ? "Sellos Cortafuego · Itemizado BECK / SACYR"
+                : "Todos los registros"}
             </span>
           </div>
         }
@@ -2234,6 +2336,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         onEdit={() => setDetalleMode("edit")}
         onSave={handleGuardarDetalle}
         onDownloadPdf={canDownloadPdf ? handleDescargarPdf : undefined}
+        itemizadosMandante={itemizadosMandante}
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}
@@ -2242,6 +2345,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           open={openDrawer}
           onClose={() => setOpenDrawer(false)}
           onSubmit={handleSubmit}
+          itemizadosMandante={itemizadosMandante}
         />
       )}
     </div>

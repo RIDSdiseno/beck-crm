@@ -27,6 +27,7 @@ import {
   BeckMovimientos,
   BeckRegistro,
   BeckProcesamientoIngenieria,
+  BeckOficinaTecnica,
   BeckUsuariosParametros,
   BeckClientes,
 } from "./pages/beck";
@@ -71,10 +72,10 @@ const NO_FIREMAT: Pick<RoleAccess,
 
 const NO_BECK: Pick<RoleAccess,
   "dashboard" | "funnel" | "registro" | "ingenieria" | "reportes" |
-  "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes"
+  "oficinaTecnica" | "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes"
 > = {
   dashboard: false, funnel: false, registro: false, ingenieria: false,
-  reportes: false, cotizaciones: false, movimientos: false, obras: false,
+  oficinaTecnica: false, reportes: false, cotizaciones: false, movimientos: false, obras: false,
   configuracion: false, clientes: false,
 };
 
@@ -83,7 +84,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
     case "Administrador":
       return {
         dashboard: true, funnel: true, registro: true, ingenieria: true,
-        reportes: true, cotizaciones: true, movimientos: true, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: true, obras: true,
         configuracion: true, clientes: true,
         firemat: true, firematDashboard: true, firematFunnel: true,
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
@@ -93,19 +94,19 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
     case "Vendedor":
       return {
         dashboard: false, funnel: true, registro: false, ingenieria: false,
-        reportes: true, cotizaciones: true, movimientos: false, obras: false,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, obras: false,
         configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "Ingenieria":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: true,
-        reportes: true, cotizaciones: false, movimientos: false, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: false, movimientos: false, obras: true,
         configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "Visualizador":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: false,
-        reportes: true, cotizaciones: true, movimientos: false, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, obras: true,
         configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "VendedorFiremat":
@@ -194,12 +195,15 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/funnel") return access.funnel;
   if (pathname === "/beck/registro") return access.registro;
   if (pathname === "/beck/procesamiento-ingenieria") return access.ingenieria;
+  if (pathname === "/beck/oficina-tecnica") return access.oficinaTecnica;
   if (pathname === "/beck/reportes") return access.reportes;
   if (pathname === "/beck/cotizaciones") return access.cotizaciones;
   if (pathname === "/beck/movimientos") return access.movimientos;
   if (pathname === "/beck/obras") return access.obras;
   if (pathname === "/beck/clientes") return access.clientes;
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
+  if (pathname === "/beck/configuracion-campos-registro") return true;
+  if (pathname === "/beck/itemizados-mandante") return true;
 
   if (pathname === "/firemat/dashboard") return access.firematDashboard;
   if (pathname === "/firemat/funnel") return access.firematFunnel;
@@ -502,6 +506,16 @@ const AppShell: React.FC = () => {
                   }
                 />
                 <Route
+                  path="/beck/oficina-tecnica"
+                  element={
+                    access.oficinaTecnica ? (
+                      <BeckOficinaTecnica />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
                   path="/beck/clientes"
                   element={
                     access.clientes ? (
@@ -523,6 +537,15 @@ const AppShell: React.FC = () => {
                 />
 
                 {/* ── Firemat routes ──────────────────────────── */}
+                <Route
+                  path="/beck/configuracion-campos-registro"
+                  element={<Navigate to="/beck/obras" replace />}
+                />
+                <Route
+                  path="/beck/itemizados-mandante"
+                  element={<Navigate to="/beck/obras" replace />}
+                />
+
                 <Route path="/firemat/dashboard" element={firematRoute(access.firematDashboard, <FirematDashboard />)} />
                 <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel />)} />
                 <Route path="/firemat/cotizaciones" element={firematRoute(access.firematCotizaciones, <FirematCotizaciones />)} />

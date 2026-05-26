@@ -14,6 +14,7 @@ const etapaColors: Record<FunnelStage, string> = {
   cotizacion: "#d97706",
   enviada: "#f97316",
   negociacion: "#7c3aed",
+  documentacion: "#0891b2",
   cerrada: "#16a34a",
 };
 
@@ -23,6 +24,7 @@ const etapaLabels: Record<FunnelStage, string> = {
   cotizacion: "Cotizacion Elaborada",
   enviada: "Cotizacion Enviada",
   negociacion: "En Negociacion",
+  documentacion: "Documentación de Venta",
   cerrada: "Cerrada",
 };
 
