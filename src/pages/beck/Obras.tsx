@@ -69,8 +69,8 @@ const registroRoleBlocks: RegistroRoleBlock[] = [
   },
   {
     key: "trabajador",
-    title: "Trabajador",
-    description: "Campos disponibles para trabajadores.",
+    title: "Trabajador / Terreno",
+    description: "Campos disponibles para trabajadores de terreno.",
   },
 ];
 
@@ -100,6 +100,7 @@ const registroColorConfig: Record<
 
 const greenRegistroCampos = new Set(["itemizado beck", "observaciones"]);
 const blueRegistroCampos = new Set([
+  "cantidad de sellos aislacion",
   "cielo modular",
   "aislacion",
   "aislación",
@@ -114,7 +115,6 @@ const trabajadorForbiddenCampos = new Set([
   "itemizado mandante",
   "factor por holguras",
   "cantidad de sellos con factores sin reparaciones",
-  "cantidad de sellos aislacion",
   "cantidad de sellos aislación",
   "cantidad final",
   "folio",
@@ -129,6 +129,52 @@ const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
   { campo: "reparacion_tabique", label: "ReparaciÃ³n tabique", color: "azul", visible: false },
   { campo: "cantidad_final", label: "Cantidad final", color: "azul", visible: false },
 ];
+const configurableCatalogKeys = new Set(camposRegistroNuevos.map((field) => field.campo));
+
+const matrixCampoLabels: Record<string, string> = {
+  eje_alfabetico: "Eje Alfabético",
+  eje_numerico: "Eje Numérico",
+  recinto: "Recinto",
+  modulo: "Módulo o edificio",
+  holgura: "Holgura (cm)",
+  factor_por_holguras: "Factor por holguras",
+  cantidad_sellos_con_factores: "Cantidad sellos con factores",
+  cantidad_sellos_aislacion: "Cantidad sellos aislación",
+  cantidad_final: "Cantidad final",
+  folio: "FOLIO",
+};
+
+const jefeObraConfigurableCampos = new Set([
+  "eje_alfabetico",
+  "eje_numerico",
+  "recinto",
+  "modulo",
+  "holgura",
+  "factor_por_holguras",
+  "cantidad_sellos_con_factores",
+  "cantidad_final",
+  "folio",
+]);
+
+const trabajadorConfigurableCampos = new Set([
+  "eje_alfabetico",
+  "eje_numerico",
+  "recinto",
+  "modulo",
+  "holgura",
+]);
+
+const trabajadorProhibidoMatrixCampos = new Set([
+  "factor_por_holguras",
+  "cantidad_sellos_con_factores",
+  "cantidad_sellos_aislacion",
+  "cantidad_final",
+]);
+
+const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) =>
+  role === "trabajador"
+    ? [...trabajadorConfigurableCampos, ...trabajadorProhibidoMatrixCampos]
+    : [...jefeObraConfigurableCampos];
 
 const normalizeRegistroText = (value: unknown): string =>
   typeof value === "string"
@@ -142,13 +188,41 @@ const normalizeRegistroText = (value: unknown): string =>
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const normalizeRegistroCampoKey = (value: unknown): string => {
+  const normalized = normalizeRegistroText(value)
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  if (normalized === "supervisor") return "jefeobra";
+  if (normalized === "terreno") return "trabajador";
+  if (normalized === "eje alfabetico") return "eje_alfabetico";
+  if (normalized === "eje numerico") return "eje_numerico";
+  if (normalized === "recinto") return "recinto";
+  if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
+  if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
+  if (normalized === "factor por holguras") return "factor_por_holguras";
+  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
+    return "cantidad_sellos_con_factores";
+  }
+  if (normalized === "aislacion") return "aislacion";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("aislacion")) {
+    return "cantidad_sellos_aislacion";
+  }
+  if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
+  if (normalized === "cantidad final") return "cantidad_final";
+  if (normalized === "folio") return "folio";
+  return textFrom(value);
+};
+
 const getRegistroCampoId = (field: CampoConfiguracionRegistro): string =>
-  textFrom(field.campo) ||
-  textFrom(field.key) ||
-  textFrom(field.nombreCampo) ||
-  textFrom(field.nombre) ||
-  textFrom(field.label) ||
-  textFrom(field.id);
+  normalizeRegistroCampoKey(field.campo) ||
+  normalizeRegistroCampoKey(field.key) ||
+  normalizeRegistroCampoKey(field.nombreCampo) ||
+  normalizeRegistroCampoKey(field.nombre) ||
+  normalizeRegistroCampoKey(field.label) ||
+  normalizeRegistroCampoKey(field.id);
 
 const getRegistroCampoLabel = (field: CampoConfiguracionRegistro): string => {
   const raw =
@@ -177,9 +251,18 @@ const getRegistroCampoColor = (
       field.categoria
   );
   const campo = normalizeRegistroText(getRegistroCampoId(field));
+  const campoKey = getRegistroCampoId(field);
   const label = normalizeRegistroText(getRegistroCampoLabel(field));
   const identity = `${campo} ${label}`;
 
+  if (role === "trabajador" && trabajadorProhibidoMatrixCampos.has(campoKey)) return "rojo";
+  if (
+    (role === "jefeobra" && jefeObraConfigurableCampos.has(campoKey)) ||
+    (role === "trabajador" && trabajadorConfigurableCampos.has(campoKey)) ||
+    configurableCatalogKeys.has(campoKey)
+  ) {
+    return "azul";
+  }
   if (greenRegistroCampos.has(campo) || greenRegistroCampos.has(label)) {
     return "verde";
   }
@@ -202,14 +285,14 @@ const normalizeRegistroField = (
   const normalized: CampoConfiguracionRegistro = {
     ...field,
     campo: getRegistroCampoId(field),
-    label: getRegistroCampoLabel(field),
+    label: matrixCampoLabels[getRegistroCampoId(field)] || getRegistroCampoLabel(field),
     color,
     visible: Boolean(field.visible),
   };
 
   if (color === "verde") return { ...normalized, visible: true };
   if (role === "trabajador" && color === "rojo") {
-    return { ...normalized, visible: false, prohibido: true };
+    return { ...normalized, visible: false, prohibido: true, configurable: false };
   }
   return normalized;
 };
@@ -222,9 +305,19 @@ const withCatalogRegistroFields = (
   const existing = new Set(normalized.map((field) => field.campo));
   return [
     ...normalized,
-    ...camposRegistroNuevos
-      .filter((field) => !existing.has(field.campo))
-      .map((field) => normalizeRegistroField(role, field)),
+    ...getCatalogKeysForRole(role)
+      .filter((campo) => !existing.has(campo))
+      .map((campo) =>
+        normalizeRegistroField(role, {
+          campo,
+          label: matrixCampoLabels[campo] || campo,
+          color:
+            role === "trabajador" && trabajadorProhibidoMatrixCampos.has(campo)
+              ? "rojo"
+              : "azul",
+          visible: false,
+        })
+      ),
   ];
 };
 

@@ -32,7 +32,7 @@ const roleBlocks: RoleBlock[] = [
   },
   {
     key: "trabajador",
-    title: "Trabajador",
+    title: "Trabajador / Terreno",
     description: "Campos disponibles para usuarios de terreno.",
   },
 ];
@@ -70,9 +70,89 @@ const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
   { campo: "reparacion_tabique", label: "ReparaciÃ³n tabique", color: "azul", visible: false },
   { campo: "cantidad_final", label: "Cantidad final", color: "azul", visible: false },
 ];
+const configurableCatalogKeys = new Set(camposRegistroNuevos.map((field) => field.campo));
+
+const matrixCampoLabels: Record<string, string> = {
+  eje_alfabetico: "Eje Alfabético",
+  eje_numerico: "Eje Numérico",
+  recinto: "Recinto",
+  modulo: "Módulo o edificio",
+  holgura: "Holgura (cm)",
+  factor_por_holguras: "Factor por holguras",
+  cantidad_sellos_con_factores: "Cantidad sellos con factores",
+  cantidad_sellos_aislacion: "Cantidad sellos aislación",
+  cantidad_final: "Cantidad final",
+  folio: "FOLIO",
+};
+
+const jefeObraConfigurableCampos = new Set([
+  "eje_alfabetico",
+  "eje_numerico",
+  "recinto",
+  "modulo",
+  "holgura",
+  "factor_por_holguras",
+  "cantidad_sellos_con_factores",
+  "cantidad_final",
+  "folio",
+]);
+
+const trabajadorConfigurableCampos = new Set([
+  "eje_alfabetico",
+  "eje_numerico",
+  "recinto",
+  "modulo",
+  "holgura",
+]);
+
+const trabajadorProhibidoCampos = new Set([
+  "factor_por_holguras",
+  "cantidad_sellos_con_factores",
+  "cantidad_sellos_aislacion",
+  "cantidad_final",
+]);
+
+const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) =>
+  role === "trabajador"
+    ? [...trabajadorConfigurableCampos, ...trabajadorProhibidoCampos]
+    : [...jefeObraConfigurableCampos];
 
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const normalizeCampoText = (value: unknown): string =>
+  textFrom(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const normalizeCampoKey = (value: unknown): string => {
+  const normalized = normalizeCampoText(value);
+  if (!normalized) return "";
+  if (normalized === "supervisor") return "jefeobra";
+  if (normalized === "terreno") return "trabajador";
+  if (normalized === "eje alfabetico") return "eje_alfabetico";
+  if (normalized === "eje numerico") return "eje_numerico";
+  if (normalized === "recinto") return "recinto";
+  if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
+  if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
+  if (normalized === "factor por holguras") return "factor_por_holguras";
+  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
+    return "cantidad_sellos_con_factores";
+  }
+  if (normalized === "aislacion") return "aislacion";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("aislacion")) {
+    return "cantidad_sellos_aislacion";
+  }
+  if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
+  if (normalized === "cantidad final") return "cantidad_final";
+  if (normalized === "folio") return "folio";
+  return textFrom(value);
+};
 
 const normalizeColor = (field: CampoConfiguracionRegistro): ColorConfiguracionCampoRegistro => {
   const rawColor = textFrom(
@@ -93,17 +173,28 @@ const normalizeFieldForRole = (
   field: CampoConfiguracionRegistro
 ): CampoConfiguracionRegistro => {
   const campo =
-    textFrom(field.campo) ||
-    textFrom(field.key) ||
-    textFrom(field.nombreCampo) ||
-    textFrom(field.nombre) ||
-    textFrom(field.label) ||
-    textFrom(field.id);
-  const color = normalizeColor(field);
+    normalizeCampoKey(field.campo) ||
+    normalizeCampoKey(field.key) ||
+    normalizeCampoKey(field.nombreCampo) ||
+    normalizeCampoKey(field.nombre) ||
+    normalizeCampoKey(field.label) ||
+    normalizeCampoKey(field.id);
+  const isTrabajadorProhibido =
+    role === "trabajador" && trabajadorProhibidoCampos.has(campo);
+  const isConfigurableMatrix =
+    role === "jefeobra"
+      ? jefeObraConfigurableCampos.has(campo)
+      : trabajadorConfigurableCampos.has(campo);
+  const color: ColorConfiguracionCampoRegistro = isTrabajadorProhibido
+    ? "rojo"
+    : isConfigurableMatrix || configurableCatalogKeys.has(campo)
+    ? "azul"
+    : normalizeColor(field);
   const normalized: CampoConfiguracionRegistro = {
     ...field,
     campo,
     label:
+      matrixCampoLabels[campo] ||
       textFrom(field.label) ||
       textFrom(field.nombre) ||
       textFrom(field.nombreCampo) ||
@@ -117,7 +208,7 @@ const normalizeFieldForRole = (
   }
 
   if (role === "trabajador" && color === "rojo") {
-    return { ...normalized, visible: false, prohibido: true };
+    return { ...normalized, visible: false, prohibido: true, configurable: false };
   }
 
   return normalized;
@@ -131,9 +222,19 @@ const withCatalogFields = (
   const existing = new Set(normalized.map((field) => field.campo));
   return [
     ...normalized,
-    ...camposRegistroNuevos
-      .filter((field) => !existing.has(field.campo))
-      .map((field) => normalizeFieldForRole(role, field)),
+    ...getCatalogKeysForRole(role)
+      .filter((campo) => !existing.has(campo))
+      .map((campo) =>
+        normalizeFieldForRole(role, {
+          campo,
+          label: matrixCampoLabels[campo] || campo,
+          color:
+            role === "trabajador" && trabajadorProhibidoCampos.has(campo)
+              ? "rojo"
+              : "azul",
+          visible: false,
+        })
+      ),
   ];
 };
 
@@ -198,7 +299,8 @@ const ConfiguracionCamposRegistro: React.FC = () => {
       return {
         ...current,
         [role]: current[role].map((field) =>
-          field.campo === fieldKey || field.key === fieldKey
+          normalizeCampoKey(field.campo) === fieldKey ||
+          normalizeCampoKey(field.key) === fieldKey
             ? { ...field, visible }
             : field
         ),
@@ -212,11 +314,18 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     roleBlocks.flatMap((block) =>
       source[block.key]
         .map((field) => normalizeFieldForRole(block.key, field))
-        .filter((field) => field.color === "azul")
+        .filter(
+          (field) =>
+            field.color === "azul" ||
+            (block.key === "trabajador" && field.color === "rojo")
+        )
         .map((field) => ({
           campo: field.campo,
           rol: block.key,
-          visible: field.visible,
+          visible:
+            block.key === "trabajador" && field.color === "rojo"
+              ? false
+              : field.visible,
         }))
     );
 

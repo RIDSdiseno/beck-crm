@@ -77,7 +77,38 @@ const createId = (): string => {
 const normalizeText = (value: string): string => value.trim().toLowerCase();
 
 const getCampoConfigKey = (field: CampoConfiguracionRegistro): string =>
-  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+  normalizeCampoConfigKey(field.campo || field.key || field.nombreCampo || field.nombre || field.label || "");
+
+const normalizeCampoConfigKey = (value: unknown): string => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+  if (!normalized) return "";
+  if (normalized === "supervisor") return "jefeobra";
+  if (normalized === "terreno") return "trabajador";
+  if (normalized === "eje alfabetico") return "eje_alfabetico";
+  if (normalized === "eje numerico") return "eje_numerico";
+  if (normalized === "recinto") return "recinto";
+  if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
+  if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
+  if (normalized === "factor por holguras") return "factor_por_holguras";
+  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
+    return "cantidad_sellos_con_factores";
+  }
+  if (normalized === "aislacion") return "aislacion";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("aislacion")) {
+    return "cantidad_sellos_aislacion";
+  }
+  if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
+  if (normalized === "cantidad final") return "cantidad_final";
+  if (normalized === "folio") return "folio";
+  return String(value ?? "").trim();
+};
 
 const isCampoVisible = (
   fields: CampoConfiguracionRegistro[],
@@ -373,13 +404,17 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                 Ubicación y responsable
               </p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {showCampo("eje_alfabetico") && (
                 <Form.Item name="ejeAlfabetico" label="Eje alfabético">
                   <Input placeholder="Ej: B" />
                 </Form.Item>
+                )}
 
+                {showCampo("eje_numerico") && (
                 <Form.Item name="ejeNumerico" label="Eje numérico">
                   <Input placeholder="Ej: 12" />
                 </Form.Item>
+                )}
 
                 <Form.Item
                   name="nombreSellador"
@@ -391,9 +426,11 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {(showCampo("recinto") || showCampo("modulo")) && (
                 <Form.Item name="recinto" label="Recinto / Módulo">
                   <Input placeholder="Ej: Sala bombas" />
                 </Form.Item>
+                )}
 
                 {!esEspuma && (
                   <Form.Item name="numeroSello" label="N° del sello">
@@ -428,6 +465,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                   </Form.Item>
                 )}
 
+                {showCampo("holgura") && (
                 <Form.Item
                   name="holguraCm"
                   label="Holgura (cm)"
@@ -435,7 +473,9 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                 >
                   <InputNumber min={0} style={{ width: "100%" }} />
                 </Form.Item>
+                )}
 
+                {showCampo("factor_por_holguras") && (
                 <Form.Item
                   name="factorHolgura"
                   label="Factor por holguras"
@@ -451,6 +491,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                     ]}
                   />
                 </Form.Item>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -250,7 +250,38 @@ const getRegistroConfigRole = (
 };
 
 const getCampoKey = (field: CampoConfiguracionRegistro): string =>
-  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+  normalizeConfigCampoKey(field.campo || field.key || field.nombreCampo || field.nombre || field.label || "");
+
+const normalizeConfigCampoKey = (value: unknown): string => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+  if (!normalized) return "";
+  if (normalized === "supervisor") return "jefeobra";
+  if (normalized === "terreno") return "trabajador";
+  if (normalized === "eje alfabetico") return "eje_alfabetico";
+  if (normalized === "eje numerico") return "eje_numerico";
+  if (normalized === "recinto") return "recinto";
+  if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
+  if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
+  if (normalized === "factor por holguras") return "factor_por_holguras";
+  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
+    return "cantidad_sellos_con_factores";
+  }
+  if (normalized === "aislacion") return "aislacion";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("aislacion")) {
+    return "cantidad_sellos_aislacion";
+  }
+  if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
+  if (normalized === "cantidad final") return "cantidad_final";
+  if (normalized === "folio") return "folio";
+  return String(value ?? "").trim();
+};
 
 const formatFecha = (fecha?: string | null): string =>
   fecha ? dayjs(fecha).format("DD-MM-YYYY") : "-";
@@ -856,12 +887,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     {
       title: "Eje A.",
       dataIndex: "ejeAlfabetico",
-      key: "ejeAlfabetico",
+      key: "eje_alfabetico",
       width: 70,
     },
     {
       title: "Eje N.",
-      key: "ejeNumerico",
+      key: "eje_numerico",
       width: 70,
       render: (_: unknown, r: RegistroSello) => getEjeNumerico(r),
     },
@@ -923,7 +954,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     {
       title: "Holgura (cm)",
       dataIndex: "holguraCm",
-      key: "holguraCm",
+      key: "holgura",
       width: 100,
     },
     {
@@ -1204,8 +1235,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "usuarioNombre",
     "fechaEjecucion",
     "piso",
+    "eje_alfabetico",
+    "eje_numerico",
     "recinto",
     "cantidadMetros",
+    "holgura",
     "estado",
     "factor_por_holguras",
     "cantidad_sellos_con_factores",
@@ -1229,6 +1263,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         : todasLasColumnas.filter((c) => c.key && clavesCompactas.has(String(c.key)));
       return baseColumns.filter((column) => {
         const key = column.key ? String(column.key) : "";
+        if (key === "recinto") return !hiddenKeys.has("recinto") && !hiddenKeys.has("modulo");
         return !hiddenKeys.has(key);
       });
     },
@@ -1735,13 +1770,21 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         { header: "Obra",            key: "obra",           width: 20 },
         { header: "Fecha",           key: "fecha",          width: 13 },
         { header: "Piso",            key: "piso",           width: 10 },
-        { header: "Eje alfabético",  key: "ejeAlfa",        width: 12 },
-        { header: "Eje numérico",    key: "ejeNum",         width: 12 },
+        ...(exportFieldVisible("eje_alfabetico")
+          ? [{ header: "Eje alfabético", key: "ejeAlfa", width: 12 }]
+          : []),
+        ...(exportFieldVisible("eje_numerico")
+          ? [{ header: "Eje numérico", key: "ejeNum", width: 12 }]
+          : []),
         { header: "Sellador",        key: "sellador",       width: 20 },
-        { header: "Recinto",         key: "recinto",        width: 18 },
+        ...(exportFieldVisible("recinto") || exportFieldVisible("modulo")
+          ? [{ header: "Recinto", key: "recinto", width: 18 }]
+          : []),
         { header: "Cant. sellos",    key: "sellos",         width: 14 },
         { header: "Metros lineales", key: "metros",         width: 14 },
-        { header: "Holgura (cm)",    key: "holgura",        width: 13 },
+        ...(exportFieldVisible("holgura")
+          ? [{ header: "Holgura (cm)", key: "holgura", width: 13 }]
+          : []),
         { header: "Accesibilidad",   key: "accesibilidad",  width: 14 },
         ...(exportFieldVisible("factor_por_holguras")
           ? [{ header: "Factor por holguras", key: "factorPorHolguras", width: 18 }]
@@ -1766,7 +1809,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           : []),
         { header: "Estado",          key: "estado",         width: 14 },
         { header: "Observaciones",   key: "observaciones",  width: 30 },
-        { header: "FOLIO",           key: "folio",          width: 14 },
+        ...(exportFieldVisible("folio")
+          ? [{ header: "FOLIO", key: "folio", width: 14 }]
+          : []),
         { header: "Foto",            key: "foto",           width: 18 },
       ];
       addBanner(wsSellos, SELLOS_COLS.length);
@@ -1835,14 +1880,22 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         { header: "Fecha ejecucion sello", key: "fecha",         width: 18 },
         { header: "Día",                   key: "dia",           width: 12 },
         { header: "Piso",                  key: "piso",          width: 10 },
-        { header: "Eje Alfabético",        key: "ejeAlfa",       width: 12 },
-        { header: "Eje Numérico",          key: "ejeNum",        width: 12 },
+        ...(exportFieldVisible("eje_alfabetico")
+          ? [{ header: "Eje Alfabético", key: "ejeAlfa", width: 12 }]
+          : []),
+        ...(exportFieldVisible("eje_numerico")
+          ? [{ header: "Eje Numérico", key: "ejeNum", width: 12 }]
+          : []),
         { header: "Nombre sellador",       key: "sellador",      width: 20 },
         { header: "Foto",                  key: "foto",          width: 18 },
-        { header: "Recinto",               key: "recinto",       width: 18 },
+        ...(exportFieldVisible("recinto") || exportFieldVisible("modulo")
+          ? [{ header: "Recinto", key: "recinto", width: 18 }]
+          : []),
         { header: "Longitud (m)",          key: "longitud",      width: 13 },
         { header: "Observaciones",         key: "observaciones", width: 30 },
-        { header: "FOLIO",                 key: "folio",         width: 14 },
+        ...(exportFieldVisible("folio")
+          ? [{ header: "FOLIO", key: "folio", width: 14 }]
+          : []),
       ];
       addBanner(wsJuntas, JUNTAS_COLS.length);
       addHeaders(wsJuntas, JUNTAS_COLS);

@@ -156,7 +156,38 @@ const FieldView: React.FC<{ label: string; value: React.ReactNode; span?: number
 );
 
 const getCampoConfigKey = (field: CampoConfiguracionRegistro): string =>
-  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+  normalizeCampoConfigKey(field.campo || field.key || field.nombreCampo || field.nombre || field.label || "");
+
+const normalizeCampoConfigKey = (value: unknown): string => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+  if (!normalized) return "";
+  if (normalized === "supervisor") return "jefeobra";
+  if (normalized === "terreno") return "trabajador";
+  if (normalized === "eje alfabetico") return "eje_alfabetico";
+  if (normalized === "eje numerico") return "eje_numerico";
+  if (normalized === "recinto") return "recinto";
+  if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
+  if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
+  if (normalized === "factor por holguras") return "factor_por_holguras";
+  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
+    return "cantidad_sellos_con_factores";
+  }
+  if (normalized === "aislacion") return "aislacion";
+  if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("aislacion")) {
+    return "cantidad_sellos_aislacion";
+  }
+  if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
+  if (normalized === "cantidad final") return "cantidad_final";
+  if (normalized === "folio") return "folio";
+  return String(value ?? "").trim();
+};
 
 const isCampoVisible = (
   fields: CampoConfiguracionRegistro[],
@@ -166,7 +197,10 @@ const isCampoVisible = (
   return field ? Boolean(field.visible) : true;
 };
 
-const renderDetalleJuntaLineal = (r: RegistroSello): React.ReactNode => (
+const renderDetalleJuntaLineal = (
+  r: RegistroSello,
+  showCampo: (key: string) => boolean = () => true
+): React.ReactNode => (
   <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
     <FieldView label="Descripción" value={r.descripcionMaterial || r.itemizadoBeck} />
     <FieldView
@@ -175,16 +209,16 @@ const renderDetalleJuntaLineal = (r: RegistroSello): React.ReactNode => (
     />
     <FieldView label="Día" value={r.dia} />
     <FieldView label="Piso" value={r.piso} />
-    <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />
-    <FieldView label="Eje Numérico" value={r.ejeNumerico} />
+    {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
+    {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
     <FieldView label="Nombre sellador" value={r.nombreSellador} />
-    <FieldView label="Recinto" value={r.recinto} />
+    {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
     <FieldView
       label="Longitud (m)"
       value={r.metrosLineales != null ? `${Number(r.metrosLineales).toFixed(2)} m` : "-"}
     />
     <FieldView label="Observaciones" value={r.observaciones} span={2} />
-    <FieldView label="FOLIO" value={r.numeroSello} />
+    {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
     <div className="mb-3">
       <p className="mb-1 text-[11px] text-slate-500">Estado</p>
       <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
@@ -192,7 +226,10 @@ const renderDetalleJuntaLineal = (r: RegistroSello): React.ReactNode => (
   </div>
 );
 
-const renderDetalleSelloCortafuego = (r: RegistroSello): React.ReactNode => (
+const renderDetalleSelloCortafuego = (
+  r: RegistroSello,
+  showCampo: (key: string) => boolean = () => true
+): React.ReactNode => (
   <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
     <FieldView label="Codigo BECK" value={r.codigo} />
     <FieldView label="Itemizado BECK" value={r.itemizadoBeck} />
@@ -203,28 +240,28 @@ const renderDetalleSelloCortafuego = (r: RegistroSello): React.ReactNode => (
     />
     <FieldView label="Día" value={r.dia} />
     <FieldView label="Piso" value={r.piso} />
-    <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />
-    <FieldView label="Eje Numérico" value={r.ejeNumerico} />
+    {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
+    {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
     <FieldView label="Nombre sellador" value={r.nombreSellador} />
-    <FieldView label="Recinto" value={r.recinto} />
+    {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
     <FieldView label="N° DEL SELLO" value={r.numeroSello} />
     <FieldView
       label="Cantidad de Sellos"
       value={r.cantidadSellos != null ? String(r.cantidadSellos) : "-"}
     />
-    <FieldView
+    {showCampo("holgura") && <FieldView
       label="Holgura (cm)"
       value={r.holguraCm != null ? String(r.holguraCm) : "-"}
-    />
-    <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />
-    <FieldView label="Cielo modular" value={r.cieloModular ?? "-"} />
-    <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />
-    <FieldView label="AislaciÃ³n" value={r.aislacion ?? "-"} />
-    <FieldView label="Cantidad sellos aislaciÃ³n" value={r.cantidadSellosAislacion ?? "-"} />
-    <FieldView label="ReparaciÃ³n tabique" value={r.reparacionTabique ?? "-"} />
-    <FieldView label="Cantidad final" value={r.cantidadFinal ?? "-"} />
+    />}
+    {showCampo("factor_por_holguras") && <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />}
+    {showCampo("cielo_modular") && <FieldView label="Cielo modular" value={r.cieloModular ?? "-"} />}
+    {showCampo("cantidad_sellos_con_factores") && <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />}
+    {showCampo("aislacion") && <FieldView label="AislaciÃ³n" value={r.aislacion ?? "-"} />}
+    {showCampo("cantidad_sellos_aislacion") && <FieldView label="Cantidad sellos aislaciÃ³n" value={r.cantidadSellosAislacion ?? "-"} />}
+    {showCampo("reparacion_tabique") && <FieldView label="ReparaciÃ³n tabique" value={r.reparacionTabique ?? "-"} />}
+    {showCampo("cantidad_final") && <FieldView label="Cantidad final" value={r.cantidadFinal ?? "-"} />}
     <FieldView label="Observaciones" value={r.observaciones} span={2} />
-    <FieldView label="FOLIO" value={r.numeroSello} />
+    {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
     <div className="mb-3">
       <p className="mb-1 text-[11px] text-slate-500">Estado</p>
       <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
@@ -526,18 +563,24 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             >
               <Input />
             </Form.Item>
+            {(showCampo("modulo") || showCampo("recinto")) && (
             <Form.Item name="modulo" label="Módulo" className="mb-3">
               <Input />
             </Form.Item>
+            )}
             <Form.Item name="piso" label="Piso" className="mb-3">
               <Input />
             </Form.Item>
+            {showCampo("eje_numerico") && (
             <Form.Item name="ejeNumerico" label="Eje numérico" className="mb-3">
               <Input />
             </Form.Item>
+            )}
+            {showCampo("eje_alfabetico") && (
             <Form.Item name="ejeAlfabetico" label="Eje alfabético" className="mb-3">
               <Input />
             </Form.Item>
+            )}
             {!esEspuma && (
               <Form.Item name="numeroSello" label="N° sello" className="mb-3">
                 <Input />
@@ -559,9 +602,11 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             >
               <Input />
             </Form.Item>
+            {showCampo("holgura") && (
             <Form.Item name="holguraCm" label="Holgura (cm)" className="mb-3">
               <InputNumber min={0} className="w-full" />
             </Form.Item>
+            )}
             <Form.Item name="accesibilidad" label="Accesibilidad" className="mb-3">
               <InputNumber min={0} className="w-full" />
             </Form.Item>
@@ -612,9 +657,9 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             </Form.Item>
           </Form>
         ) : registro.tipoRegistro === "junta_lineal_espuma" ? (
-          renderDetalleJuntaLineal(registro)
+          renderDetalleJuntaLineal(registro, showCampo)
         ) : (
-          renderDetalleSelloCortafuego(registro)
+          renderDetalleSelloCortafuego(registro, showCampo)
         )}
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
