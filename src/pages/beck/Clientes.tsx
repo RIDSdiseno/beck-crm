@@ -41,6 +41,7 @@ import {
   type ContactoClienteBeckPayload,
   type ImportarClientesResult,
 } from "../../services/api";
+import { useAuth } from "../../context/useAuth";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 
 const { Option } = Select;
@@ -119,6 +120,9 @@ type FiltroActivo = "todos" | "activos" | "inactivos";
 // ── Componente principal ──────────────────────────────────────────────────────
 
 const Clientes: React.FC = () => {
+  const { user: currentUser } = useAuth();
+  const isReadOnly = currentUser?.rol === "Visualizador";
+
   // Lista
   const [clientes, setClientes] = useState<ClienteBeck[]>([]);
   const [loading, setLoading] = useState(false);
@@ -484,14 +488,16 @@ const Clientes: React.FC = () => {
           >
             {r.contactos?.length ?? 0}
           </Tag>
-          <Button
-            type="link"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => abrirAgregarContacto(r)}
-            title="Agregar contacto"
-            className="!h-5 !px-1"
-          />
+          {!isReadOnly && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => abrirAgregarContacto(r)}
+              title="Agregar contacto"
+              className="!h-5 !px-1"
+            />
+          )}
         </Space>
       ),
     },
@@ -508,13 +514,16 @@ const Clientes: React.FC = () => {
             onClick={() => abrirDetalle(record)}
             title="Ver detalle"
           />
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => abrirEditar(record)}
-            title="Editar"
-          />
+          {!isReadOnly && (
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => abrirEditar(record)}
+              title="Editar"
+            />
+          )}
+          {!isReadOnly && (
           <Popconfirm
             title={`¿${record.activo ? "Desactivar" : "Activar"} este cliente?`}
             onConfirm={() => handleToggleEstado(record)}
@@ -529,6 +538,7 @@ const Clientes: React.FC = () => {
               title={record.activo ? "Desactivar" : "Activar"}
             />
           </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -590,7 +600,7 @@ const Clientes: React.FC = () => {
           <Badge status="default" text="Inactivo" />
         ),
     },
-    {
+    ...(!isReadOnly ? [{
       title: "Acciones",
       key: "acciones",
       width: 90,
@@ -619,7 +629,7 @@ const Clientes: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   // ── Columnas oportunidades ────────────────────────────────────────────────
@@ -693,32 +703,34 @@ const Clientes: React.FC = () => {
             Maestro de clientes · RUT como identificador principal
           </Text>
         </div>
-        <Space wrap>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={descargarPlantilla}
-            disabled={importarLoading}
-          >
-            Descargar plantilla Excel
-          </Button>
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => setImportarModalOpen(true)}
-            disabled={importarLoading}
-            loading={importarLoading}
-          >
-            Importar Excel
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={abrirCrear}
-            disabled={importarLoading}
-            className="bg-amber-500 border-amber-500 hover:!bg-amber-600 hover:!border-amber-600"
-          >
-            Nuevo cliente
-          </Button>
-        </Space>
+        {!isReadOnly && (
+          <Space wrap>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={descargarPlantilla}
+              disabled={importarLoading}
+            >
+              Descargar plantilla Excel
+            </Button>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportarModalOpen(true)}
+              disabled={importarLoading}
+              loading={importarLoading}
+            >
+              Importar Excel
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={abrirCrear}
+              disabled={importarLoading}
+              className="bg-amber-500 border-amber-500 hover:!bg-amber-600 hover:!border-amber-600"
+            >
+              Nuevo cliente
+            </Button>
+          </Space>
+        )}
       </div>
 
       {/* Filtros */}
@@ -934,7 +946,7 @@ const Clientes: React.FC = () => {
         onClose={() => setDrawerOpen(false)}
         width={760}
         extra={
-          selectedCliente && (
+          selectedCliente && !isReadOnly && (
             <Button
               icon={<EditOutlined />}
               onClick={() => {
@@ -1011,13 +1023,15 @@ const Clientes: React.FC = () => {
                 <Text strong className="text-sm">
                   Contactos
                 </Text>
-                <Button
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => abrirAgregarContacto()}
-                >
-                  Agregar contacto
-                </Button>
+                {!isReadOnly && (
+                  <Button
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={() => abrirAgregarContacto()}
+                  >
+                    Agregar contacto
+                  </Button>
+                )}
               </div>
               <Table
                 dataSource={contactos}

@@ -27,6 +27,7 @@ import {
   SaveOutlined,
 } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
+import { useAuth } from "../../context/useAuth";
 import {
   oficinaTecnicaPreventaAPI,
   type EstadoSolicitudOficinaTecnica,
@@ -145,6 +146,7 @@ const EstadoTag: React.FC<{ estado?: string }> = ({ estado }) => (
 );
 
 const OficinaTecnica: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [form] = Form.useForm<RevisionFormValues>();
   const [modal, modalContextHolder] = Modal.useModal();
@@ -161,6 +163,7 @@ const OficinaTecnica: React.FC = () => {
   const [estadoFilter, setEstadoFilter] = useState<string | undefined>();
   const [responsableFilter, setResponsableFilter] = useState<string | undefined>();
   const [query, setQuery] = useState("");
+  const isReadOnly = currentUser?.rol === "Visualizador";
 
   const loadSolicitudes = async () => {
     try {
@@ -266,7 +269,7 @@ const OficinaTecnica: React.FC = () => {
   };
 
   const handleSaveRevision = async () => {
-    if (!selected) return;
+    if (!selected || isReadOnly) return;
 
     try {
       setSaving(true);
@@ -312,6 +315,8 @@ const OficinaTecnica: React.FC = () => {
     estado: EstadoSolicitudOficinaTecnica,
     extraPayload: Partial<RevisionFormValues> = {}
   ) => {
+    if (isReadOnly) return;
+
     const actionKey = `${solicitud.id}:${estado}`;
 
     try {
@@ -341,6 +346,8 @@ const OficinaTecnica: React.FC = () => {
     solicitud: SolicitudOficinaTecnica,
     estado: EstadoSolicitudOficinaTecnica
   ) => {
+    if (isReadOnly) return;
+
     if (estado === "rechazada") {
       modal.confirm({
         title: "Rechazar solicitud",
@@ -380,7 +387,7 @@ const OficinaTecnica: React.FC = () => {
   };
 
   const handleConfirmarRechazo = async () => {
-    if (!rechazoSolicitud || rechazando) return;
+    if (!rechazoSolicitud || rechazando || isReadOnly) return;
 
     const motivo = motivoRechazo.trim();
     if (!motivo) {
@@ -438,7 +445,7 @@ const OficinaTecnica: React.FC = () => {
         <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(record)}>
           Ver
         </Button>
-        {items.length ? (
+        {!isReadOnly && items.length ? (
           <Dropdown
             trigger={["click"]}
             menu={{
@@ -643,14 +650,16 @@ const OficinaTecnica: React.FC = () => {
         title="Detalle solicitud Oficina Técnica"
         width="min(920px, 95vw)"
         extra={
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={saving}
-            onClick={() => void handleSaveRevision()}
-          >
-            Guardar revisión
-          </Button>
+          isReadOnly ? null : (
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={saving}
+              onClick={() => void handleSaveRevision()}
+            >
+              Guardar revisión
+            </Button>
+          )
         }
       >
         {!selectedRecord ? (
@@ -712,6 +721,7 @@ const OficinaTecnica: React.FC = () => {
             <Form<RevisionFormValues>
               form={form}
               layout="vertical"
+              disabled={isReadOnly}
               className="rounded-xl border border-slate-200 bg-white p-4"
             >
               <Typography.Title level={5} className="!mb-3">

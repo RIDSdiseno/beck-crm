@@ -29,10 +29,13 @@ import NuevoRegistroDrawer, {
 import { loadObras } from "../../data/obrasStorage";
 import {
   api,
+  configuracionCamposRegistroAPI,
   itemizadosMandanteAPI,
   obrasAPI,
+  type CampoConfiguracionRegistro,
   type ItemizadoMandante,
   type Obra,
+  type RolConfiguracionCamposRegistro,
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
 
@@ -61,6 +64,19 @@ type RegistroApiRecord = {
   numero_sello?: string | null;
   cantidadSellos?: number | string | null;
   cantidad_sellos?: number | string | null;
+  factorPorHolguras?: number | string | null;
+  factor_por_holguras?: number | string | null;
+  cieloModular?: number | string | null;
+  cielo_modular?: number | string | null;
+  cantidadSellosConFactores?: number | string | null;
+  cantidad_sellos_con_factores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidadSellosAislacion?: number | string | null;
+  cantidad_sellos_aislacion?: number | string | null;
+  reparacionTabique?: number | string | null;
+  reparacion_tabique?: number | string | null;
+  cantidadFinal?: number | string | null;
+  cantidad_final?: number | string | null;
   metrosLineales?: number | string | null;
   metros_lineales?: number | string | null;
   longitud?: number | string | null;
@@ -110,6 +126,13 @@ type RegistroUpdatePayload = {
   eje_alfabetico: string;
   numero_sello: string;
   cantidad_sellos: number;
+  factor_por_holguras?: number | string | null;
+  cielo_modular?: number | string | null;
+  cantidad_sellos_con_factores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidad_sellos_aislacion?: number | string | null;
+  reparacion_tabique?: number | string | null;
+  cantidad_final?: number | string | null;
   metros_lineales: number;
   nombre_sellador: string;
   holgura: number;
@@ -218,8 +241,29 @@ const getMetrosLineales = (registro: {
   return Number.isFinite(num) && num > 0 ? num : null;
 };
 
+const getRegistroConfigRole = (
+  rol?: string
+): RolConfiguracionCamposRegistro | null => {
+  if (rol === "JefeObra") return "jefeobra";
+  if (rol === "Terreno") return "trabajador";
+  return null;
+};
+
+const getCampoKey = (field: CampoConfiguracionRegistro): string =>
+  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+
 const formatFecha = (fecha?: string | null): string =>
   fecha ? dayjs(fecha).format("DD-MM-YYYY") : "-";
+
+const formatDecimal = (value?: number | string | null, decimals = 2): string => {
+  if (value === null || value === undefined || value === "") return "-";
+  const num = Number(String(value).replace(",", "."));
+  if (!Number.isFinite(num)) return String(value);
+  return num.toLocaleString("es-CL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
+};
 
 const normalizeSearchText = (value?: string | null): string =>
   (value ?? "")
@@ -315,6 +359,15 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const ejeAlfabetico = r.ejeAlfabetico ?? r.eje_alfabetico ?? "";
   const numeroSello = r.numeroSello ?? r.numero_sello ?? "";
   const cantidadSellos = Number(r.cantidadSellos ?? r.cantidad_sellos ?? 0);
+  const factorPorHolguras = r.factorPorHolguras ?? r.factor_por_holguras ?? null;
+  const cieloModularRaw = r.cieloModular ?? r.cielo_modular ?? r.accesibilidad ?? 1;
+  const cantidadSellosConFactores =
+    r.cantidadSellosConFactores ?? r.cantidad_sellos_con_factores ?? null;
+  const aislacion = r.aislacion ?? null;
+  const cantidadSellosAislacion =
+    r.cantidadSellosAislacion ?? r.cantidad_sellos_aislacion ?? null;
+  const reparacionTabique = r.reparacionTabique ?? r.reparacion_tabique ?? null;
+  const cantidadFinal = r.cantidadFinal ?? r.cantidad_final ?? null;
   // Accept all possible field names for metros lineales
   const metrosLinealesRaw =
     r.metrosLineales ?? r.metros_lineales ?? r.longitud ?? r.longitud_m ?? 0;
@@ -361,10 +414,16 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     metrosLineales,
     tipoRegistro,
     holguraCm,
-    factorHolgura: normalizeFactorHolgura(holguraCm),
-    cieloModular: normalizeCieloModular(accesibilidad),
+    factorHolgura: normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm)),
+    cieloModular: normalizeCieloModular(Number(cieloModularRaw)),
     cantidadSellosConFactor:
-      cantidadSellos * normalizeFactorHolgura(holguraCm),
+      Number(cantidadSellosConFactores ?? cantidadSellos * normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm))),
+    factorPorHolguras,
+    cantidadSellosConFactores,
+    aislacion,
+    cantidadSellosAislacion,
+    reparacionTabique,
+    cantidadFinal,
     observaciones: r.observaciones ?? "",
   };
 };
@@ -422,6 +481,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const [data, setData] = useState<RegistroSello[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
+  const [camposConfigurados, setCamposConfigurados] = useState<CampoConfiguracionRegistro[]>([]);
   const [obrasLoading, setObrasLoading] = useState(false);
   const [savingDetalle, setSavingDetalle] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
@@ -496,6 +556,39 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         .sort((a, b) => a.label.localeCompare(b.label, "es")),
     [obras]
   );
+
+  const obraSeleccionadaId = useMemo(() => {
+    if (!obraSeleccionada) return undefined;
+    return obras.find(
+      (obra) =>
+        normalizeSearchText(obra.nombre) === normalizeSearchText(obraSeleccionada)
+    )?.id;
+  }, [obraSeleccionada, obras]);
+
+  useEffect(() => {
+    const role = getRegistroConfigRole(user?.rol);
+    if (!role) {
+      setCamposConfigurados([]);
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      try {
+        const fields = await configuracionCamposRegistroAPI.obtenerPorRol(
+          role,
+          obraSeleccionadaId
+        );
+        if (active) setCamposConfigurados(fields);
+      } catch {
+        if (active) setCamposConfigurados([]);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [obraSeleccionadaId, user?.rol]);
 
   const filteredData = useMemo(
     () =>
@@ -604,6 +697,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       eje_alfabetico: values.ejeAlfabetico,
       numero_sello: values.numeroSello,
       cantidad_sellos: values.cantidadSellos,
+      factor_por_holguras: values.factorPorHolguras ?? null,
+      cielo_modular: values.cieloModular ?? values.accesibilidad ?? null,
+      cantidad_sellos_con_factores: values.cantidadSellosConFactores ?? null,
+      aislacion: values.aislacion ?? null,
+      cantidad_sellos_aislacion: values.cantidadSellosAislacion ?? null,
+      reparacion_tabique: values.reparacionTabique ?? null,
+      cantidad_final: values.cantidadFinal ?? null,
       metros_lineales: values.metrosLineales ?? 0,
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
@@ -637,9 +737,15 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             nombreSellador: values.nombreSellador,
             holguraCm: values.holguraCm,
             accesibilidad: values.accesibilidad,
-            cieloModular: normalizeCieloModular(values.accesibilidad),
+            factorPorHolguras: values.factorPorHolguras ?? null,
+            cieloModular: normalizeCieloModular(values.cieloModular ?? values.accesibilidad),
+            cantidadSellosConFactores: values.cantidadSellosConFactores ?? null,
+            aislacion: values.aislacion ?? null,
+            cantidadSellosAislacion: values.cantidadSellosAislacion ?? null,
+            reparacionTabique: values.reparacionTabique ?? null,
+            cantidadFinal: values.cantidadFinal ?? null,
             factorHolgura,
-            cantidadSellosConFactor: values.cantidadSellos * factorHolgura,
+            cantidadSellosConFactor: values.cantidadSellosConFactores ?? values.cantidadSellos * factorHolgura,
             observaciones: values.observaciones,
             estado: values.estado,
             itemizadoMandanteId: values.itemizadoMandanteId,
@@ -821,11 +927,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       width: 100,
     },
     {
-      title: "Factor holgura",
-      dataIndex: "factorHolgura",
-      key: "factorHolgura",
+      title: "Factor por holguras",
+      key: "factor_por_holguras",
       width: 120,
-      render: (value: number) => (
+      render: (_: unknown, record: RegistroSello) => {
+        const value = Number(record.factorPorHolguras ?? record.factorHolgura ?? 1);
+        return (
         <Tag
           color={
             value === 1
@@ -837,16 +944,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               : "volcano"
           }
         >
-          F = {value}
+          F = {formatDecimal(value)}
         </Tag>
-      ),
+        );
+      },
     },
     {
       title: "Cielo modular",
-      dataIndex: "cieloModular",
-      key: "cieloModular",
+      key: "cielo_modular",
       width: 150,
-      render: (value: number) => {
+      render: (_: unknown, record: RegistroSello) => {
+        const value = Number(record.cieloModular ?? 1);
         const label =
           value === 1
             ? "F=1 Acceso normal"
@@ -857,11 +965,36 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       },
     },
     {
-      title: "Sellos con factor",
-      dataIndex: "cantidadSellosConFactor",
-      key: "cantidadSellosConFactor",
+      title: "Cantidad sellos con factores",
+      key: "cantidad_sellos_con_factores",
+      width: 170,
+      render: (_: unknown, record: RegistroSello) =>
+        formatDecimal(record.cantidadSellosConFactores ?? record.cantidadSellosConFactor, 2),
+    },
+    {
+      title: "AislaciÃ³n",
+      key: "aislacion",
+      width: 110,
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.aislacion, 2),
+    },
+    {
+      title: "Cantidad sellos aislaciÃ³n",
+      key: "cantidad_sellos_aislacion",
+      width: 170,
+      render: (_: unknown, record: RegistroSello) =>
+        formatDecimal(record.cantidadSellosAislacion, 2),
+    },
+    {
+      title: "ReparaciÃ³n tabique",
+      key: "reparacion_tabique",
+      width: 150,
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.reparacionTabique, 2),
+    },
+    {
+      title: "Cantidad final",
+      key: "cantidad_final",
       width: 130,
-      render: (value: number) => value.toFixed(1),
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.cantidadFinal, 2),
     },
     {
       title: "Foto",
@@ -1074,19 +1207,33 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "recinto",
     "cantidadMetros",
     "estado",
-    "factorHolgura",
-    "cantidadSellosConFactor",
+    "factor_por_holguras",
+    "cantidad_sellos_con_factores",
     "foto",
     "acciones",
   ]);
 
   const columnasTabla = useMemo(
-    () =>
-      vistaCompleta
+    () => {
+      const hiddenKeys = new Set(
+        camposConfigurados
+          .map((field) => ({
+            key: getCampoKey(field),
+            visible: Boolean(field.visible),
+          }))
+          .filter((field) => field.key && !field.visible)
+          .map((field) => field.key)
+      );
+      const baseColumns = vistaCompleta
         ? todasLasColumnas
-        : todasLasColumnas.filter((c) => c.key && clavesCompactas.has(String(c.key))),
+        : todasLasColumnas.filter((c) => c.key && clavesCompactas.has(String(c.key)));
+      return baseColumns.filter((column) => {
+        const key = column.key ? String(column.key) : "";
+        return !hiddenKeys.has(key);
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vistaCompleta]
+    [vistaCompleta, camposConfigurados]
   );
 
   const openNuevo = () => {
@@ -1123,7 +1270,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       holguraCm: values.holguraCm,
       factorHolgura: factor,
       cieloModular: values.cieloModular,
-      cantidadSellosConFactor: cantidad * factor,
+      factorPorHolguras: values.factorHolgura,
+      cantidadSellosConFactores: values.cantidadSellosConFactores ?? cantidad * factor,
+      aislacion: values.aislacion ?? null,
+      cantidadSellosAislacion: values.cantidadSellosAislacion ?? null,
+      reparacionTabique: values.reparacionTabique ?? null,
+      cantidadFinal: values.cantidadFinal ?? null,
+      cantidadSellosConFactor: values.cantidadSellosConFactores ?? cantidad * factor,
       observaciones: values.observaciones,
     };
 
@@ -1456,6 +1609,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       // ── Separar por tipo ──────────────────────────────────────────────────
       const sellos = baseExportData.filter((r) => getTipoRegistro(r) === "sello_cortafuego");
       const juntas = baseExportData.filter((r) => getTipoRegistro(r) === "junta_lineal_espuma");
+      const exportHiddenKeys = new Set(
+        camposConfigurados
+          .map((field) => ({ key: getCampoKey(field), visible: Boolean(field.visible) }))
+          .filter((field) => field.key && !field.visible)
+          .map((field) => field.key)
+      );
+      const exportFieldVisible = (key: string) => !exportHiddenKeys.has(key);
 
       // ── Thumbnails separados ──────────────────────────────────────────────
       const sellosThumbs = await Promise.all(
@@ -1583,6 +1743,27 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         { header: "Metros lineales", key: "metros",         width: 14 },
         { header: "Holgura (cm)",    key: "holgura",        width: 13 },
         { header: "Accesibilidad",   key: "accesibilidad",  width: 14 },
+        ...(exportFieldVisible("factor_por_holguras")
+          ? [{ header: "Factor por holguras", key: "factorPorHolguras", width: 18 }]
+          : []),
+        ...(exportFieldVisible("cielo_modular")
+          ? [{ header: "Cielo modular", key: "cieloModular", width: 16 }]
+          : []),
+        ...(exportFieldVisible("cantidad_sellos_con_factores")
+          ? [{ header: "Cantidad sellos con factores", key: "cantidadSellosConFactores", width: 24 }]
+          : []),
+        ...(exportFieldVisible("aislacion")
+          ? [{ header: "AislaciÃ³n", key: "aislacion", width: 14 }]
+          : []),
+        ...(exportFieldVisible("cantidad_sellos_aislacion")
+          ? [{ header: "Cantidad sellos aislaciÃ³n", key: "cantidadSellosAislacion", width: 22 }]
+          : []),
+        ...(exportFieldVisible("reparacion_tabique")
+          ? [{ header: "ReparaciÃ³n tabique", key: "reparacionTabique", width: 18 }]
+          : []),
+        ...(exportFieldVisible("cantidad_final")
+          ? [{ header: "Cantidad final", key: "cantidadFinal", width: 16 }]
+          : []),
         { header: "Estado",          key: "estado",         width: 14 },
         { header: "Observaciones",   key: "observaciones",  width: 30 },
         { header: "FOLIO",           key: "folio",          width: 14 },
@@ -1613,6 +1794,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             metros:         getMetrosLineales(r) ?? null,
             holgura:        r.holguraCm,
             accesibilidad:  r.accesibilidad ?? null,
+            factorPorHolguras: r.factorPorHolguras != null ? Number(r.factorPorHolguras) : null,
+            cieloModular: r.cieloModular ?? null,
+            cantidadSellosConFactores:
+              r.cantidadSellosConFactores != null ? Number(r.cantidadSellosConFactores) : null,
+            aislacion: r.aislacion != null ? Number(r.aislacion) : null,
+            cantidadSellosAislacion:
+              r.cantidadSellosAislacion != null ? Number(r.cantidadSellosAislacion) : null,
+            reparacionTabique:
+              r.reparacionTabique != null ? Number(r.reparacionTabique) : null,
+            cantidadFinal: r.cantidadFinal != null ? Number(r.cantidadFinal) : null,
             estado:         getEstadoLabel(r.estado),
             observaciones:  r.observaciones ?? "",
             folio:          r.numeroSello || "-",
@@ -1620,7 +1811,19 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           };
         },
         "foto",
-        new Set(["sellos", "metros", "holgura", "accesibilidad"])
+        new Set([
+          "sellos",
+          "metros",
+          "holgura",
+          "accesibilidad",
+          "factorPorHolguras",
+          "cieloModular",
+          "cantidadSellosConFactores",
+          "aislacion",
+          "cantidadSellosAislacion",
+          "reparacionTabique",
+          "cantidadFinal",
+        ])
       );
 
       // ══════════════════════════════════════════════════════════════════════
@@ -2337,6 +2540,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         onSave={handleGuardarDetalle}
         onDownloadPdf={canDownloadPdf ? handleDescargarPdf : undefined}
         itemizadosMandante={itemizadosMandante}
+        camposConfigurados={camposConfigurados}
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}
@@ -2346,6 +2550,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           onClose={() => setOpenDrawer(false)}
           onSubmit={handleSubmit}
           itemizadosMandante={itemizadosMandante}
+          camposConfigurados={camposConfigurados}
         />
       )}
     </div>

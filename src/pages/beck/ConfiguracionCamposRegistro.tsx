@@ -61,6 +61,16 @@ const colorConfig: Record<
   },
 };
 
+const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
+  { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
+  { campo: "cielo_modular", label: "Cielo modular", color: "azul", visible: false },
+  { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
+  { campo: "aislacion", label: "AislaciÃ³n", color: "azul", visible: false },
+  { campo: "cantidad_sellos_aislacion", label: "Cantidad sellos aislaciÃ³n", color: "azul", visible: false },
+  { campo: "reparacion_tabique", label: "ReparaciÃ³n tabique", color: "azul", visible: false },
+  { campo: "cantidad_final", label: "Cantidad final", color: "azul", visible: false },
+];
+
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
@@ -113,6 +123,20 @@ const normalizeFieldForRole = (
   return normalized;
 };
 
+const withCatalogFields = (
+  role: RolConfiguracionCamposRegistro,
+  fields: CampoConfiguracionRegistro[]
+): CampoConfiguracionRegistro[] => {
+  const normalized = fields.map((field) => normalizeFieldForRole(role, field));
+  const existing = new Set(normalized.map((field) => field.campo));
+  return [
+    ...normalized,
+    ...camposRegistroNuevos
+      .filter((field) => !existing.has(field.campo))
+      .map((field) => normalizeFieldForRole(role, field)),
+  ];
+};
+
 const isFieldLocked = (
   role: RolConfiguracionCamposRegistro,
   field: CampoConfiguracionRegistro
@@ -135,12 +159,8 @@ const ConfiguracionCamposRegistro: React.FC = () => {
 
   const normalizedConfig = useMemo(() => {
     return {
-      jefeobra: config.jefeobra.map((field) =>
-        normalizeFieldForRole("jefeobra", field)
-      ),
-      trabajador: config.trabajador.map((field) =>
-        normalizeFieldForRole("trabajador", field)
-      ),
+      jefeobra: withCatalogFields("jefeobra", config.jefeobra),
+      trabajador: withCatalogFields("trabajador", config.trabajador),
     };
   }, [config]);
 

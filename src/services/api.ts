@@ -559,6 +559,13 @@ export interface RegistroTerrenoInput {
   eje_alfabetico: string;
   numero_sello: string;
   cantidad_sellos: number;
+  factor_por_holguras?: number | string | null;
+  cielo_modular?: number | string | null;
+  cantidad_sellos_con_factores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidad_sellos_aislacion?: number | string | null;
+  reparacion_tabique?: number | string | null;
+  cantidad_final?: number | string | null;
   nombre_sellador: string;
   holgura: 1 | 1.2 | 1.4 | 1.8;
   accesibilidad: 1 | 2 | 3;

@@ -31,6 +31,12 @@ export type RegistroSello = {
   factorHolgura: 1 | 1.2 | 1.4 | 1.8;
   cieloModular: 1 | 2 | 3;
   cantidadSellosConFactor: number;
+  factorPorHolguras?: number | string | null;
+  cantidadSellosConFactores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidadSellosAislacion?: number | string | null;
+  reparacionTabique?: number | string | null;
+  cantidadFinal?: number | string | null;
   observaciones?: string;
   tipoRegistro?: string;
   metrosLineales?: number;

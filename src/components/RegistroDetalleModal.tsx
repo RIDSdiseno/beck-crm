@@ -10,7 +10,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
-import type { ItemizadoMandante } from "../services/api";
+import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
 
 export type RegistroDetalleUpdateValues = {
   descripcionMaterial: string;
@@ -24,6 +24,13 @@ export type RegistroDetalleUpdateValues = {
   nombreSellador: string;
   holguraCm: number;
   accesibilidad: number;
+  factorPorHolguras?: number;
+  cieloModular?: number;
+  cantidadSellosConFactores?: number;
+  aislacion?: number;
+  cantidadSellosAislacion?: number;
+  reparacionTabique?: number;
+  cantidadFinal?: number;
   observaciones: string;
   estado: "pendiente" | "en_revision" | "validado" | "rechazado";
   itemizadoMandanteId?: string;
@@ -41,6 +48,7 @@ type RegistroDetalleModalProps = {
   onSave?: (values: RegistroDetalleUpdateValues) => void | Promise<void>;
   onDownloadPdf?: (registro: RegistroSello) => void | Promise<void>;
   itemizadosMandante?: ItemizadoMandante[];
+  camposConfigurados?: CampoConfiguracionRegistro[];
 };
 
 const estadoOptions = [
@@ -147,6 +155,17 @@ const FieldView: React.FC<{ label: string; value: React.ReactNode; span?: number
   </div>
 );
 
+const getCampoConfigKey = (field: CampoConfiguracionRegistro): string =>
+  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+
+const isCampoVisible = (
+  fields: CampoConfiguracionRegistro[],
+  key: string
+): boolean => {
+  const field = fields.find((item) => getCampoConfigKey(item) === key);
+  return field ? Boolean(field.visible) : true;
+};
+
 const renderDetalleJuntaLineal = (r: RegistroSello): React.ReactNode => (
   <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
     <FieldView label="Descripción" value={r.descripcionMaterial || r.itemizadoBeck} />
@@ -197,6 +216,13 @@ const renderDetalleSelloCortafuego = (r: RegistroSello): React.ReactNode => (
       label="Holgura (cm)"
       value={r.holguraCm != null ? String(r.holguraCm) : "-"}
     />
+    <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />
+    <FieldView label="Cielo modular" value={r.cieloModular ?? "-"} />
+    <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />
+    <FieldView label="AislaciÃ³n" value={r.aislacion ?? "-"} />
+    <FieldView label="Cantidad sellos aislaciÃ³n" value={r.cantidadSellosAislacion ?? "-"} />
+    <FieldView label="ReparaciÃ³n tabique" value={r.reparacionTabique ?? "-"} />
+    <FieldView label="Cantidad final" value={r.cantidadFinal ?? "-"} />
     <FieldView label="Observaciones" value={r.observaciones} span={2} />
     <FieldView label="FOLIO" value={r.numeroSello} />
     <div className="mb-3">
@@ -217,12 +243,14 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   onSave,
   onDownloadPdf,
   itemizadosMandante = [],
+  camposConfigurados = [],
 }) => {
   const [form] = Form.useForm<RegistroDetalleUpdateValues>();
   const visible = open && !!registro;
   const canEditRegistro = canEdit && mode === "edit";
 
   const esEspuma = registro?.tipoRegistro === "junta_lineal_espuma";
+  const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
 
   useEffect(() => {
     if (!registro) return;
@@ -239,6 +267,13 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       nombreSellador: registro.nombreSellador,
       holguraCm: registro.holguraCm,
       accesibilidad: registro.accesibilidad ?? registro.cieloModular,
+      factorPorHolguras: registro.factorPorHolguras != null ? Number(registro.factorPorHolguras) : undefined,
+      cieloModular: registro.cieloModular,
+      cantidadSellosConFactores: registro.cantidadSellosConFactores != null ? Number(registro.cantidadSellosConFactores) : undefined,
+      aislacion: registro.aislacion != null ? Number(registro.aislacion) : undefined,
+      cantidadSellosAislacion: registro.cantidadSellosAislacion != null ? Number(registro.cantidadSellosAislacion) : undefined,
+      reparacionTabique: registro.reparacionTabique != null ? Number(registro.reparacionTabique) : undefined,
+      cantidadFinal: registro.cantidadFinal != null ? Number(registro.cantidadFinal) : undefined,
       observaciones: registro.observaciones ?? "",
       estado: normalizeEstado(registro.estado),
       itemizadoMandanteId: registro.itemizadoMandanteId,
@@ -530,6 +565,41 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             <Form.Item name="accesibilidad" label="Accesibilidad" className="mb-3">
               <InputNumber min={0} className="w-full" />
             </Form.Item>
+            {showCampo("factor_por_holguras") && (
+              <Form.Item name="factorPorHolguras" label="Factor por holguras" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("cielo_modular") && (
+              <Form.Item name="cieloModular" label="Cielo modular" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("cantidad_sellos_con_factores") && (
+              <Form.Item name="cantidadSellosConFactores" label="Cantidad sellos con factores" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("aislacion") && (
+              <Form.Item name="aislacion" label="AislaciÃ³n" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("cantidad_sellos_aislacion") && (
+              <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislaciÃ³n" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("reparacion_tabique") && (
+              <Form.Item name="reparacionTabique" label="ReparaciÃ³n tabique" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
+            {showCampo("cantidad_final") && (
+              <Form.Item name="cantidadFinal" label="Cantidad final" className="mb-3">
+                <InputNumber min={0} step={0.01} className="w-full" />
+              </Form.Item>
+            )}
             <Form.Item name="estado" label="Estado" className="mb-3">
               <Select options={estadoOptions} />
             </Form.Item>

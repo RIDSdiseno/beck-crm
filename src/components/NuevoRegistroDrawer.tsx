@@ -23,7 +23,7 @@ import dayjs, { Dayjs } from "dayjs";
 import { useAuth } from "../context/useAuth";
 import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
-import type { ItemizadoMandante } from "../services/api";
+import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
 
 export type NuevoRegistroValues = {
   tipoRegistro: "sello_cortafuego" | "junta_lineal_espuma";
@@ -44,6 +44,11 @@ export type NuevoRegistroValues = {
   holguraCm: number;
   factorHolgura: 1 | 1.2 | 1.4 | 1.8;
   cieloModular: 1 | 2 | 3;
+  cantidadSellosConFactores?: number;
+  aislacion?: number;
+  cantidadSellosAislacion?: number;
+  reparacionTabique?: number;
+  cantidadFinal?: number;
   fotoUrl?: string;
   fotoArchivo?: File;
   observaciones?: string;
@@ -54,6 +59,7 @@ type Props = {
   onClose: () => void;
   onSubmit: (values: NuevoRegistroValues) => void;
   itemizadosMandante?: ItemizadoMandante[];
+  camposConfigurados?: CampoConfiguracionRegistro[];
 };
 
 type CreateObraValues = {
@@ -70,7 +76,24 @@ const createId = (): string => {
 
 const normalizeText = (value: string): string => value.trim().toLowerCase();
 
-const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit, itemizadosMandante = [] }) => {
+const getCampoConfigKey = (field: CampoConfiguracionRegistro): string =>
+  String(field.campo || field.key || field.nombreCampo || field.nombre || "").trim();
+
+const isCampoVisible = (
+  fields: CampoConfiguracionRegistro[],
+  key: string
+): boolean => {
+  const field = fields.find((item) => getCampoConfigKey(item) === key);
+  return field ? Boolean(field.visible) : true;
+};
+
+const NuevoRegistroDrawer: React.FC<Props> = ({
+  open,
+  onClose,
+  onSubmit,
+  itemizadosMandante = [],
+  camposConfigurados = [],
+}) => {
   const { user } = useAuth();
   const isAdministrador = user?.rol === "Administrador";
 
@@ -84,6 +107,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit, itemiza
   const tipoRegistro = Form.useWatch("tipoRegistro", form);
   const selectedObra = obras.find((o) => o.id === obraId);
   const esEspuma = tipoRegistro === "junta_lineal_espuma";
+  const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
 
   const handleAfterOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -447,6 +471,36 @@ const NuevoRegistroDrawer: React.FC<Props> = ({ open, onClose, onSubmit, itemiza
                     ]}
                   />
                 </Form.Item>
+
+                {showCampo("cantidad_sellos_con_factores") && (
+                  <Form.Item name="cantidadSellosConFactores" label="Cantidad sellos con factores">
+                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
+
+                {showCampo("aislacion") && (
+                  <Form.Item name="aislacion" label="AislaciÃ³n">
+                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
+
+                {showCampo("cantidad_sellos_aislacion") && (
+                  <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislaciÃ³n">
+                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
+
+                {showCampo("reparacion_tabique") && (
+                  <Form.Item name="reparacionTabique" label="ReparaciÃ³n tabique">
+                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
+
+                {showCampo("cantidad_final") && (
+                  <Form.Item name="cantidadFinal" label="Cantidad final">
+                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  </Form.Item>
+                )}
 
                 <Form.Item name="fotoUrl" label="Foto (URL / referencia)">
                   <Input

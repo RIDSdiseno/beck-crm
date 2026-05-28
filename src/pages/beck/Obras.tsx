@@ -120,6 +120,16 @@ const trabajadorForbiddenCampos = new Set([
   "folio",
 ]);
 
+const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
+  { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
+  { campo: "cielo_modular", label: "Cielo modular", color: "azul", visible: false },
+  { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
+  { campo: "aislacion", label: "AislaciÃ³n", color: "azul", visible: false },
+  { campo: "cantidad_sellos_aislacion", label: "Cantidad sellos aislaciÃ³n", color: "azul", visible: false },
+  { campo: "reparacion_tabique", label: "ReparaciÃ³n tabique", color: "azul", visible: false },
+  { campo: "cantidad_final", label: "Cantidad final", color: "azul", visible: false },
+];
+
 const normalizeRegistroText = (value: unknown): string =>
   typeof value === "string"
     ? value
@@ -202,6 +212,20 @@ const normalizeRegistroField = (
     return { ...normalized, visible: false, prohibido: true };
   }
   return normalized;
+};
+
+const withCatalogRegistroFields = (
+  role: RolConfiguracionCamposRegistro,
+  fields: CampoConfiguracionRegistro[]
+): CampoConfiguracionRegistro[] => {
+  const normalized = fields.map((field) => normalizeRegistroField(role, field));
+  const existing = new Set(normalized.map((field) => field.campo));
+  return [
+    ...normalized,
+    ...camposRegistroNuevos
+      .filter((field) => !existing.has(field.campo))
+      .map((field) => normalizeRegistroField(role, field)),
+  ];
 };
 
 const estadoOptions: Array<{ label: string; value: EstadoForm }> = [
@@ -287,12 +311,8 @@ const Obras: React.FC = () => {
 
   const normalizedRegistroConfig = useMemo(
     () => ({
-      jefeobra: registroConfig.jefeobra.map((field) =>
-        normalizeRegistroField("jefeobra", field)
-      ),
-      trabajador: registroConfig.trabajador.map((field) =>
-        normalizeRegistroField("trabajador", field)
-      ),
+      jefeobra: withCatalogRegistroFields("jefeobra", registroConfig.jefeobra),
+      trabajador: withCatalogRegistroFields("trabajador", registroConfig.trabajador),
     }),
     [registroConfig]
   );

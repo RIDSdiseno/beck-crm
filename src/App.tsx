@@ -101,7 +101,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: true,
         oficinaTecnica: true, reportes: true, cotizaciones: false, movimientos: false, obras: true,
-        configuracion: false, clientes: true, ...NO_FIREMAT,
+        configuracion: true, clientes: true, ...NO_FIREMAT,
       };
     case "Visualizador":
       return {
