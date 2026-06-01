@@ -1154,8 +1154,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       >
         <div className="space-y-3 py-2">
           <p className="text-sm text-slate-700">
-            Indica el motivo del rechazo. Se creará automáticamente una copia
-            para que el técnico realice las correcciones.
+            Indique el motivo del rechazo.
           </p>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">
