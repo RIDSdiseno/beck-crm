@@ -40,4 +40,10 @@ export type RegistroSello = {
   observaciones?: string;
   tipoRegistro?: string;
   metrosLineales?: number;
+  motivoRechazo?: string | null;
+  fechaRechazo?: string | null;
+  rechazadoPor?: { id?: string; nombre: string } | null;
+  esCorreccion?: boolean;
+  registroOrigenId?: string | null;
+  registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
 };

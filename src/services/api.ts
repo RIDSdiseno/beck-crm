@@ -991,6 +991,14 @@ export const usuariosAPI = {
     const response = await api.delete<EliminarUsuarioResponse>(`/usuarios/${id}`);
     return response.data;
   },
+
+  cambiarPassword: async (id: string, data: { password: string; confirmPassword: string }) => {
+    const response = await api.patch<{ success: boolean; message: string }>(
+      `/usuarios/${id}/password`,
+      data
+    );
+    return response.data;
+  },
 };
 
 export const oficinaTecnicaPreventaAPI = {
@@ -1492,7 +1500,8 @@ export type FirematFunnelEtapa =
   | "ORDEN_CONFIRMADA"
   | "GANADA"
   | "PERDIDA"
-  | "POSTERGADA";
+  | "POSTERGADA"
+  | "DESCARTADO";
 
 export type FirematFunnelOportunidad = {
   id: string;
@@ -1503,10 +1512,34 @@ export type FirematFunnelOportunidad = {
   telefono?: string | null;
   correo?: string | null;
   tipoCliente?: FirematCotizacionTipoCliente | string | null;
+  rutEmpresa?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  unidadNegocio?: string | null;
   productoId?: number | null;
   producto?: ProductoFiremat | null;
   productoNombre?: string | null;
   cantidadEstimada?: number | null;
+  urgencia?: string | null;
+  tipoUso?: string | null;
+  necesidadSoporteTecnico?: boolean | null;
+  alternativaProducto?: string | null;
+  comision?: number | null;
+  margenEstimado?: number | null;
+  fechaComprometidaEnvio?: string | null;
+  versionCotizacion?: string | null;
+  comentariosCliente?: string | null;
+  objeciones?: string | null;
+  ordenCompra?: string | null;
+  correoAceptacion?: string | null;
+  condicionesComerciales?: string | null;
+  coordinacionAdministrativa?: string | null;
+  estadoDocumentacion?: string | null;
+  traspasoAdministracion?: boolean | null;
+  traspasoERP?: boolean | null;
+  coordinacionDespacho?: string | null;
+  estadoComercialOrden?: string | null;
+  estadoDocumentacionVenta?: string | null;
   responsable?: string | null;
   etapa: FirematFunnelEtapa;
   montoEstimado?: number | null;
@@ -1521,6 +1554,11 @@ export type FirematFunnelOportunidad = {
   motivoPostergacion?: string | null;
   fechaReactivacion?: string | null;
   documentoRespaldo?: string | null;
+  flujoPosterior?: string | null;
+  motivoDescarte?: string | null;
+  tipoBroker?: string | null;
+  fechaEstimadaDespacho?: string | null;
+  fechaSeguimientoPostventa?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -1533,8 +1571,32 @@ export type FirematFunnelPayload = {
   telefono?: string | null;
   correo?: string | null;
   tipoCliente?: FirematCotizacionTipoCliente | string | null;
+  rutEmpresa?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  unidadNegocio?: string | null;
   productoId?: number | null;
   cantidadEstimada?: number | null;
+  urgencia?: string | null;
+  tipoUso?: string | null;
+  necesidadSoporteTecnico?: boolean | null;
+  alternativaProducto?: string | null;
+  comision?: number | null;
+  margenEstimado?: number | null;
+  fechaComprometidaEnvio?: string | null;
+  versionCotizacion?: string | null;
+  comentariosCliente?: string | null;
+  objeciones?: string | null;
+  ordenCompra?: string | null;
+  correoAceptacion?: string | null;
+  condicionesComerciales?: string | null;
+  coordinacionAdministrativa?: string | null;
+  estadoDocumentacion?: string | null;
+  traspasoAdministracion?: boolean | null;
+  traspasoERP?: boolean | null;
+  coordinacionDespacho?: string | null;
+  estadoComercialOrden?: string | null;
+  estadoDocumentacionVenta?: string | null;
   responsable?: string | null;
   etapa: FirematFunnelEtapa;
   montoEstimado?: number | null;
@@ -1548,7 +1610,34 @@ export type FirematFunnelPayload = {
   motivoPostergacion?: string | null;
   fechaReactivacion?: string | null;
   documentoRespaldo?: string | null;
+  flujoPosterior?: string | null;
+  motivoDescarte?: string | null;
+  tipoBroker?: string | null;
+  fechaEstimadaDespacho?: string | null;
+  fechaSeguimientoPostventa?: string | null;
 };
+
+export type FunnelFirematArchivoTipo =
+  | "ORDEN_COMPRA"
+  | "CORREO_ACEPTACION"
+  | "DOCUMENTO_RESPALDO"
+  | "COTIZACION"
+  | "FICHA_TECNICA"
+  | "OTRO";
+
+export interface FunnelFirematArchivo {
+  id: number;
+  oportunidadId: number;
+  tipo: FunnelFirematArchivoTipo | string;
+  url: string;
+  publicId: string;
+  nombreArchivo?: string | null;
+  mimeType?: string | null;
+  bytes?: number | null;
+  etapa?: string | null;
+  observaciones?: string | null;
+  createdAt: string;
+}
 
 export type FirematFunnelResumen = {
   totalOportunidades: number;
@@ -1653,6 +1742,44 @@ export const firematFunnelAPI = {
     return "success" in response.data
       ? unwrapApiResponse(response.data)
       : response.data;
+  },
+
+  listarArchivos: async (
+    oportunidadId: string | number
+  ): Promise<FunnelFirematArchivo[]> => {
+    const response = await api.get<ApiResponseEnvelope<FunnelFirematArchivo[]>>(
+      `/firemat/funnel/${oportunidadId}/archivos`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  subirArchivos: async (
+    oportunidadId: string | number,
+    tipo: FunnelFirematArchivoTipo,
+    files: File[],
+    extra?: { etapa?: string | null; observaciones?: string | null }
+  ): Promise<FunnelFirematArchivo[]> => {
+    const formData = new FormData();
+    formData.append("tipo", tipo);
+    if (extra?.etapa) formData.append("etapa", extra.etapa);
+    if (extra?.observaciones) {
+      formData.append("observaciones", extra.observaciones);
+    }
+    files.forEach((file) => formData.append("files", file));
+
+    const response = await api.post<ApiResponseEnvelope<FunnelFirematArchivo[]>>(
+      `/firemat/funnel/${oportunidadId}/archivos`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  eliminarArchivo: async (archivoId: string | number): Promise<void> => {
+    const response = await api.delete<ApiResponseEnvelope<{ message?: string }>>(
+      `/firemat/funnel/archivos/${archivoId}`
+    );
+    unwrapApiResponse(response.data);
   },
 
   eliminar: async (id: string): Promise<void> => {

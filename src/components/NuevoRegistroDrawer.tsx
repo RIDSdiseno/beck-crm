@@ -520,19 +520,19 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                 )}
 
                 {showCampo("aislacion") && (
-                  <Form.Item name="aislacion" label="AislaciÃ³n">
+                  <Form.Item name="aislacion" label="Aislaciónn">
                     <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
                   </Form.Item>
                 )}
 
                 {showCampo("cantidad_sellos_aislacion") && (
-                  <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislaciÃ³n">
+                  <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislación">
                     <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
                   </Form.Item>
                 )}
 
                 {showCampo("reparacion_tabique") && (
-                  <Form.Item name="reparacionTabique" label="ReparaciÃ³n tabique">
+                  <Form.Item name="reparacionTabique" label="Reparación tabique">
                     <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
                   </Form.Item>
                 )}

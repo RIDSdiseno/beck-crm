@@ -1,6 +1,6 @@
 // src/pages/RegistroSellos.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, message } from "antd";
+import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
   PlusOutlined,
   FireOutlined,
@@ -16,6 +16,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import type { ThemeMode } from "../../hooks/useSystemTheme";
 import dayjs, { type Dayjs } from "dayjs";
+import "dayjs/locale/es";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
@@ -106,6 +107,12 @@ type RegistroApiRecord = {
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
+  motivoRechazo?: string | null;
+  fechaRechazo?: string | null;
+  rechazadoPor?: { id?: string; nombre?: string | null } | null;
+  esCorreccion?: boolean | null;
+  registroOrigenId?: string | null;
+  registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
 };
 
 type RegistrosApiResponse = {
@@ -288,8 +295,10 @@ const formatFecha = (fecha?: string | null): string =>
 
 const formatDecimal = (value?: number | string | null, decimals = 2): string => {
   if (value === null || value === undefined || value === "") return "-";
-  const num = Number(String(value).replace(",", "."));
-  if (!Number.isFinite(num)) return String(value);
+  const str = String(value).trim();
+  if (str.toLowerCase() === "no aplica") return "-";
+  const num = Number(str.replace(",", "."));
+  if (!Number.isFinite(num)) return str;
   return num.toLocaleString("es-CL", {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
@@ -304,14 +313,47 @@ const normalizeSearchText = (value?: string | null): string =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+// Lee el primer valor no-nulo/vac\u00edo entre los aliases dados (soporta camelCase y snake_case)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getRegistroValue = (registro: Record<string, any>, aliases: string[]): unknown => {
+  for (const alias of aliases) {
+    const val = registro[alias];
+    if (val !== null && val !== undefined && val !== "") return val;
+  }
+  return undefined;
+};
+
+// Aliases centralizados por campo (camelCase y snake_case)
+const REGISTRO_COLUMN_ALIASES: Record<string, string[]> = {
+  tipo_registro:                  ["tipoRegistro", "tipo_registro"],
+  codigo_beck:                    ["codigoBeck", "codigo_beck"],
+  itemizado_mandante:             ["itemizadoMandanteNombre", "itemizadoMandante"],
+  itemizado_beck:                 ["itemizadoBeck", "itemizado_beck"],
+  itemizado_sacyr:                ["itemizadoSacyr", "itemizado_sacyr"],
+  obra:                           ["obraNombre", "obra"],
+  usuario:                        ["usuarioNombre", "usuario"],
+  fecha_ejecucion:                ["fechaEjecucion", "fecha_ejecucion", "fecha"],
+  piso:                           ["piso"],
+  eje_alfabetico:                 ["ejeAlfabetico", "eje_alfabetico"],
+  eje_numerico:                   ["ejeNumerico", "eje_numerico"],
+  recinto:                        ["recinto", "modulo"],
+  nombre_sellador:                ["nombreSellador", "nombre_sellador"],
+  holgura:                        ["holguraCm", "holgura"],
+  factor_por_holguras:            ["factorPorHolguras", "factor_por_holguras", "factorHolgura"],
+  cantidad_sellos:                ["cantidadSellos", "cantidad_sellos"],
+  cantidad_sellos_con_factores:   ["cantidadSellosConFactores", "cantidad_sellos_con_factores", "cantidadSellosConFactor"],
+  cantidad_sellos_aislacion:      ["cantidadSellosAislacion", "cantidad_sellos_aislacion"],
+  cantidad_final:                 ["cantidadFinal", "cantidad_final"],
+  metros_lineales:                ["metrosLineales", "metros_lineales"],
+  folio:                          ["numeroSello", "folio"],
+  observaciones:                  ["observaciones"],
+  fotos:                          ["fotosUrls", "fotos_urls", "fotoUrl", "foto_url"],
+};
+void REGISTRO_COLUMN_ALIASES;
+
 const getObraOptionLabel = (obra: Obra): string => {
   const cliente = obra.cliente?.trim();
   return cliente ? `${obra.nombre} / ${cliente}` : obra.nombre;
-};
-
-const getItemizadoSacyr = (r: { itemizadoSacyr?: string | null; itemizado_sacyr?: string | null }): string => {
-  const value = r.itemizadoSacyr ?? r.itemizado_sacyr ?? "";
-  return value && String(value).trim() !== "" ? String(value) : "-";
 };
 
 const getEjeNumerico = (r: { ejeNumerico?: number | string | null; eje_numerico?: number | string | null }): string => {
@@ -368,6 +410,13 @@ const getFotosRegistro = (record: any): string[] => {
   return result;
 };
 
+const displayValue = (value: unknown): string => {
+  if (value === null || value === undefined) return "-";
+  const str = String(value).trim();
+  if (str === "" || str.toLowerCase() === "no aplica") return "-";
+  return str;
+};
+
 const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
   if (value === 1.2 || value === 1.4 || value === 1.8) return value;
   return 1;
@@ -383,7 +432,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
   const fecha = r.fecha ?? "";
   const diaSemana =
-    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).format("dddd") : "");
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).locale("es").format("dddd") : "");
   const descripcionMaterial =
     r.descripcionMaterial ?? r.descripcion_material ?? "";
   const ejeNumerico = String(r.ejeNumerico ?? r.eje_numerico ?? "");
@@ -456,6 +505,12 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     reparacionTabique,
     cantidadFinal,
     observaciones: r.observaciones ?? "",
+    motivoRechazo: r.motivoRechazo ?? null,
+    fechaRechazo: r.fechaRechazo ?? null,
+    rechazadoPor: r.rechazadoPor ? { nombre: r.rechazadoPor.nombre ?? "" } : null,
+    esCorreccion: r.esCorreccion ?? false,
+    registroOrigenId: r.registroOrigenId ?? null,
+    registroOrigen: r.registroOrigen ?? null,
   };
 };
 
@@ -516,6 +571,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [obrasLoading, setObrasLoading] = useState(false);
   const [savingDetalle, setSavingDetalle] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
+  const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
 
   const cargarRegistros = useCallback(async () => {
     try {
@@ -691,6 +747,22 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const esJuntaLineal = tipoSeleccionado === "junta_lineal_espuma";
 
+  const handleReenviarRevision = async (record: RegistroSello) => {
+    const id = String(record.id);
+    setReenviarRevisionId(id);
+    try {
+      await api.patch(`/registros/${id}/reenviar-revision`);
+      await cargarRegistros();
+      setRegistroDetalle(null);
+      message.success("Registro enviado nuevamente a revisión.");
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo reenviar el registro a revisión");
+    } finally {
+      setReenviarRevisionId(null);
+    }
+  };
+
   const handleDescargarPdf = async (record: RegistroSello) => {
     const id = String(record.id);
     const codigo = record.codigo || `REG-${id.slice(0, 6)}`;
@@ -801,8 +873,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     }
   };
 
-  // columnas tabla
+  // columnas tabla — orden exacto de la planilla de terreno Beck
   const todasLasColumnas: ColumnsType<RegistroSello> = [
+    {
+      title: "Obra",
+      dataIndex: "obraNombre",
+      key: "obraNombre",
+      width: 160,
+    },
     {
       title: "Tipo registro",
       dataIndex: "tipoRegistro",
@@ -820,19 +898,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </Tag>
       ),
     },
+    // ── Planilla de terreno (orden exacto) ──────────────────────────────────
     {
       title: "Código BECK",
       dataIndex: "codigoBeck",
       key: "codigoBeck",
       width: 140,
-      render: (text?: string) => text || "-",
-    },
-    {
-      title: "Itemizado Mandante",
-      dataIndex: "itemizadoMandanteNombre",
-      key: "itemizadoMandanteNombre",
-      width: 220,
-      render: (text?: string) => text || "-",
+      render: (text?: string) => displayValue(text),
     },
     {
       title: "Itemizado BECK",
@@ -841,191 +913,57 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       width: 220,
       render: (text: string) => (
         <div className="max-w-[220px] truncate">
-          <span className="font-semibold text-orange-700">{text}</span>
+          <span className="font-semibold text-orange-700">{displayValue(text)}</span>
         </div>
       ),
     },
     {
-      title: "Itemizado SACYR",
-      key: "itemizadoSacyr",
+      title: "Itemizado Mandante",
+      dataIndex: "itemizadoMandanteNombre",
+      key: "itemizadoMandanteNombre",
       width: 220,
-      render: (_: unknown, r: RegistroSello) => (
-        <div className="max-w-[220px] truncate">{getItemizadoSacyr(r)}</div>
-      ),
+      render: (text?: string) => displayValue(text),
     },
     {
-      title: "Obra",
-      dataIndex: "obraNombre",
-      key: "obraNombre",
-      width: 160,
-    },
-    {
-      title: "Usuario",
-      dataIndex: "usuarioNombre",
-      key: "usuarioNombre",
-      width: 150,
-    },
-    {
-      title: "Fecha ejecución",
+      title: "Fecha ejecución de sello",
       dataIndex: "fechaEjecucion",
       key: "fechaEjecucion",
-      width: 110,
-      render: (value: string) => dayjs(value).format("DD-MM-YYYY"),
+      width: 155,
+      render: (value: string) => (value ? dayjs(value).format("DD-MM-YYYY") : "-"),
     },
     {
       title: "Día",
       dataIndex: "dia",
       key: "dia",
       width: 90,
+      render: (value?: string) => displayValue(value),
     },
     {
       title: "Piso",
       dataIndex: "piso",
       key: "piso",
       width: 90,
+      render: (value?: string) => displayValue(value),
     },
     {
-      title: "Eje A.",
+      title: "Eje Alfabético",
       dataIndex: "ejeAlfabetico",
       key: "eje_alfabetico",
-      width: 70,
+      width: 110,
+      render: (value?: string) => displayValue(value),
     },
     {
-      title: "Eje N.",
+      title: "Eje Numérico",
       key: "eje_numerico",
-      width: 70,
+      width: 110,
       render: (_: unknown, r: RegistroSello) => getEjeNumerico(r),
     },
     {
-      title: "Sellador",
+      title: "Nombre sellador",
       dataIndex: "nombreSellador",
       key: "nombreSellador",
       width: 150,
-    },
-    {
-      title: "Recinto",
-      dataIndex: "recinto",
-      key: "recinto",
-      width: 160,
-    },
-    {
-      title: "N° sello",
-      dataIndex: "numeroSello",
-      key: "numeroSello",
-      width: 100,
-    },
-    {
-      title: "Cantidad / Metros",
-      key: "cantidadMetros",
-      width: 140,
-      render: (_value: unknown, record: RegistroSello) => {
-        if (getTipoRegistro(record) === "junta_lineal_espuma") {
-          const metros = getMetrosLineales(record);
-          return (
-            <span className="font-medium text-sky-700">
-              {metros !== null ? metros.toFixed(2) : "—"} m
-            </span>
-          );
-        }
-        return (
-          <span className="font-medium text-orange-700">
-            {record.cantidadSellos} sellos
-          </span>
-        );
-      },
-    },
-    {
-      title: "Estado",
-      dataIndex: "estado",
-      key: "estado",
-      width: 110,
-      render: (value: string) => (
-        <Tag
-          className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getEstadoBadgeClass(
-            value
-          )}`}
-          color={getEstadoColor(value)}
-          style={{ marginInlineEnd: 0 }}
-        >
-          {getEstadoLabel(value)}
-        </Tag>
-      ),
-    },
-    {
-      title: "Holgura (cm)",
-      dataIndex: "holguraCm",
-      key: "holgura",
-      width: 100,
-    },
-    {
-      title: "Factor por holguras",
-      key: "factor_por_holguras",
-      width: 120,
-      render: (_: unknown, record: RegistroSello) => {
-        const value = Number(record.factorPorHolguras ?? record.factorHolgura ?? 1);
-        return (
-        <Tag
-          color={
-            value === 1
-              ? "green"
-              : value === 1.2
-              ? "geekblue"
-              : value === 1.4
-              ? "orange"
-              : "volcano"
-          }
-        >
-          F = {formatDecimal(value)}
-        </Tag>
-        );
-      },
-    },
-    {
-      title: "Cielo modular",
-      key: "cielo_modular",
-      width: 150,
-      render: (_: unknown, record: RegistroSello) => {
-        const value = Number(record.cieloModular ?? 1);
-        const label =
-          value === 1
-            ? "F=1 Acceso normal"
-            : value === 2
-            ? "F=2 Americano / estructurado"
-            : "F=3 Cielo duro / gateras";
-        return <span className="text-xs">{label}</span>;
-      },
-    },
-    {
-      title: "Cantidad sellos con factores",
-      key: "cantidad_sellos_con_factores",
-      width: 170,
-      render: (_: unknown, record: RegistroSello) =>
-        formatDecimal(record.cantidadSellosConFactores ?? record.cantidadSellosConFactor, 2),
-    },
-    {
-      title: "AislaciÃ³n",
-      key: "aislacion",
-      width: 110,
-      render: (_: unknown, record: RegistroSello) => formatDecimal(record.aislacion, 2),
-    },
-    {
-      title: "Cantidad sellos aislaciÃ³n",
-      key: "cantidad_sellos_aislacion",
-      width: 170,
-      render: (_: unknown, record: RegistroSello) =>
-        formatDecimal(record.cantidadSellosAislacion, 2),
-    },
-    {
-      title: "ReparaciÃ³n tabique",
-      key: "reparacion_tabique",
-      width: 150,
-      render: (_: unknown, record: RegistroSello) => formatDecimal(record.reparacionTabique, 2),
-    },
-    {
-      title: "Cantidad final",
-      key: "cantidad_final",
-      width: 130,
-      render: (_: unknown, record: RegistroSello) => formatDecimal(record.cantidadFinal, 2),
+      render: (value?: string) => displayValue(value),
     },
     {
       title: "Foto",
@@ -1036,7 +974,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         const fotos = getFotosRegistro(record);
         const count = fotos.length;
         if (count === 0) {
-          return <span className="text-[11px] text-slate-500">Sin foto</span>;
+          return <span className="text-slate-400">-</span>;
         }
         const thumbUrl = fotos[0];
         return (
@@ -1063,48 +1001,272 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               }}
               className="p-0 text-[11px]"
             >
-              {count > 1 ? `Ver fotos (${count})` : "Ver foto"}
+              {count > 1 ? `Ver fotos (${count})` : "Ver"}
             </Button>
           </div>
         );
       },
     },
     {
-      title: "Obs.",
+      title: "Recinto",
+      dataIndex: "recinto",
+      key: "recinto",
+      width: 160,
+      render: (value?: string) => displayValue(value),
+    },
+    {
+      title: "Módulo o edificio",
+      key: "modulo_edificio",
+      width: 160,
+      render: (_: unknown, r: RegistroSello) => displayValue(r.recinto),
+    },
+    {
+      title: "N° DEL SELLO",
+      key: "numero_sello",
+      width: 120,
+      render: (_: unknown, record: RegistroSello) =>
+        displayValue(
+          getRegistroValue(record as unknown as Record<string, unknown>, [
+            "numeroSello",
+            "numero_sello",
+          ]) as string
+        ),
+    },
+    {
+      title: "Cantidad de Sellos",
+      key: "cantidad_sellos",
+      width: 140,
+      render: (_: unknown, record: RegistroSello) =>
+        record.cantidadSellos != null && record.cantidadSellos !== 0 ? (
+          <span className="font-medium text-orange-700">{record.cantidadSellos}</span>
+        ) : "-",
+    },
+    {
+      title: "Holgura (cm)",
+      dataIndex: "holguraCm",
+      key: "holgura",
+      width: 100,
+    },
+    {
+      title: "Factor por Holguras",
+      key: "factor_por_holguras",
+      width: 130,
+      render: (_: unknown, record: RegistroSello) => {
+        const value = Number(record.factorPorHolguras ?? record.factorHolgura ?? 1);
+        return (
+          <Tag
+            color={
+              value === 1
+                ? "green"
+                : value === 1.2
+                ? "geekblue"
+                : value === 1.4
+                ? "orange"
+                : "volcano"
+            }
+          >
+            F = {formatDecimal(value)}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: "Cielo modular",
+      key: "cielo_modular",
+      width: 150,
+      render: (_: unknown, record: RegistroSello) => {
+        const value = Number(record.cieloModular ?? 1);
+        const label =
+          value === 1
+            ? "F=1 Acceso normal"
+            : value === 2
+            ? "F=2 Americano / estructurado"
+            : "F=3 Cielo duro / gateras";
+        return <span className="text-xs">{label}</span>;
+      },
+    },
+    {
+      title: "Cantidad de Sellos con Factores",
+      key: "cantidad_sellos_con_factores",
+      width: 200,
+      render: (_: unknown, record: RegistroSello) =>
+        formatDecimal(record.cantidadSellosConFactores ?? record.cantidadSellosConFactor, 2),
+    },
+    {
+      title: "Aislación",
+      key: "aislacion",
+      width: 110,
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.aislacion, 2),
+    },
+    {
+      title: "Cantidad de Sellos Aislación",
+      key: "cantidad_sellos_aislacion",
+      width: 195,
+      render: (_: unknown, record: RegistroSello) =>
+        formatDecimal(record.cantidadSellosAislacion, 2),
+    },
+    {
+      title: "Reparación de tabique",
+      key: "reparacion_tabique",
+      width: 160,
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.reparacionTabique, 2),
+    },
+    {
+      title: "Cantidad final",
+      key: "cantidad_final",
+      width: 130,
+      render: (_: unknown, record: RegistroSello) => formatDecimal(record.cantidadFinal, 2),
+    },
+    {
+      title: "Observaciones",
       dataIndex: "observaciones",
       key: "observaciones",
       width: 220,
       ellipsis: true,
+      render: (value?: string) => displayValue(value),
+    },
+    {
+      title: "FOLIO",
+      key: "folio",
+      width: 110,
+      render: (_: unknown, record: RegistroSello) =>
+        displayValue(
+          getRegistroValue(record as unknown as Record<string, unknown>, [
+            "numeroSello",
+            "folio",
+          ]) as string
+        ),
+    },
+    // ── Columnas de gestión (fuera del orden de planilla) ───────────────────
+    {
+      title: "Cantidad / Metros",
+      key: "cantidadMetros",
+      width: 140,
+      render: (_value: unknown, record: RegistroSello) => {
+        if (getTipoRegistro(record) === "junta_lineal_espuma") {
+          const metros = getMetrosLineales(record);
+          return (
+            <span className="font-medium text-sky-700">
+              {metros !== null ? metros.toFixed(2) : "-"} m
+            </span>
+          );
+        }
+        return (
+          <span className="font-medium text-orange-700">
+            {record.cantidadSellos} sellos
+          </span>
+        );
+      },
+    },
+    {
+      title: "Metros lineales",
+      key: "metros_lineales",
+      width: 120,
+      render: (_: unknown, record: RegistroSello) => {
+        const metros = getMetrosLineales(record);
+        return metros !== null ? (
+          <span className="font-medium text-sky-700">{metros.toFixed(2)} m</span>
+        ) : "-";
+      },
+    },
+    {
+      title: "Estado",
+      dataIndex: "estado",
+      key: "estado",
+      width: 150,
+      render: (value: string, record: RegistroSello) => {
+        const tag = (
+          <Tag
+            className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getEstadoBadgeClass(value)}`}
+            color={getEstadoColor(value)}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {getEstadoLabel(value)}
+          </Tag>
+        );
+        return (
+          <div className="flex flex-col gap-1">
+            {record.motivoRechazo && value === "rechazado" ? (
+              <Tooltip title={`Motivo: ${record.motivoRechazo}`} placement="topLeft">
+                {tag}
+              </Tooltip>
+            ) : (
+              tag
+            )}
+            {record.esCorreccion && (
+              <Tag
+                color="orange"
+                className="rounded-full px-2.5 py-0 text-[10px] font-semibold border border-orange-300 bg-orange-50 text-orange-700"
+                style={{ marginInlineEnd: 0 }}
+              >
+                CORRECCIÓN
+              </Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Acciones",
       key: "acciones",
-      width: 130,
-      render: (_value: unknown, record: RegistroSello) => (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              setRegistroDetalle(record);
-              setDetalleMode("view");
-            }}
-          >
-            Ver
-          </Button>
-          {canDownloadPdf && (
+      width: 190,
+      render: (_value: unknown, record: RegistroSello) => {
+        const esCorreccionEditable =
+          record.esCorreccion === true && record.estado !== "en_revision";
+        const canReenviar =
+          (record.esCorreccion === true || record.estado === "devuelto_a_tecnico") &&
+          record.estado !== "en_revision";
+        return (
+          <div className="flex flex-wrap gap-1">
             <Button
               size="small"
               onClick={(event) => {
                 event.stopPropagation();
-                void handleDescargarPdf(record);
+                setRegistroDetalle(record);
+                setDetalleMode("view");
               }}
             >
-              PDF
+              Ver
             </Button>
-          )}
-        </div>
-      ),
+            {esCorreccionEditable && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRegistroDetalle(record);
+                  setDetalleMode("edit");
+                }}
+              >
+                Editar
+              </Button>
+            )}
+            {canReenviar && (
+              <Button
+                size="small"
+                loading={reenviarRevisionId === String(record.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleReenviarRevision(record);
+                }}
+              >
+                Reenviar
+              </Button>
+            )}
+            {canDownloadPdf && (
+              <Button
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleDescargarPdf(record);
+                }}
+              >
+                PDF
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -1225,30 +1387,44 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   void columnasJuntaLineal;
 
+  // Todas las columnas de la planilla de terreno son obligatorias en ambas vistas
   const clavesCompactas = new Set([
+    "obraNombre",
+    // Planilla de terreno (orden exacto, siempre visibles)
     "tipoRegistro",
     "codigoBeck",
-    "itemizadoMandanteNombre",
     "itemizadoBeck",
-    "itemizadoSacyr",
-    "obraNombre",
-    "usuarioNombre",
+    "itemizadoMandanteNombre",
     "fechaEjecucion",
+    "dia",
     "piso",
     "eje_alfabetico",
     "eje_numerico",
-    "recinto",
-    "cantidadMetros",
-    "holgura",
-    "estado",
-    "factor_por_holguras",
-    "cantidad_sellos_con_factores",
+    "nombreSellador",
     "foto",
+    "recinto",
+    "modulo_edificio",
+    "numero_sello",
+    "cantidad_sellos",
+    "holgura",
+    "factor_por_holguras",
+    "cielo_modular",
+    "cantidad_sellos_con_factores",
+    "aislacion",
+    "cantidad_sellos_aislacion",
+    "reparacion_tabique",
+    "cantidad_final",
+    "observaciones",
+    "folio",
+    // Columnas de gestión
+    "cantidadMetros",
+    "estado",
     "acciones",
   ]);
 
   const columnasTabla = useMemo(
     () => {
+      // Claves ocultas según configuración del rol
       const hiddenKeys = new Set(
         camposConfigurados
           .map((field) => ({
@@ -1258,17 +1434,55 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           .filter((field) => field.key && !field.visible)
           .map((field) => field.key)
       );
+
+      // Devuelve true si algún registro filtrado tiene valor no-vacío en alguno de los aliases
+      const hasValue = (aliases: string[]): boolean =>
+        filteredData.some((r) => {
+          const rec = r as unknown as Record<string, unknown>;
+          return aliases.some((a) => {
+            const v = rec[a];
+            return v !== null && v !== undefined && v !== "" &&
+              !(typeof v === "number" && v === 0);
+          });
+        });
+
+      const juntaLinealActive =
+        tipoSeleccionado === "junta_lineal_espuma" ||
+        (tipoSeleccionado === "todos" &&
+          filteredData.some((r) => getTipoRegistro(r) === "junta_lineal_espuma"));
+
       const baseColumns = vistaCompleta
         ? todasLasColumnas
         : todasLasColumnas.filter((c) => c.key && clavesCompactas.has(String(c.key)));
+
       return baseColumns.filter((column) => {
         const key = column.key ? String(column.key) : "";
-        if (key === "recinto") return !hiddenKeys.has("recinto") && !hiddenKeys.has("modulo");
+
+        // recinto y modulo_edificio comparten la misma clave de configuración
+        if (key === "recinto" || key === "modulo_edificio")
+          return !hiddenKeys.has("recinto") && !hiddenKeys.has("modulo");
+
+        // En vista completa se oculta la columna combinada (se usan las independientes)
+        if (key === "cantidadMetros" && vistaCompleta) return false;
+
+        // Columnas planilla obligatorias — mostrar siempre, solo respetan hiddenKeys de rol
+        if (key === "folio" || key === "numero_sello")
+          return !hiddenKeys.has("folio");
+        if (key === "cantidad_sellos")
+          return !hiddenKeys.has("cantidad_sellos");
+
+        // metros_lineales solo si hay juntas lineales o datos reales
+        if (key === "metros_lineales") {
+          if (hiddenKeys.has("metros_lineales")) return false;
+          return juntaLinealActive || hasValue(["metrosLineales", "metros_lineales"]);
+        }
+
+        // Filtro general por configuración del rol
         return !hiddenKeys.has(key);
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vistaCompleta, camposConfigurados]
+    [vistaCompleta, camposConfigurados, filteredData, tipoSeleccionado]
   );
 
   const openNuevo = () => {
@@ -1383,7 +1597,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         sheetName: string,
         obraText: string,
         headers: string[],
-        example: Array<string | number>
+        example: Array<string | number>,
+        textColumns: string[] = []
       ) => {
         const ws = workbook.addWorksheet(sheetName);
 
@@ -1444,6 +1659,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           const headerLen = h.length;
           const width = Math.min(Math.max(headerLen, exampleLen) + 4, 38);
           ws.getColumn(i + 1).width = width;
+          if (textColumns.includes(h)) {
+            ws.getColumn(i + 1).numFmt = "@";
+            const exCell = exampleRow.getCell(i + 1);
+            exCell.numFmt = "@";
+            exCell.value = String(example[i] ?? "");
+          }
         });
 
         ws.views = [{ state: "frozen", ySplit: 2 }];
@@ -1453,42 +1674,61 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       const sellosHeaders = [
         "Codigo BECK",
         "Itemizado BECK",
-        "Itemizado SACYR",
+        "Itemizado Mandante",
         "Fecha ejecucion sello",
-        "Dia",
+        "Día",
         "Piso",
         "Eje Alfabético",
         "Eje Numérico",
         "Nombre sellador",
+        "Foto",
         "Recinto",
+        "Módulo o edificio",
         "N° DEL SELLO",
         "Cantidad de Sellos",
         "Holgura (cm)",
+        "Factor por Holguras",
+        "Cielo modular",
+        "Cantidad de Sellos con Factores",
+        "Aislación",
+        "Cantidad de Sellos Aislación",
+        "Reparación de tabique",
+        "Cantidad final",
         "Observaciones",
-        "Foto",
+        "FOLIO",
       ];
       const sellosExample: Array<string | number> = [
-        179,
-        "Tubería metálica de Ø ≤ 50 mm (T)",
-        "SELLOS-ATR-Tuberia PEX 32 VERTICAL",
-        "15-09-2025",
-        "lunes",
-        2,
-        "D-E",
-        "15-16",
-        "Adonis G",
-        "C.2.6.2.1",
-        "2-02739",
+        "BECK-001",
+        "Sello cortafuego muro",
+        "Partida mandante 01",
+        "29-05-2026",
+        "viernes",
         1,
-        2,
-        "REPARACION",
+        "A-B",
+        "1-2",
+        "Juan Pérez",
         "",
+        "Sala eléctrica",
+        "Torre A",
+        "S-001",
+        2,
+        "1,5",
+        "1,2",
+        "No aplica",
+        "2,4",
+        "No aplica",
+        "No aplica",
+        "No aplica",
+        "2,4",
+        "Sin observaciones",
+        "F-001",
       ];
       buildTemplateSheet(
         "SELLOS CORTAFUEGOS",
         "Obra: Obra Demo",
         sellosHeaders,
-        sellosExample
+        sellosExample,
+        ["Codigo BECK", "Eje Alfabético", "Eje Numérico", "N° DEL SELLO", "FOLIO"]
       );
 
       // ── Hoja 2: JUNTA LINEAL ESPUMA ────────────────────────────
@@ -1507,24 +1747,25 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         "FOLIO",
       ];
       const juntaExample: Array<string | number> = [
-        "Junta lineal con ESPUMA",
-        "15-09-2025",
-        "lunes",
-        2,
+        "Junta lineal espuma",
+        "29-05-2026",
+        "viernes",
+        1,
         "A-B",
-        "8-9",
-        "Josue M",
-        "PONER FOTO AQUÍ",
-        "F.1.3_C",
-        "12,78",
+        "1-2",
+        "Juan Pérez",
+        "",
+        "Pasillo",
+        "12,5",
         "Sin observaciones",
-        "JL-0001",
+        "J-001",
       ];
       buildTemplateSheet(
         "JUNTA LINEAL ESPUMA",
         "Obra: Obra Demo",
         juntaHeaders,
-        juntaExample
+        juntaExample,
+        ["Eje Alfabético", "Eje Numérico", "FOLIO"]
       );
 
       // ── Hoja 3: INSTRUCCIONES ──────────────────────────────────
@@ -1552,16 +1793,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       const instructions: string[] = [
         '1. La obra debe existir previamente en el sistema antes de importar.',
         '2. Cambiar el texto "Obra: Obra Demo" (fila 1 de cada hoja) por el nombre real de la obra.',
-        '3. No cambiar los nombres de las hojas "SELLOS CORTAFUEGOS" ni "JUNTA LINEAL ESPUMA".',
-        "4. No modificar el nombre ni el orden de los encabezados (fila 2).",
-        '5. Para registros de sellos cortafuego usar la columna "Cantidad de Sellos".',
-        '6. Para registros de junta lineal espuma usar la columna "Longitud (m)".',
-        '7. Se aceptan decimales con coma, por ejemplo 12,78.',
-        '8. Cuando la plantilla esté completa, súbela usando el botón "Importar Excel" en la vista de Registro.',
-        '9. Para adjuntar imágenes:',
-        '   • Insertar → Imágenes → Colocar sobre celdas → Este dispositivo.',
-        '   • La foto debe quedar dentro de la fila correspondiente.',
-        '   • Puede insertar varias imágenes por registro.',
+        '3. Usar la hoja SELLOS CORTAFUEGOS para registros de sellos cortafuego.',
+        '4. Usar la hoja JUNTA LINEAL ESPUMA para registros de juntas lineales.',
+        '5. No cambiar los nombres de las hojas ni el nombre ni el orden de los encabezados (fila 2).',
+        '6. Para adjuntar fotos: Insertar → Imágenes → Colocar sobre celdas → Este dispositivo.',
+        '7. La columna Foto debe quedar vacía; las imágenes se insertan embebidas sobre las celdas de esa columna.',
+        '8. Se aceptan decimales con coma, por ejemplo 12,78.',
+        '9. Fecha recomendada: DD-MM-YYYY o DD/MM/YYYY.',
+        '10. Los valores "No aplica", "N/A" o vacío se interpretan como campo vacío.',
+        '11. Eje Alfabético: ingresar el rango entre ejes, ejemplos válidos: A-B, B-C, C-D.',
+        '12. Eje Numérico: ingresar el rango entre ejes, ejemplos válidos: 1-2, 2-3, 3-4.',
+        '13. Cuando la plantilla esté completa, súbela usando el botón "Importar Excel" en la vista de Registro.',
       ];
 
       instructions.forEach((text, i) => {
@@ -1766,7 +2008,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       const SELLOS_COLS: ColDef[] = [
         { header: "Código",          key: "codigo",         width: 14 },
         { header: "Tipo",            key: "tipo",           width: 14 },
-        { header: "Itemizado SACYR", key: "itemizadoSacyr", width: 22 },
         { header: "Obra",            key: "obra",           width: 20 },
         { header: "Fecha",           key: "fecha",          width: 13 },
         { header: "Piso",            key: "piso",           width: 10 },
@@ -1796,13 +2037,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           ? [{ header: "Cantidad sellos con factores", key: "cantidadSellosConFactores", width: 24 }]
           : []),
         ...(exportFieldVisible("aislacion")
-          ? [{ header: "AislaciÃ³n", key: "aislacion", width: 14 }]
+          ? [{ header: "Aislación", key: "aislacion", width: 14 }]
           : []),
         ...(exportFieldVisible("cantidad_sellos_aislacion")
-          ? [{ header: "Cantidad sellos aislaciÃ³n", key: "cantidadSellosAislacion", width: 22 }]
+          ? [{ header: "Cantidad sellos aislación", key: "cantidadSellosAislacion", width: 22 }]
           : []),
         ...(exportFieldVisible("reparacion_tabique")
-          ? [{ header: "ReparaciÃ³n tabique", key: "reparacionTabique", width: 18 }]
+          ? [{ header: "Reparación tabique", key: "reparacionTabique", width: 18 }]
           : []),
         ...(exportFieldVisible("cantidad_final")
           ? [{ header: "Cantidad final", key: "cantidadFinal", width: 16 }]
@@ -1827,7 +2068,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           return {
             codigo:         r.codigo ?? `REG-${String(r.id).slice(0, 6)}`,
             tipo:           getTipoRegistroLabel(r.tipoRegistro),
-            itemizadoSacyr: getItemizadoSacyr(r),
             obra:           r.obraNombre ?? "",
             fecha:          dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
             piso:           r.piso,
@@ -2151,7 +2391,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <h1 className="mt-3 text-lg font-semibold tracking-wide text-slate-900">
             {esJuntaLineal
               ? "Registro de junta lineal espuma"
-              : "Registro de sellos · Itemizado BECK / SACYR"}
+              : "Registro de sellos · Itemizado BECK"}
           </h1>
           <p className="mt-1 text-xs text-slate-600 max-w-xl">
             {esJuntaLineal
@@ -2458,7 +2698,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               {tipoSeleccionado === "junta_lineal_espuma"
                 ? "Junta Lineal Espuma"
                 : tipoSeleccionado === "sello_cortafuego"
-                ? "Sellos Cortafuego · Itemizado BECK / SACYR"
+                ? "Sellos Cortafuego · Itemizado BECK"
                 : "Todos los registros"}
             </span>
           </div>
@@ -2586,12 +2826,15 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         registro={registroDetalle}
         open={!!registroDetalle}
         mode={detalleMode}
-        canEdit={false}
+        canEdit={registroDetalle?.esCorreccion === true && registroDetalle?.estado !== "en_revision"}
         saving={savingDetalle}
         onClose={() => setRegistroDetalle(null)}
         onEdit={() => setDetalleMode("edit")}
         onSave={handleGuardarDetalle}
         onDownloadPdf={canDownloadPdf ? handleDescargarPdf : undefined}
+        onReenviarRevision={handleReenviarRevision}
+        reenviarRevisionLoading={!!reenviarRevisionId}
+        showEnRevisionAlert
         itemizadosMandante={itemizadosMandante}
         camposConfigurados={camposConfigurados}
       />

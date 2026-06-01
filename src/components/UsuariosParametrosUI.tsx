@@ -7,6 +7,7 @@ import { EditOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons
 import { useAuth } from "../context/useAuth";
 import {
   usuariosParametrosAPI,
+  usuariosAPI,
   type UsuarioApi,
   type UsuarioApiRol,
 } from "../services/api";
@@ -111,6 +112,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     rol: UsuarioApiRol;
     activo: boolean;
   }>();
+  const [editPassword, setEditPassword] = useState("");
+  const [editConfirmPassword, setEditConfirmPassword] = useState("");
+  const [editPasswordError, setEditPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -149,6 +153,8 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const refreshUsuarios = () => setReloadKey((prev) => prev + 1);
   const isCurrentIngenieriaBeck =
     empresa === "beck" && currentUser?.rol === "Ingenieria";
+  const canChangePassword =
+    currentUser?.rol === "Administrador" || currentUser?.rol === "Ingenieria";
   const rolesForCurrentUser = useMemo(
     () =>
       isCurrentIngenieriaBeck
@@ -203,6 +209,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       rol: usuario.rol,
       activo: usuario.activo,
     });
+    setEditPassword("");
+    setEditConfirmPassword("");
+    setEditPasswordError(null);
   };
 
   const syncCurrentSessionIfNeeded = async (updatedUsuario: UsuarioApi) => {
@@ -242,6 +251,24 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         return;
       }
 
+      const hasPassword = editPassword.trim().length > 0;
+      const hasConfirm = editConfirmPassword.trim().length > 0;
+
+      if (hasPassword || hasConfirm) {
+        if (!hasPassword || !hasConfirm) {
+          setEditPasswordError("Ambos campos de contraseña son obligatorios");
+          return;
+        }
+        if (editPassword.length < 8) {
+          setEditPasswordError("La contraseña debe tener al menos 8 caracteres");
+          return;
+        }
+        if (editPassword !== editConfirmPassword) {
+          setEditPasswordError("Las contraseñas no coinciden");
+          return;
+        }
+      }
+
       setEditing(true);
       const updatedUsuario = await usuariosParametrosAPI.editar(
         empresa,
@@ -257,9 +284,24 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         prev.map((u) => (u.id === updatedUsuario.id ? updatedUsuario : u))
       );
       await syncCurrentSessionIfNeeded(updatedUsuario);
+
+      if (hasPassword) {
+        await usuariosAPI.cambiarPassword(editingUsuario.id, {
+          password: editPassword,
+          confirmPassword: editConfirmPassword,
+        });
+      }
+
       setEditingUsuario(null);
       editForm.resetFields();
-      message.success("Usuario actualizado correctamente");
+      setEditPassword("");
+      setEditConfirmPassword("");
+      setEditPasswordError(null);
+      message.success(
+        hasPassword
+          ? "Usuario y contraseña actualizados correctamente"
+          : "Usuario actualizado correctamente"
+      );
     } catch (error) {
       message.error(getErrorMessage(error, "No se pudo actualizar el usuario"));
     } finally {
@@ -595,6 +637,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           if (editing) return;
           setEditingUsuario(null);
           editForm.resetFields();
+          setEditPassword("");
+          setEditConfirmPassword("");
+          setEditPasswordError(null);
         }}
         onOk={() => void guardarEdicionUsuario()}
         confirmLoading={editing}
@@ -614,7 +659,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             name="email"
             rules={[
               { required: true, message: "Ingresa el correo" },
-              { type: "email", message: "Correo no vÃ¡lido" },
+              { type: "email", message: "Correo no válido" },
             ]}
           >
             <Input />
@@ -636,6 +681,56 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             />
           </Form.Item>
         </Form>
+
+        {canChangePassword && (
+          <div className="mt-1">
+            <div className="mb-3 border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Cambiar contraseña (opcional)
+              </p>
+            </div>
+            {editingUsuario?.azureId ? (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                Usuario Microsoft. La contraseña se administra desde Microsoft.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm text-slate-700">
+                    Nueva contraseña
+                  </label>
+                  <Input.Password
+                    value={editPassword}
+                    onChange={(e) => {
+                      setEditPassword(e.target.value);
+                      setEditPasswordError(null);
+                    }}
+                    placeholder="Mínimo 8 caracteres"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-slate-700">
+                    Confirmar contraseña
+                  </label>
+                  <Input.Password
+                    value={editConfirmPassword}
+                    onChange={(e) => {
+                      setEditConfirmPassword(e.target.value);
+                      setEditPasswordError(null);
+                    }}
+                    placeholder="Repite la contraseña"
+                    autoComplete="new-password"
+                    status={editPasswordError ? "error" : undefined}
+                  />
+                  {editPasswordError && (
+                    <p className="mt-1 text-xs text-red-500">{editPasswordError}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

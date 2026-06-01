@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Select, Table, Tag, message } from "antd";
+import { Button, Card, DatePicker, Input, Modal, Select, Table, Tag, message } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
@@ -37,6 +37,19 @@ type RegistroApiRecord = {
   numero_sello?: string | null;
   cantidadSellos?: number | string | null;
   cantidad_sellos?: number | string | null;
+  factorPorHolguras?: number | string | null;
+  factor_por_holguras?: number | string | null;
+  cieloModular?: number | string | null;
+  cielo_modular?: number | string | null;
+  cantidadSellosConFactores?: number | string | null;
+  cantidad_sellos_con_factores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidadSellosAislacion?: number | string | null;
+  cantidad_sellos_aislacion?: number | string | null;
+  reparacionTabique?: number | string | null;
+  reparacion_tabique?: number | string | null;
+  cantidadFinal?: number | string | null;
+  cantidad_final?: number | string | null;
   metrosLineales?: number | string | null;
   metros_lineales?: number | string | null;
   longitud?: number | string | null;
@@ -47,6 +60,12 @@ type RegistroApiRecord = {
   itemizado_beck?: string | null;
   itemizadoSacyr?: string | null;
   itemizado_sacyr?: string | null;
+  itemizadoMandanteId?: string | null;
+  itemizado_mandante_id?: string | null;
+  itemizadoMandanteNombre?: string | null;
+  itemizadoMandante?: { id?: string | null; nombre?: string | null; codigoBeck?: string | null } | null;
+  codigoBeck?: string | null;
+  codigo_beck?: string | null;
   nombreSellador?: string | null;
   nombre_sellador?: string | null;
   obraNombre?: string | null;
@@ -68,6 +87,12 @@ type RegistroApiRecord = {
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
+  motivoRechazo?: string | null;
+  fechaRechazo?: string | null;
+  rechazadoPor?: { id?: string; nombre?: string | null } | null;
+  esCorreccion?: boolean | null;
+  registroOrigenId?: string | null;
+  registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
 };
 
 type RegistroIngenieria = RegistroSello & {
@@ -136,6 +161,46 @@ const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
 const normalizeCieloModular = (value: number): 1 | 2 | 3 => {
   if (value === 2 || value === 3) return value;
   return 1;
+};
+
+const displayValue = (value: unknown): string => {
+  if (value === null || value === undefined) return "-";
+  const str = String(value).trim();
+  if (str === "" || str.toLowerCase() === "no aplica") return "-";
+  return str;
+};
+
+const formatDecimal = (value?: number | string | null, decimals = 2): string => {
+  if (value === null || value === undefined || value === "") return "-";
+  const str = String(value).trim();
+  if (str.toLowerCase() === "no aplica") return "-";
+  const num = Number(str.replace(",", "."));
+  if (!Number.isFinite(num)) return str;
+  return num.toLocaleString("es-CL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
+};
+
+const getMetrosLineales = (registro: { metrosLineales?: number | string | null }): number | null => {
+  const value = registro.metrosLineales ?? null;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+};
+
+const getTipoRegistroLabel = (tipo?: string | null): string => {
+  if (tipo === "junta_lineal_espuma") return "Junta lineal espuma";
+  return "Sello cortafuego";
+};
+
+const getTipoRegistroColor = (tipo?: string | null): string => {
+  if (tipo === "junta_lineal_espuma") return "blue";
+  return "gold";
+};
+
+const getTipoRegistroBadgeClass = (tipo?: string | null): string => {
+  if (tipo === "junta_lineal_espuma") return "border border-blue-200 bg-blue-50 text-blue-700";
+  return "border border-amber-200 bg-amber-50 text-amber-700";
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -229,15 +294,20 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
   const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
   const fecha = r.fecha ?? "";
   const diaSemana =
-    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).format("dddd") : "");
-  const descripcionMaterial =
-    r.descripcionMaterial ?? r.descripcion_material ?? "";
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).locale("es").format("dddd") : "");
+  const descripcionMaterial = r.descripcionMaterial ?? r.descripcion_material ?? "";
   const ejeNumerico = String(r.ejeNumerico ?? r.eje_numerico ?? "");
   const ejeAlfabetico = r.ejeAlfabetico ?? r.eje_alfabetico ?? "";
   const numeroSello = r.numeroSello ?? r.numero_sello ?? "";
   const cantidadSellos = Number(r.cantidadSellos ?? r.cantidad_sellos ?? 0);
-  const metrosLinealesRaw =
-    r.metrosLineales ?? r.metros_lineales ?? r.longitud ?? r.longitud_m ?? 0;
+  const factorPorHolguras = r.factorPorHolguras ?? r.factor_por_holguras ?? null;
+  const cieloModularRaw = r.cieloModular ?? r.cielo_modular ?? r.accesibilidad ?? 1;
+  const cantidadSellosConFactores = r.cantidadSellosConFactores ?? r.cantidad_sellos_con_factores ?? null;
+  const aislacion = r.aislacion ?? null;
+  const cantidadSellosAislacion = r.cantidadSellosAislacion ?? r.cantidad_sellos_aislacion ?? null;
+  const reparacionTabique = r.reparacionTabique ?? r.reparacion_tabique ?? null;
+  const cantidadFinal = r.cantidadFinal ?? r.cantidad_final ?? null;
+  const metrosLinealesRaw = r.metrosLineales ?? r.metros_lineales ?? r.longitud ?? r.longitud_m ?? 0;
   const metrosLineales = Number(metrosLinealesRaw);
   const tipoRegistro = r.tipoRegistro ?? r.tipo_registro ?? "sello_cortafuego";
   const nombreSellador = r.nombreSellador ?? r.nombre_sellador ?? "";
@@ -248,8 +318,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
   const empresa = r.empresa ?? "";
   const nombreEmpresa = r.nombreEmpresa ?? r.nombre_empresa ?? "";
   const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
-  const factorHolgura = normalizeFactorHolgura(holguraCm);
-
+  const factorHolgura = normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm));
   const fotosUrls = getFotosRegistro(r);
   const fotoUrl = fotosUrls[0];
 
@@ -269,9 +338,11 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     empresa,
     nombreEmpresa,
     usuarioNombre,
+    codigoBeck: r.codigoBeck ?? r.codigo_beck ?? r.itemizadoMandante?.codigoBeck ?? undefined,
     itemizadoBeck:
-      r.itemizadoBeck ?? r.itemizado_beck ??
-      (descripcionMaterial || `REG-${r.id.slice(0, 6)}`),
+      r.itemizadoBeck ?? r.itemizado_beck ?? (descripcionMaterial || `REG-${r.id.slice(0, 6)}`),
+    itemizadoMandanteId: r.itemizadoMandanteId ?? r.itemizado_mandante_id ?? r.itemizadoMandante?.id ?? undefined,
+    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizadoMandante?.nombre ?? undefined,
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
     fechaEjecucion: fecha,
     dia: diaSemana,
@@ -288,9 +359,21 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     tipoRegistro,
     holguraCm,
     factorHolgura,
-    cieloModular: normalizeCieloModular(accesibilidad),
-    cantidadSellosConFactor: cantidadSellos * factorHolgura,
+    factorPorHolguras,
+    cieloModular: normalizeCieloModular(Number(cieloModularRaw)),
+    cantidadSellosConFactor: Number(cantidadSellosConFactores ?? cantidadSellos * factorHolgura),
+    cantidadSellosConFactores,
+    aislacion,
+    cantidadSellosAislacion,
+    reparacionTabique,
+    cantidadFinal,
     observaciones: r.observaciones ?? "",
+    motivoRechazo: r.motivoRechazo ?? null,
+    fechaRechazo: r.fechaRechazo ?? null,
+    rechazadoPor: r.rechazadoPor ? { nombre: r.rechazadoPor.nombre ?? "" } : null,
+    esCorreccion: r.esCorreccion ?? false,
+    registroOrigenId: r.registroOrigenId ?? null,
+    registroOrigen: r.registroOrigen ?? null,
   };
 };
 
@@ -338,12 +421,16 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
   const [tipoSeleccionado, setTipoSeleccionado] = useState<"todos" | "sello_cortafuego" | "junta_lineal_espuma">("todos");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
+  const [rechazandoRegistro, setRechazandoRegistro] = useState<RegistroSello | null>(null);
+  const [motivoRechazoInput, setMotivoRechazoInput] = useState("");
+  const [motivoRechazoError, setMotivoRechazoError] = useState(false);
+  const [savingRechazo, setSavingRechazo] = useState(false);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
     try {
       const response = await api.get<RegistrosApiResponse | RegistroApiRecord[]>(
-        "/registros"
+        "/registros/pendientes"
       );
       const lista = Array.isArray(response.data)
         ? response.data
@@ -393,6 +480,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const obraEmpresaQuery = normalizeSearchText(obraSeleccionada);
 
     return registros.filter((r) => {
+      const est = normalizeEstado(r.estado);
+      if (est !== "pendiente" && est !== "en_revision") return false;
       if (tipoSeleccionado !== "todos" && (r.tipoRegistro ?? "sello_cortafuego") !== tipoSeleccionado) return false;
       if (obraEmpresaQuery && !getRegistroObraEmpresaSearchText(r).includes(obraEmpresaQuery)) return false;
       if (rangoFechas) {
@@ -401,6 +490,10 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const da = a.fechaEjecucion ? new Date(a.fechaEjecucion).getTime() : 0;
+      const db = b.fechaEjecucion ? new Date(b.fechaEjecucion).getTime() : 0;
+      return db - da;
     });
   }, [registros, obraSeleccionada, tipoSeleccionado, rangoFechas]);
 
@@ -436,6 +529,56 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       message.error("No se pudo actualizar el estado del registro");
     } finally {
       setChangingEstadoId(null);
+    }
+  };
+
+  const handleIniciarRevision = async (record: RegistroSello) => {
+    const id = String(record.id);
+    setChangingEstadoId(id);
+    try {
+      await api.patch(`/registros/${id}/iniciar-revision`);
+      await cargarRegistros();
+      message.success("Revisión iniciada");
+    } catch (error) {
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
+      const msg =
+        axiosErr.response?.data?.error ??
+        axiosErr.response?.data?.message ??
+        "No se pudo iniciar la revisión";
+      message.error(msg);
+    } finally {
+      setChangingEstadoId(null);
+    }
+  };
+
+  const handleAbrirRechazo = (record: RegistroSello) => {
+    setRechazandoRegistro(record);
+    setMotivoRechazoInput("");
+    setMotivoRechazoError(false);
+  };
+
+  const handleConfirmarRechazo = async () => {
+    if (!rechazandoRegistro) return;
+    if (!motivoRechazoInput.trim()) {
+      setMotivoRechazoError(true);
+      return;
+    }
+    const id = String(rechazandoRegistro.id);
+    setSavingRechazo(true);
+    try {
+      await api.patch(`/registros/${id}/estado`, {
+        estado: "rechazado",
+        motivoRechazo: motivoRechazoInput.trim(),
+      });
+      setRechazandoRegistro(null);
+      setMotivoRechazoInput("");
+      await cargarRegistros();
+      message.success("Registro rechazado. Se creó una copia para corrección.");
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo rechazar el registro");
+    } finally {
+      setSavingRechazo(false);
     }
   };
 
@@ -562,7 +705,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             type="primary"
             className="px-2"
             loading={loadingEstado}
-            onClick={() => void handleCambiarEstado(record, "en_revision")}
+            onClick={() => void handleIniciarRevision(record)}
           >
             Iniciar revisión
           </Button>
@@ -592,8 +735,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
               size="small"
               danger
               className="px-2"
-              loading={loadingEstado}
-              onClick={() => void handleCambiarEstado(record, "rechazado")}
+              onClick={() => handleAbrirRechazo(record)}
             >
               Rechazar
             </Button>
@@ -635,57 +777,77 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
 
   const columnasUnificadas: ColumnsType<RegistroIngenieria> = [
     {
-      title: "Código BECK",
-      key: "codigoBeck",
-      width: 120,
-      render: (_, r) => r.codigo || `REG-${String(r.id).slice(0, 6)}`,
+      title: "Obra",
+      key: "obraNombre",
+      width: 160,
+      render: (_, r) => r.obraNombre || "Sin obra",
     },
     {
-      title: "Tipo",
+      title: "Tipo registro",
       key: "tipoRegistro",
-      width: 140,
+      width: 150,
       render: (_, r) => {
         const tipo = r.tipoRegistro ?? "sello_cortafuego";
-        const isJunta = tipo === "junta_lineal_espuma";
         return (
           <Tag
-            color={isJunta ? "blue" : "gold"}
-            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${isJunta ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}
+            color={getTipoRegistroColor(tipo)}
+            className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoRegistroBadgeClass(tipo)}`}
             style={{ marginInlineEnd: 0 }}
           >
-            {isJunta ? "Junta lineal espuma" : "Sello cortafuego"}
+            {getTipoRegistroLabel(tipo)}
           </Tag>
         );
       },
     },
     {
+      title: "Código BECK",
+      key: "codigoBeck",
+      width: 140,
+      render: (_, r) => displayValue(r.codigoBeck),
+    },
+    {
       title: "Itemizado BECK",
       key: "itemizadoBeck",
-      width: 180,
+      width: 220,
       ellipsis: true,
-      render: (_, r) => r.itemizadoBeck || r.descripcionMaterial || "-",
+      render: (_, r) => (
+        <div className="max-w-[220px] truncate">
+          <span className="font-semibold text-orange-700">
+            {displayValue(r.itemizadoBeck || r.descripcionMaterial)}
+          </span>
+        </div>
+      ),
     },
     {
-      title: "Itemizado SACYR",
-      key: "itemizadoSacyr",
-      width: 180,
+      title: "Itemizado Mandante",
+      key: "itemizadoMandante",
+      width: 220,
       ellipsis: true,
-      render: (_, r) => r.itemizadoSacyr || "-",
+      render: (_, r) => displayValue(r.itemizadoMandanteNombre),
     },
     {
-      title: "Fecha ejecución sello",
-      key: "fechaEjecucionSello",
-      width: 150,
-      render: (_, r) =>
-        r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
+      title: "Fecha ejecución de sello",
+      key: "fechaEjecucion",
+      width: 155,
+      render: (_, r) => (r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"),
     },
-    { title: "Día", dataIndex: "dia", key: "dia", width: 90 },
-    { title: "Piso", dataIndex: "piso", key: "piso", width: 80 },
+    {
+      title: "Día",
+      key: "dia",
+      width: 90,
+      render: (_, r) => displayValue(r.dia),
+    },
+    {
+      title: "Piso",
+      key: "piso",
+      width: 90,
+      render: (_, r) => displayValue(r.piso),
+    },
     {
       title: "Eje Alfabético",
-      dataIndex: "ejeAlfabetico",
       key: "ejeAlfabetico",
       width: 110,
+      render: (_, r) => displayValue(r.ejeAlfabetico),
     },
     {
       title: "Eje Numérico",
@@ -695,11 +857,140 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     },
     {
       title: "Nombre sellador",
-      dataIndex: "nombreSellador",
       key: "nombreSellador",
       width: 150,
+      render: (_, r) => displayValue(r.nombreSellador),
     },
-    { title: "Foto", key: "foto", width: 190, render: renderFotoCell },
+    { title: "Foto", key: "foto", width: 160, render: renderFotoCell },
+    {
+      title: "Recinto",
+      key: "recinto",
+      width: 160,
+      render: (_, r) => displayValue(r.recinto),
+    },
+    {
+      title: "Módulo o edificio",
+      key: "modulo_edificio",
+      width: 160,
+      render: (_, r) => displayValue(r.recinto),
+    },
+    {
+      title: "N° DEL SELLO",
+      key: "numero_sello",
+      width: 120,
+      render: (_, r) => displayValue(r.numeroSello),
+    },
+    {
+      title: "Cantidad de Sellos",
+      key: "cantidad_sellos",
+      width: 140,
+      render: (_, r) =>
+        r.cantidadSellos != null && r.cantidadSellos !== 0 ? (
+          <span className="font-medium text-orange-700">{r.cantidadSellos}</span>
+        ) : "-",
+    },
+    {
+      title: "Holgura (cm)",
+      key: "holgura",
+      width: 100,
+      render: (_, r) => displayValue(r.holguraCm),
+    },
+    {
+      title: "Factor por Holguras",
+      key: "factor_por_holguras",
+      width: 130,
+      render: (_, r) => {
+        const value = Number(r.factorPorHolguras ?? r.factorHolgura ?? 1);
+        return (
+          <Tag
+            color={
+              value === 1 ? "green"
+              : value === 1.2 ? "geekblue"
+              : value === 1.4 ? "orange"
+              : "volcano"
+            }
+          >
+            F = {formatDecimal(value)}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: "Cielo modular",
+      key: "cielo_modular",
+      width: 150,
+      render: (_, r) => {
+        const v = Number(r.cieloModular ?? 1);
+        const label =
+          v === 1 ? "F=1 Acceso normal"
+          : v === 2 ? "F=2 Americano / estructurado"
+          : "F=3 Cielo duro / gateras";
+        return <span className="text-xs">{label}</span>;
+      },
+    },
+    {
+      title: "Cantidad de Sellos con Factores",
+      key: "cantidad_sellos_con_factores",
+      width: 200,
+      render: (_, r) => formatDecimal(r.cantidadSellosConFactores ?? r.cantidadSellosConFactor, 2),
+    },
+    {
+      title: "Aislación",
+      key: "aislacion",
+      width: 110,
+      render: (_, r) => formatDecimal(r.aislacion, 2),
+    },
+    {
+      title: "Cantidad de Sellos Aislación",
+      key: "cantidad_sellos_aislacion",
+      width: 195,
+      render: (_, r) => formatDecimal(r.cantidadSellosAislacion, 2),
+    },
+    {
+      title: "Reparación de tabique",
+      key: "reparacion_tabique",
+      width: 160,
+      render: (_, r) => formatDecimal(r.reparacionTabique, 2),
+    },
+    {
+      title: "Cantidad final",
+      key: "cantidad_final",
+      width: 130,
+      render: (_, r) => formatDecimal(r.cantidadFinal, 2),
+    },
+    {
+      title: "Observaciones",
+      key: "observaciones",
+      width: 220,
+      ellipsis: true,
+      render: (_, r) => displayValue(r.observaciones),
+    },
+    {
+      title: "FOLIO",
+      key: "folio",
+      width: 110,
+      render: (_, r) => displayValue(r.numeroSello),
+    },
+    {
+      title: "Cantidad / Metros",
+      key: "cantidadMetros",
+      width: 140,
+      render: (_, r) => {
+        if ((r.tipoRegistro ?? "sello_cortafuego") === "junta_lineal_espuma") {
+          const metros = getMetrosLineales(r);
+          return (
+            <span className="font-medium text-sky-700">
+              {metros !== null ? metros.toFixed(2) : "-"} m
+            </span>
+          );
+        }
+        return (
+          <span className="font-medium text-orange-700">
+            {r.cantidadSellos} sellos
+          </span>
+        );
+      },
+    },
     columnaEstado,
     columnaAcciones,
   ];
@@ -841,6 +1132,53 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         onSave={handleGuardarDetalle}
         onDownloadPdf={handleDescargarPdf}
       />
+
+      <Modal
+        title="Rechazar registro"
+        open={!!rechazandoRegistro}
+        onCancel={() => setRechazandoRegistro(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setRechazandoRegistro(null)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="confirm"
+            danger
+            type="primary"
+            loading={savingRechazo}
+            onClick={() => void handleConfirmarRechazo()}
+          >
+            Rechazar
+          </Button>,
+        ]}
+      >
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-slate-700">
+            Indica el motivo del rechazo. Se creará automáticamente una copia
+            para que el técnico realice las correcciones.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              Motivo de rechazo <span className="text-red-500">*</span>
+            </label>
+            <Input.TextArea
+              rows={4}
+              value={motivoRechazoInput}
+              onChange={(e) => {
+                setMotivoRechazoInput(e.target.value);
+                if (e.target.value.trim()) setMotivoRechazoError(false);
+              }}
+              placeholder="Describe el motivo del rechazo..."
+              status={motivoRechazoError ? "error" : undefined}
+            />
+            {motivoRechazoError && (
+              <p className="mt-1 text-xs text-red-500">
+                El motivo de rechazo es obligatorio.
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

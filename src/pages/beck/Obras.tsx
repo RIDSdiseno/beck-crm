@@ -124,9 +124,9 @@ const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
   { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
   { campo: "cielo_modular", label: "Cielo modular", color: "azul", visible: false },
   { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
-  { campo: "aislacion", label: "AislaciÃ³n", color: "azul", visible: false },
-  { campo: "cantidad_sellos_aislacion", label: "Cantidad sellos aislaciÃ³n", color: "azul", visible: false },
-  { campo: "reparacion_tabique", label: "ReparaciÃ³n tabique", color: "azul", visible: false },
+  { campo: "aislacion", label: "Aislación", color: "azul", visible: false },
+  { campo: "cantidad_sellos_aislacion", label: "Cantidad sellos aislación", color: "azul", visible: false },
+  { campo: "reparacion_tabique", label: "Reparación tabique", color: "azul", visible: false },
   { campo: "cantidad_final", label: "Cantidad final", color: "azul", visible: false },
 ];
 const configurableCatalogKeys = new Set(camposRegistroNuevos.map((field) => field.campo));

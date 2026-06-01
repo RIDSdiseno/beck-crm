@@ -1,12 +1,13 @@
 // src/components/RegistroDetalleModal.tsx
 import React, { useEffect } from "react";
-import { Button, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag } from "antd";
+import { Alert, Button, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
 import {
   CameraOutlined,
   EnvironmentOutlined,
   FieldTimeOutlined,
   FireOutlined,
   UserOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
@@ -47,6 +48,9 @@ type RegistroDetalleModalProps = {
   onEdit?: () => void;
   onSave?: (values: RegistroDetalleUpdateValues) => void | Promise<void>;
   onDownloadPdf?: (registro: RegistroSello) => void | Promise<void>;
+  onReenviarRevision?: (registro: RegistroSello) => void | Promise<void>;
+  reenviarRevisionLoading?: boolean;
+  showEnRevisionAlert?: boolean;
   itemizadosMandante?: ItemizadoMandante[];
   camposConfigurados?: CampoConfiguracionRegistro[];
 };
@@ -256,9 +260,9 @@ const renderDetalleSelloCortafuego = (
     {showCampo("factor_por_holguras") && <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />}
     {showCampo("cielo_modular") && <FieldView label="Cielo modular" value={r.cieloModular ?? "-"} />}
     {showCampo("cantidad_sellos_con_factores") && <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />}
-    {showCampo("aislacion") && <FieldView label="AislaciÃ³n" value={r.aislacion ?? "-"} />}
-    {showCampo("cantidad_sellos_aislacion") && <FieldView label="Cantidad sellos aislaciÃ³n" value={r.cantidadSellosAislacion ?? "-"} />}
-    {showCampo("reparacion_tabique") && <FieldView label="ReparaciÃ³n tabique" value={r.reparacionTabique ?? "-"} />}
+    {showCampo("aislacion") && <FieldView label="Aislación" value={r.aislacion ?? "-"} />}
+    {showCampo("cantidad_sellos_aislacion") && <FieldView label="Cantidad sellos aislación" value={r.cantidadSellosAislacion ?? "-"} />}
+    {showCampo("reparacion_tabique") && <FieldView label="Reparación tabique" value={r.reparacionTabique ?? "-"} />}
     {showCampo("cantidad_final") && <FieldView label="Cantidad final" value={r.cantidadFinal ?? "-"} />}
     <FieldView label="Observaciones" value={r.observaciones} span={2} />
     {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
@@ -279,6 +283,9 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   onEdit,
   onSave,
   onDownloadPdf,
+  onReenviarRevision,
+  reenviarRevisionLoading = false,
+  showEnRevisionAlert = false,
   itemizadosMandante = [],
   camposConfigurados = [],
 }) => {
@@ -288,6 +295,8 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
 
   const esEspuma = registro?.tipoRegistro === "junta_lineal_espuma";
   const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
+  const canReenviar =
+    registro?.esCorreccion === true || registro?.estado === "devuelto_a_tecnico";
 
   useEffect(() => {
     if (!registro) return;
@@ -353,21 +362,40 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
         <div>
-          <Tag
-            className={`mb-1 rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoBadgeClass(
-              registro.tipoRegistro
-            )}`}
-            color={getTipoColor(registro.tipoRegistro)}
-            style={{ marginInlineEnd: 0 }}
-          >
-            {getTipoLabel(registro.tipoRegistro)}
-          </Tag>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Tag
+              className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoBadgeClass(
+                registro.tipoRegistro
+              )}`}
+              color={getTipoColor(registro.tipoRegistro)}
+              style={{ marginInlineEnd: 0 }}
+            >
+              {getTipoLabel(registro.tipoRegistro)}
+            </Tag>
+            {registro.esCorreccion && (
+              <Tag
+                color="orange"
+                className="rounded-full px-3 py-0.5 text-[11px] font-semibold border border-orange-300 bg-orange-50 text-orange-700"
+                style={{ marginInlineEnd: 0 }}
+              >
+                CORRECCIÓN
+              </Tag>
+            )}
+          </div>
           <h2 className="mt-1 text-sm font-semibold text-slate-900">
             {registro.numeroSello
               ? `Sello ${registro.numeroSello} · `
               : ""}
             {registro.itemizadoBeck}
           </h2>
+          {registro.registroOrigen && (
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Corrección del registro:{" "}
+              <span className="font-medium text-slate-700">
+                #{String(registro.registroOrigen.id).slice(0, 8)}
+              </span>
+            </p>
+          )}
           {registro.itemizadoSacyr && (
             <p className="mt-0.5 text-[11px] text-slate-500">
               SACYR: <span className="font-medium text-slate-700">{registro.itemizadoSacyr}</span>
@@ -520,6 +548,30 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
 
         <Divider className="my-2 border-slate-200" />
 
+        {registro.esCorreccion && (
+          <Alert
+            type="warning"
+            showIcon
+            icon={<WarningOutlined />}
+            message="Este registro corresponde a una corrección solicitada por Ingeniería."
+            description={
+              registro.registroOrigen?.motivoRechazo
+                ? `Motivo de rechazo original: ${registro.registroOrigen.motivoRechazo}`
+                : undefined
+            }
+            className="mb-2"
+          />
+        )}
+
+        {showEnRevisionAlert && registro.estado === "en_revision" && (
+          <Alert
+            type="info"
+            showIcon
+            message="Registro en revisión por Ingeniería."
+            className="mb-2"
+          />
+        )}
+
         {canEditRegistro ? (
           <Form
             form={form}
@@ -626,17 +678,17 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               </Form.Item>
             )}
             {showCampo("aislacion") && (
-              <Form.Item name="aislacion" label="AislaciÃ³n" className="mb-3">
+              <Form.Item name="aislacion" label="Aislación" className="mb-3">
                 <InputNumber min={0} step={0.01} className="w-full" />
               </Form.Item>
             )}
             {showCampo("cantidad_sellos_aislacion") && (
-              <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislaciÃ³n" className="mb-3">
+              <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislación" className="mb-3">
                 <InputNumber min={0} step={0.01} className="w-full" />
               </Form.Item>
             )}
             {showCampo("reparacion_tabique") && (
-              <Form.Item name="reparacionTabique" label="ReparaciÃ³n tabique" className="mb-3">
+              <Form.Item name="reparacionTabique" label="Reparación tabique" className="mb-3">
                 <InputNumber min={0} step={0.01} className="w-full" />
               </Form.Item>
             )}
@@ -662,7 +714,28 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
           renderDetalleSelloCortafuego(registro, showCampo)
         )}
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+        {registro.motivoRechazo && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-red-700">
+              <WarningOutlined />
+              Rechazo
+            </h3>
+            <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+              <FieldView label="Motivo de rechazo" value={registro.motivoRechazo} span={2} />
+              {registro.rechazadoPor && (
+                <FieldView label="Rechazado por" value={registro.rechazadoPor.nombre} />
+              )}
+              {registro.fechaRechazo && (
+                <FieldView
+                  label="Fecha de rechazo"
+                  value={dayjs(registro.fechaRechazo).format("DD-MM-YYYY HH:mm")}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3">
           {onDownloadPdf && (
             <Button
               onClick={() => {
@@ -671,6 +744,20 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             >
               Descargar PDF
             </Button>
+          )}
+          {canReenviar && onReenviarRevision && (
+            <Tooltip
+              title={registro.estado === "en_revision" ? "Ya está en revisión" : undefined}
+            >
+              <Button
+                type="primary"
+                loading={reenviarRevisionLoading}
+                disabled={registro.estado === "en_revision"}
+                onClick={() => void onReenviarRevision(registro)}
+              >
+                Reenviar a revisión
+              </Button>
+            </Tooltip>
           )}
           <Button onClick={onClose}>Cerrar</Button>
           {canEditRegistro && (

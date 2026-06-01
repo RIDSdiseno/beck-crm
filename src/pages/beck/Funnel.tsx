@@ -1161,6 +1161,24 @@
   const getArchivoNombre = (archivo: FunnelBeckArchivo): string =>
     archivo.nombreArchivo || archivo.publicId || "Archivo adjunto";
 
+  const toCloudinaryDownloadUrl = (url?: string | null): string => {
+    if (!url) return "";
+    if (!url.includes("/image/upload/")) return url;
+    if (url.includes("/upload/fl_attachment/")) return url;
+    return url.replace("/upload/", "/upload/fl_attachment/");
+  };
+
+  const openArchivo = (url?: string | null) => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadArchivo = (url?: string | null) => {
+    const downloadUrl = toCloudinaryDownloadUrl(url);
+    if (!downloadUrl) return;
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+  };
+
   const groupArchivosFunnel = (
     archivos: FunnelBeckArchivo[]
   ): ArchivosFunnelPorTipo =>
@@ -1280,12 +1298,17 @@
                 <div className="flex shrink-0 gap-2">
                   <Button
                     size="small"
-                    icon={<DownloadOutlined />}
-                    href={archivo.url}
-                    target="_blank"
-                    rel="noreferrer"
+                    icon={<EyeOutlined />}
+                    onClick={() => openArchivo(archivo.url)}
                   >
-                    Ver / Descargar
+                    Ver
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => downloadArchivo(archivo.url)}
+                  >
+                    Descargar
                   </Button>
                   <Button
                     size="small"
@@ -1605,15 +1628,22 @@
                     .join(" · ") || "Archivo adjunto"}
                 </Typography.Text>
               </div>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                href={archivo.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ver / Descargar
-              </Button>
+              <Space size="small">
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => openArchivo(archivo.url)}
+                >
+                  Ver
+                </Button>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadArchivo(archivo.url)}
+                >
+                  Descargar
+                </Button>
+              </Space>
             </li>
           ))}
         </ul>
@@ -4706,14 +4736,14 @@
           {archivos.map((archivo) => (
             <li key={archivo.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="min-w-0 truncate">{getArchivoNombre(archivo)}</span>
-              <a
-                href={archivo.url}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 text-[#8a6d0a] hover:text-[#5f4b06]"
-              >
-                Ver / Descargar
-              </a>
+              <Space size="small">
+                <Button size="small" onClick={() => openArchivo(archivo.url)}>
+                  Ver
+                </Button>
+                <Button size="small" onClick={() => downloadArchivo(archivo.url)}>
+                  Descargar
+                </Button>
+              </Space>
             </li>
           ))}
         </ul>

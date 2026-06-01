@@ -4,7 +4,6 @@ import {
   Button,
   DatePicker,
   Descriptions,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -15,6 +14,7 @@ import {
   Spin,
   Tag,
   Typography,
+  Upload,
   message,
 } from "antd";
 import {
@@ -24,11 +24,13 @@ import {
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
+  PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
+import { regionesComunasChile } from "../../data/regionesComunasChile";
 import {
   clientesFirematAPI,
   firematCotizacionesAPI,
@@ -40,6 +42,8 @@ import {
   type FirematCotizacion,
   type FirematCotizacionPayload,
   type FirematCotizacionTipoCliente,
+  type FunnelFirematArchivo,
+  type FunnelFirematArchivoTipo,
   type FirematFunnelEtapa,
   type FirematFunnelOportunidad,
   type FirematFunnelPayload,
@@ -50,6 +54,17 @@ import {
 const { Text } = Typography;
 
 type ModalMode = "crear" | "editar" | "ver";
+
+type FirematEditSection =
+  | "prospecto"
+  | "primer_contacto"
+  | "desarrollo_cotizacion"
+  | "cotizacion_enviada"
+  | "orden_confirmada"
+  | "ganada"
+  | "perdida"
+  | "postergada"
+  | "descartado";
 
 type LineaCotizacionForm = {
   productoId?: number | string;
@@ -80,6 +95,30 @@ type FunnelFormValues = {
   telefono?: string;
   correo?: string;
   tipoCliente?: FirematCotizacionTipoCliente;
+  rutEmpresa?: string;
+  region?: string;
+  comuna?: string;
+  unidadNegocio?: string;
+  urgencia?: string;
+  tipoUso?: string;
+  necesidadSoporteTecnico?: boolean;
+  alternativaProducto?: string;
+  comision?: number;
+  margenEstimado?: number;
+  fechaComprometidaEnvio?: Dayjs | null;
+  versionCotizacion?: string;
+  comentariosCliente?: string;
+  objeciones?: string;
+  ordenCompra?: string;
+  correoAceptacion?: string;
+  condicionesComerciales?: string;
+  coordinacionAdministrativa?: string;
+  estadoDocumentacion?: string;
+  traspasoAdministracion?: boolean;
+  traspasoERP?: boolean;
+  coordinacionDespacho?: string;
+  estadoComercialOrden?: string;
+  estadoDocumentacionVenta?: string;
   productoId?: number;
   cantidadEstimada?: number;
   responsable?: string;
@@ -95,6 +134,11 @@ type FunnelFormValues = {
   motivoPostergacion?: string;
   fechaReactivacion?: Dayjs | null;
   documentoRespaldo?: string;
+  flujoPosterior?: string;
+  motivoDescarte?: string;
+  tipoBroker?: string;
+  fechaEstimadaDespacho?: Dayjs | null;
+  fechaSeguimientoPostventa?: Dayjs | null;
 };
 
 const ETAPAS: Array<{
@@ -106,10 +150,11 @@ const ETAPAS: Array<{
   { label: "Primer contacto", value: "PRIMER_CONTACTO", color: "#2563eb" },
   { label: "Desarrollo cotización", value: "DESARROLLO_COTIZACION", color: "#7c3aed" },
   { label: "Cotización enviada", value: "COTIZACION_ENVIADA", color: "#d97706" },
-  { label: "|firmada", value: "ORDEN_CONFIRMADA", color: "#0891b2" },
+  { label: "Firmada", value: "ORDEN_CONFIRMADA", color: "#0891b2" },
   { label: "Ganada", value: "GANADA", color: "#16a34a" },
   { label: "Perdida", value: "PERDIDA", color: "#dc2626" },
   { label: "Postergada", value: "POSTERGADA", color: "#9333ea" },
+  { label: "Descartado", value: "DESCARTADO", color: "#64748b" },
 ];
 
 
@@ -124,6 +169,18 @@ const TIPO_CLIENTE_OPTIONS: Array<{
   { label: "Instalador", value: "INSTALADOR" },
   { label: "Comisionista", value: "COMISIONISTA" },
   { label: "Recompra", value: "RECOMPRA" },
+];
+
+const ARCHIVO_FIREMAT_TIPO_OPTIONS: Array<{
+  label: string;
+  value: FunnelFirematArchivoTipo;
+}> = [
+  { label: "Orden de compra", value: "ORDEN_COMPRA" },
+  { label: "Correo aceptación", value: "CORREO_ACEPTACION" },
+  { label: "Documento respaldo", value: "DOCUMENTO_RESPALDO" },
+  { label: "Cotización", value: "COTIZACION" },
+  { label: "Ficha técnica", value: "FICHA_TECNICA" },
+  { label: "Otro", value: "OTRO" },
 ];
 
 const RESUMEN_VACIO: FirematFunnelResumen = {
@@ -148,6 +205,24 @@ const formatDate = (value?: string | null) => {
   return date.isValid() ? date.format("DD-MM-YYYY") : "—";
 };
 
+const toCloudinaryDownloadUrl = (url?: string | null): string => {
+  if (!url) return "";
+  if (!url.includes("/image/upload/")) return url;
+  if (url.includes("/upload/fl_attachment/")) return url;
+  return url.replace("/upload/", "/upload/fl_attachment/");
+};
+
+const openArchivo = (url?: string | null) => {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+};
+
+const downloadArchivo = (url?: string | null) => {
+  const downloadUrl = toCloudinaryDownloadUrl(url);
+  if (!downloadUrl) return;
+  window.open(downloadUrl, "_blank", "noopener,noreferrer");
+};
+
 const getEstadoLabel = (estado?: string | null) => {
   if (estado === "BORRADOR") return "Borrador";
   if (estado === "ENVIADA") return "Enviada";
@@ -169,9 +244,6 @@ const getEstadoColor = (estado?: string | null) => {
   if (estado === "POSTERGADA") return "purple";
   return "default";
 };
-
-const getCotizacionFecha = (cotizacion: FirematCotizacion) =>
-  cotizacion.fechaCotizacion ?? cotizacion.fecha ?? cotizacion.createdAt ?? null;
 
 const getLineasCotizacion = (cotizacion: FirematCotizacion) =>
   cotizacion.lineas ?? cotizacion.detalle ?? [];
@@ -210,7 +282,62 @@ const downloadBlob = (blob: Blob, fileName: string) => {
 };
 
 const needsExtraFields = (etapa: FirematFunnelEtapa) =>
-  etapa === "PERDIDA" || etapa === "POSTERGADA" || etapa === "GANADA";
+  etapa === "PERDIDA" ||
+  etapa === "POSTERGADA" ||
+  etapa === "GANADA" ||
+  etapa === "DESCARTADO";
+
+const getStageEditSection = (
+  etapa: FirematFunnelEtapa
+): FirematEditSection => {
+  switch (etapa) {
+    case "PROSPECTO":
+      return "prospecto";
+    case "PRIMER_CONTACTO":
+      return "primer_contacto";
+    case "DESARROLLO_COTIZACION":
+      return "desarrollo_cotizacion";
+    case "COTIZACION_ENVIADA":
+      return "cotizacion_enviada";
+    case "ORDEN_CONFIRMADA":
+      return "orden_confirmada";
+    case "GANADA":
+      return "ganada";
+    case "PERDIDA":
+      return "perdida";
+    case "POSTERGADA":
+      return "postergada";
+    case "DESCARTADO":
+      return "descartado";
+    default:
+      return "prospecto";
+  }
+};
+
+const getStageActionLabel = (etapa: FirematFunnelEtapa) => {
+  switch (etapa) {
+    case "PROSPECTO":
+      return "Rellenar prospecto";
+    case "PRIMER_CONTACTO":
+      return "Rellenar primer contacto";
+    case "DESARROLLO_COTIZACION":
+      return "Rellenar desarrollo cotizacion";
+    case "COTIZACION_ENVIADA":
+      return "Rellenar seguimiento cotizacion";
+    case "ORDEN_CONFIRMADA":
+      return "Rellenar orden confirmada";
+    case "GANADA":
+      return "Rellenar cierre ganado";
+    case "PERDIDA":
+      return "Rellenar cierre perdido";
+    case "POSTERGADA":
+      return "Rellenar postergacion";
+    case "DESCARTADO":
+      return "Rellenar descarte";
+    default:
+      return "Rellenar etapa";
+  }
+};
 
 
 const getCotizacionLabel = (cotizacion: FirematCotizacion) => {
@@ -253,6 +380,11 @@ const getClienteFirematTipo = (cliente: ClienteFiremat) => {
   };
   return tipo ? map[tipo] : undefined;
 };
+
+const getArchivoFirematTipoLabel = (tipo?: string | null) =>
+  ARCHIVO_FIREMAT_TIPO_OPTIONS.find((item) => item.value === tipo)?.label ??
+  tipo ??
+  "Archivo";
 
 type ResumenCardProps = {
   label: string;
@@ -323,6 +455,18 @@ const FirematFunnelCard: React.FC<FirematFunnelCardProps> = ({
       {productoNombre && (
         <p className="mt-1 line-clamp-2 text-beck-ink-soft">{productoNombre}</p>
       )}
+      <Button
+        size="small"
+        type="link"
+        icon={<EyeOutlined />}
+        className="mt-1 !px-0 text-xs"
+        onClick={(e) => {
+          e.stopPropagation();
+          void onViewDetail(item);
+        }}
+      >
+        Ver detalle
+      </Button>
     </article>
   );
 };
@@ -426,6 +570,7 @@ const FirematFunnel: React.FC = () => {
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
   const etapaWatch = Form.useWatch("etapa", form);
+  const regionWatch = Form.useWatch("region", form);
   const lineasCotizacionRaw = Form.useWatch("lineas", cotizacionForm);
   const lineasCotizacionWatch = useMemo(() => lineasCotizacionRaw ?? [], [lineasCotizacionRaw]);
 
@@ -435,6 +580,8 @@ const FirematFunnel: React.FC = () => {
   const [cotizaciones, setCotizaciones] = useState<FirematCotizacion[]>([]);
   const [clientesFiremat, setClientesFiremat] = useState<ClienteFiremat[]>([]);
   const [contactosCliente, setContactosCliente] = useState<ContactoClienteFiremat[]>([]);
+  const [archivosFiremat, setArchivosFiremat] = useState<FunnelFirematArchivo[]>([]);
+  const [uploadingArchivo, setUploadingArchivo] = useState(false);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
   const [contactoModalOpen, setContactoModalOpen] = useState(false);
@@ -444,6 +591,9 @@ const FirematFunnel: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>("crear");
+  const [initialEditSection, setInitialEditSection] =
+    useState<FirematEditSection | null>(null);
+  const [targetEtapa, setTargetEtapa] = useState<FirematFunnelEtapa | null>(null);
   const [selected, setSelected] = useState<FirematFunnelOportunidad | null>(null);
   const [cotizacionModalOpen, setCotizacionModalOpen] = useState(false);
   const [cotizacionModalMode, setCotizacionModalMode] =
@@ -456,6 +606,7 @@ const FirematFunnel: React.FC = () => {
   const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
   const [dropOverEtapa, setDropOverEtapa] =
     useState<FirematFunnelEtapa | null>(null);
+  const [detalleExpandido, setDetalleExpandido] = useState(false);
 
   const [q, setQ] = useState("");
   const [etapa, setEtapa] = useState<FirematFunnelEtapa | "">("");
@@ -506,6 +657,29 @@ const FirematFunnel: React.FC = () => {
           contactoId: contacto.id,
         })),
     [contactosCliente]
+  );
+
+  const regionOptions = useMemo(
+    () =>
+      regionesComunasChile.map((region) => ({
+        label: region.nombre,
+        value: region.nombre,
+      })),
+    []
+  );
+
+  const comunaOptions = useMemo(
+    () => {
+      const comunas = regionWatch
+        ? regionesComunasChile.find((region) => region.nombre === regionWatch)?.comunas ?? []
+        : [];
+
+      return comunas.map((comuna) => ({
+        label: comuna,
+        value: comuna,
+      }));
+    },
+    [regionWatch]
   );
 
   const cotizacionTotals = useMemo(
@@ -593,8 +767,21 @@ const FirematFunnel: React.FC = () => {
     }
   }, []);
 
+  const cargarArchivosFiremat = useCallback(
+    async (oportunidadId: string | number) => {
+      try {
+        const archivos = await firematFunnelAPI.listarArchivos(oportunidadId);
+        setArchivosFiremat(archivos);
+      } catch {
+        setArchivosFiremat([]);
+        void message.error("No se pudieron cargar los archivos");
+      }
+    },
+    []
+  );
+
   const seleccionarClienteFiremat = useCallback(
-    async (clienteId: string) => {
+    async (clienteId: string, preservarDatosOportunidad = false) => {
       setClientesLoading(true);
       try {
         const cliente = await clientesFirematAPI.obtener(clienteId);
@@ -611,6 +798,15 @@ const FirematFunnel: React.FC = () => {
           telefono: cliente.telefono ?? "",
           correo: cliente.email ?? cliente.correo ?? "",
           tipoCliente: getClienteFirematTipo(cliente),
+          rutEmpresa: preservarDatosOportunidad
+            ? form.getFieldValue("rutEmpresa")
+            : cliente.rut ?? "",
+          region: preservarDatosOportunidad
+            ? form.getFieldValue("region")
+            : cliente.region ?? "",
+          comuna: preservarDatosOportunidad
+            ? form.getFieldValue("comuna")
+            : cliente.comuna ?? "",
           contacto: "",
           contactoId: undefined,
           contactoFirematId: undefined,
@@ -682,6 +878,38 @@ const FirematFunnel: React.FC = () => {
       telefono: oportunidad.telefono ?? "",
       correo: oportunidad.correo ?? "",
       tipoCliente: oportunidad.tipoCliente as FirematCotizacionTipoCliente | undefined,
+      rutEmpresa: oportunidad.rutEmpresa ?? "",
+      region: oportunidad.region ?? "",
+      comuna: oportunidad.comuna ?? "",
+      unidadNegocio: oportunidad.unidadNegocio ?? "",
+      urgencia: oportunidad.urgencia ?? undefined,
+      tipoUso: oportunidad.tipoUso ?? undefined,
+      necesidadSoporteTecnico: oportunidad.necesidadSoporteTecnico ?? false,
+      alternativaProducto: oportunidad.alternativaProducto ?? "",
+      comision:
+        oportunidad.comision !== null && oportunidad.comision !== undefined
+          ? Number(oportunidad.comision)
+          : undefined,
+      margenEstimado:
+        oportunidad.margenEstimado !== null && oportunidad.margenEstimado !== undefined
+          ? Number(oportunidad.margenEstimado)
+          : undefined,
+      fechaComprometidaEnvio: oportunidad.fechaComprometidaEnvio
+        ? dayjs(oportunidad.fechaComprometidaEnvio)
+        : null,
+      versionCotizacion: oportunidad.versionCotizacion ?? "",
+      comentariosCliente: oportunidad.comentariosCliente ?? "",
+      objeciones: oportunidad.objeciones ?? "",
+      ordenCompra: oportunidad.ordenCompra ?? "",
+      correoAceptacion: oportunidad.correoAceptacion ?? "",
+      condicionesComerciales: oportunidad.condicionesComerciales ?? "",
+      coordinacionAdministrativa: oportunidad.coordinacionAdministrativa ?? "",
+      estadoDocumentacion: oportunidad.estadoDocumentacion ?? undefined,
+      traspasoAdministracion: oportunidad.traspasoAdministracion ?? false,
+      traspasoERP: oportunidad.traspasoERP ?? false,
+      coordinacionDespacho: oportunidad.coordinacionDespacho ?? "",
+      estadoComercialOrden: oportunidad.estadoComercialOrden ?? "",
+      estadoDocumentacionVenta: oportunidad.estadoDocumentacionVenta ?? "",
       productoId: oportunidad.productoId ?? undefined,
       cantidadEstimada: Number(oportunidad.cantidadEstimada || 0) || undefined,
       responsable: oportunidad.responsable ?? "",
@@ -702,11 +930,20 @@ const FirematFunnel: React.FC = () => {
         ? dayjs(oportunidad.fechaReactivacion)
         : null,
       documentoRespaldo: oportunidad.documentoRespaldo ?? "",
+      flujoPosterior: oportunidad.flujoPosterior ?? undefined,
+      motivoDescarte: oportunidad.motivoDescarte ?? "",
+      tipoBroker: oportunidad.tipoBroker ?? "",
+      fechaEstimadaDespacho: oportunidad.fechaEstimadaDespacho
+        ? dayjs(oportunidad.fechaEstimadaDespacho)
+        : null,
+      fechaSeguimientoPostventa: oportunidad.fechaSeguimientoPostventa
+        ? dayjs(oportunidad.fechaSeguimientoPostventa)
+        : null,
     });
 
     const clienteId = oportunidad.clienteId ?? oportunidad.clienteFirematId;
     if (clienteId) {
-      void seleccionarClienteFiremat(clienteId);
+      void seleccionarClienteFiremat(clienteId, true);
     } else {
       limpiarClienteFirematSeleccionado();
     }
@@ -715,6 +952,8 @@ const FirematFunnel: React.FC = () => {
   const openCrear = () => {
     setSelected(null);
     setModalMode("crear");
+    setInitialEditSection(null);
+    setTargetEtapa(null);
     setSelectedClienteId(null);
     setContactosCliente([]);
     form.resetFields();
@@ -730,48 +969,255 @@ const FirematFunnel: React.FC = () => {
   const openOportunidad = async (
     record: FirematFunnelOportunidad,
     mode: ModalMode,
-    etapaOverride?: FirematFunnelEtapa
+    etapaOverride?: FirematFunnelEtapa,
+    editSection?: FirematEditSection | null
   ) => {
     try {
       setModalMode(mode);
-      setModalOpen(true);
+      setInitialEditSection(mode === "editar" ? editSection ?? null : null);
+      setTargetEtapa(
+        mode === "editar" && editSection && etapaOverride ? etapaOverride : null
+      );
+      setDetalleExpandido(false);
       void cargarClientesActivos();
       const detalle = await firematFunnelAPI.obtener(record.id);
       setSelected(detalle);
       setFormFromOportunidad(detalle, etapaOverride);
+      if (etapaOverride) {
+        form.setFieldValue("etapa", etapaOverride);
+      }
+      if (mode === "ver" || mode === "editar" || editSection) {
+        await cargarArchivosFiremat(detalle.id);
+      }
+      setModalOpen(true);
     } catch {
       setModalOpen(false);
+      setInitialEditSection(null);
+      setTargetEtapa(null);
       void message.error("No se pudo cargar la oportunidad");
     }
   };
 
+  const openRellenarEtapa = async (record: FirematFunnelOportunidad) => {
+    try {
+      void cargarClientesActivos();
+      const detalle = await firematFunnelAPI.obtener(record.id);
+      setSelected(detalle);
+      setFormFromOportunidad(detalle);
+      await cargarArchivosFiremat(detalle.id);
+      form.setFieldValue("etapa", detalle.etapa);
+      setInitialEditSection(getStageEditSection(detalle.etapa));
+      setTargetEtapa(detalle.etapa);
+      setModalMode("editar");
+      setModalOpen(true);
+    } catch {
+      setModalOpen(false);
+      setInitialEditSection(null);
+      setTargetEtapa(null);
+      void message.error("No se pudo cargar la oportunidad");
+    }
+  };
+
+  const handleUploadArchivoFiremat = async (
+    file: File,
+    tipo: FunnelFirematArchivoTipo
+  ) => {
+    if (!selected) return false;
+
+    setUploadingArchivo(true);
+    try {
+      const nuevos = await firematFunnelAPI.subirArchivos(
+        selected.id,
+        tipo,
+        [file],
+        { etapa: targetEtapa ?? selected.etapa }
+      );
+      setArchivosFiremat((current) => [...nuevos, ...current]);
+      void message.success("Archivo subido");
+    } catch {
+      void message.error("No se pudo subir el archivo");
+    } finally {
+      setUploadingArchivo(false);
+    }
+
+    return false;
+  };
+
+  const handleEliminarArchivoFiremat = async (archivoId: string | number) => {
+    try {
+      await firematFunnelAPI.eliminarArchivo(archivoId);
+      setArchivosFiremat((current) =>
+        current.filter((item) => item.id !== archivoId)
+      );
+      void message.success("Archivo eliminado");
+    } catch {
+      void message.error("No se pudo eliminar el archivo");
+    }
+  };
+
+  const keepString = (
+    value: string | undefined,
+    fallback?: string | null
+  ) => {
+    const clean = value?.trim();
+    if (clean) return clean;
+    if (initialEditSection && fallback !== undefined) return fallback ?? null;
+    return null;
+  };
+
+  const keepNumber = (
+    value: number | undefined,
+    fallback?: number | null
+  ) => {
+    if (value !== undefined && value !== null) return Number(value);
+    if (initialEditSection && fallback !== undefined) return fallback ?? null;
+    return null;
+  };
+
+  const keepBool = (
+    value: boolean | undefined,
+    fallback?: boolean | null
+  ) => {
+    if (value !== undefined && value !== null) return value;
+    if (initialEditSection && fallback !== undefined) return fallback ?? null;
+    return null;
+  };
+
+  const keepDate = (
+    value: Dayjs | null | undefined,
+    fallback?: string | null
+  ) => {
+    if (value) return value.format("YYYY-MM-DD");
+    if (initialEditSection && fallback !== undefined) return fallback ?? null;
+    return null;
+  };
+
   const buildPayload = (values: FunnelFormValues): FirematFunnelPayload => ({
-    clienteId: values.clienteId ?? selectedClienteId,
-    clienteFirematId: values.clienteFirematId ?? selectedClienteId,
-    cliente: values.cliente.trim(),
-    contacto: values.contacto?.trim() || null,
-    telefono: values.telefono?.trim() || null,
-    correo: values.correo?.trim() || null,
-    tipoCliente: values.tipoCliente ?? null,
-    productoId: values.productoId ? Number(values.productoId) : null,
-    cantidadEstimada: values.cantidadEstimada
-      ? Number(values.cantidadEstimada)
-      : null,
-    responsable: values.responsable?.trim() || null,
-    etapa: values.etapa,
-    montoEstimado: values.montoEstimado ? Number(values.montoEstimado) : null,
-    probabilidadCierre: values.probabilidadCierre
-      ? Number(values.probabilidadCierre)
-      : null,
-    proximaAccion: values.proximaAccion?.trim() || null,
-    fechaProximaAccion: values.fechaProximaAccion?.format("YYYY-MM-DD") ?? null,
-    observaciones: values.observaciones?.trim() || null,
-    origen: values.origen?.trim() || null,
-    cotizacionId: values.cotizacionId ?? null,
-    motivoPerdida: values.motivoPerdida?.trim() || null,
-    motivoPostergacion: values.motivoPostergacion?.trim() || null,
-    fechaReactivacion: values.fechaReactivacion?.format("YYYY-MM-DD") ?? null,
-    documentoRespaldo: values.documentoRespaldo?.trim() || null,
+    clienteId: values.clienteId ?? selected?.clienteId ?? selectedClienteId,
+    clienteFirematId:
+      values.clienteFirematId ?? selected?.clienteFirematId ?? selectedClienteId,
+    cliente: values.cliente?.trim() || selected?.cliente || "",
+    contacto: keepString(values.contacto, selected?.contacto),
+    telefono: keepString(values.telefono, selected?.telefono),
+    correo: keepString(values.correo, selected?.correo),
+    tipoCliente: values.tipoCliente ?? selected?.tipoCliente ?? null,
+    rutEmpresa: keepString(values.rutEmpresa, selected?.rutEmpresa),
+    region: keepString(values.region, selected?.region),
+    comuna: keepString(values.comuna, selected?.comuna),
+    unidadNegocio: keepString(values.unidadNegocio, selected?.unidadNegocio),
+    urgencia: keepString(values.urgencia, selected?.urgencia),
+    tipoUso: keepString(values.tipoUso, selected?.tipoUso),
+    necesidadSoporteTecnico: keepBool(
+      values.necesidadSoporteTecnico,
+      selected?.necesidadSoporteTecnico
+    ),
+    alternativaProducto: keepString(
+      values.alternativaProducto,
+      selected?.alternativaProducto
+    ),
+    comision: keepNumber(values.comision, selected?.comision),
+    margenEstimado: keepNumber(values.margenEstimado, selected?.margenEstimado),
+    fechaComprometidaEnvio: keepDate(
+      values.fechaComprometidaEnvio,
+      selected?.fechaComprometidaEnvio
+    ),
+    versionCotizacion: keepString(
+      values.versionCotizacion,
+      selected?.versionCotizacion
+    ),
+    comentariosCliente: keepString(
+      values.comentariosCliente,
+      selected?.comentariosCliente
+    ),
+    objeciones: keepString(values.objeciones, selected?.objeciones),
+    ordenCompra: keepString(values.ordenCompra, selected?.ordenCompra),
+    correoAceptacion: keepString(
+      values.correoAceptacion,
+      selected?.correoAceptacion
+    ),
+    condicionesComerciales: keepString(
+      values.condicionesComerciales,
+      selected?.condicionesComerciales
+    ),
+    coordinacionAdministrativa: keepString(
+      values.coordinacionAdministrativa,
+      selected?.coordinacionAdministrativa
+    ),
+    estadoDocumentacion: keepString(
+      values.estadoDocumentacion,
+      selected?.estadoDocumentacion
+    ),
+    traspasoAdministracion: keepBool(
+      values.traspasoAdministracion,
+      selected?.traspasoAdministracion
+    ),
+    traspasoERP: keepBool(values.traspasoERP, selected?.traspasoERP),
+    coordinacionDespacho: keepString(
+      values.coordinacionDespacho,
+      selected?.coordinacionDespacho
+    ),
+    estadoComercialOrden: keepString(
+      values.estadoComercialOrden,
+      selected?.estadoComercialOrden
+    ),
+    estadoDocumentacionVenta: keepString(
+      values.estadoDocumentacionVenta,
+      selected?.estadoDocumentacionVenta
+    ),
+    productoId:
+      values.productoId !== undefined && values.productoId !== null
+        ? Number(values.productoId)
+        : initialEditSection
+          ? selected?.productoId ?? null
+          : null,
+    cantidadEstimada: keepNumber(
+      values.cantidadEstimada,
+      selected?.cantidadEstimada
+    ),
+    responsable: keepString(values.responsable, selected?.responsable),
+    etapa: targetEtapa ?? values.etapa ?? selected?.etapa,
+    montoEstimado: keepNumber(values.montoEstimado, selected?.montoEstimado),
+    probabilidadCierre: keepNumber(
+      values.probabilidadCierre,
+      selected?.probabilidadCierre
+    ),
+    proximaAccion: keepString(values.proximaAccion, selected?.proximaAccion),
+    fechaProximaAccion: keepDate(
+      values.fechaProximaAccion,
+      selected?.fechaProximaAccion
+    ),
+    observaciones: keepString(values.observaciones, selected?.observaciones),
+    origen: keepString(values.origen, selected?.origen),
+    cotizacionId:
+      values.cotizacionId !== undefined && values.cotizacionId !== null
+        ? values.cotizacionId
+        : initialEditSection
+          ? selected?.cotizacionId ?? null
+          : null,
+    motivoPerdida: keepString(values.motivoPerdida, selected?.motivoPerdida),
+    motivoPostergacion: keepString(
+      values.motivoPostergacion,
+      selected?.motivoPostergacion
+    ),
+    fechaReactivacion: keepDate(
+      values.fechaReactivacion,
+      selected?.fechaReactivacion
+    ),
+    documentoRespaldo: keepString(
+      values.documentoRespaldo,
+      selected?.documentoRespaldo
+    ),
+    flujoPosterior: keepString(values.flujoPosterior, selected?.flujoPosterior),
+    motivoDescarte: keepString(values.motivoDescarte, selected?.motivoDescarte),
+    tipoBroker: keepString(values.tipoBroker, selected?.tipoBroker),
+    fechaEstimadaDespacho: keepDate(
+      values.fechaEstimadaDespacho,
+      selected?.fechaEstimadaDespacho
+    ),
+    fechaSeguimientoPostventa: keepDate(
+      values.fechaSeguimientoPostventa,
+      selected?.fechaSeguimientoPostventa
+    ),
   });
 
   const validateStageRequirements = (values: FunnelFormValues) => {
@@ -784,6 +1230,10 @@ const FirematFunnel: React.FC = () => {
       (!values.motivoPostergacion?.trim() || !values.fechaReactivacion)
     ) {
       void message.error("Ingresa motivo de postergación y fecha de reactivación");
+      return false;
+    }
+    if (values.etapa === "DESCARTADO" && !values.motivoDescarte?.trim()) {
+      void message.error("Ingresa el motivo de descarte");
       return false;
     }
     if (values.etapa === "GANADA") {
@@ -805,7 +1255,7 @@ const FirematFunnel: React.FC = () => {
 
   const handleSubmit = async (values: FunnelFormValues) => {
     if (modalMode === "ver") return;
-    if (!selectedClienteId && !values.cliente?.trim()) {
+    if (modalMode === "crear" && !selectedClienteId && !values.cliente?.trim()) {
       void message.error("Selecciona un cliente registrado o ingresa un cliente no registrado");
       return;
     }
@@ -823,6 +1273,9 @@ const FirematFunnel: React.FC = () => {
       }
       setModalOpen(false);
       setSelected(null);
+      setInitialEditSection(null);
+      setTargetEtapa(null);
+      setArchivosFiremat([]);
       limpiarClienteFirematSeleccionado();
       form.resetFields();
       await cargar();
@@ -839,7 +1292,12 @@ const FirematFunnel: React.FC = () => {
   ) => {
     if (nextEtapa === record.etapa) return;
     if (needsExtraFields(nextEtapa)) {
-      void openOportunidad(record, "editar", nextEtapa);
+      void openOportunidad(
+        record,
+        "editar",
+        nextEtapa,
+        getStageEditSection(nextEtapa)
+      );
       return;
     }
 
@@ -984,6 +1442,30 @@ const FirematFunnel: React.FC = () => {
     telefono: oportunidad.telefono ?? null,
     correo: oportunidad.correo ?? null,
     tipoCliente: oportunidad.tipoCliente ?? null,
+    rutEmpresa: oportunidad.rutEmpresa ?? null,
+    region: oportunidad.region ?? null,
+    comuna: oportunidad.comuna ?? null,
+    unidadNegocio: oportunidad.unidadNegocio ?? null,
+    urgencia: oportunidad.urgencia ?? null,
+    tipoUso: oportunidad.tipoUso ?? null,
+    necesidadSoporteTecnico: oportunidad.necesidadSoporteTecnico ?? null,
+    alternativaProducto: oportunidad.alternativaProducto ?? null,
+    comision: oportunidad.comision ?? null,
+    margenEstimado: oportunidad.margenEstimado ?? null,
+    fechaComprometidaEnvio: oportunidad.fechaComprometidaEnvio ?? null,
+    versionCotizacion: oportunidad.versionCotizacion ?? null,
+    comentariosCliente: oportunidad.comentariosCliente ?? null,
+    objeciones: oportunidad.objeciones ?? null,
+    ordenCompra: oportunidad.ordenCompra ?? null,
+    correoAceptacion: oportunidad.correoAceptacion ?? null,
+    condicionesComerciales: oportunidad.condicionesComerciales ?? null,
+    coordinacionAdministrativa: oportunidad.coordinacionAdministrativa ?? null,
+    estadoDocumentacion: oportunidad.estadoDocumentacion ?? null,
+    traspasoAdministracion: oportunidad.traspasoAdministracion ?? null,
+    traspasoERP: oportunidad.traspasoERP ?? null,
+    coordinacionDespacho: oportunidad.coordinacionDespacho ?? null,
+    estadoComercialOrden: oportunidad.estadoComercialOrden ?? null,
+    estadoDocumentacionVenta: oportunidad.estadoDocumentacionVenta ?? null,
     productoId: oportunidad.productoId ?? null,
     cantidadEstimada: oportunidad.cantidadEstimada ?? null,
     responsable: oportunidad.responsable ?? null,
@@ -999,6 +1481,11 @@ const FirematFunnel: React.FC = () => {
     motivoPostergacion: oportunidad.motivoPostergacion ?? null,
     fechaReactivacion: oportunidad.fechaReactivacion ?? null,
     documentoRespaldo: oportunidad.documentoRespaldo ?? null,
+    flujoPosterior: oportunidad.flujoPosterior ?? null,
+    motivoDescarte: oportunidad.motivoDescarte ?? null,
+    tipoBroker: oportunidad.tipoBroker ?? null,
+    fechaEstimadaDespacho: oportunidad.fechaEstimadaDespacho ?? null,
+    fechaSeguimientoPostventa: oportunidad.fechaSeguimientoPostventa ?? null,
   });
 
   const buildCotizacionPayload = (
@@ -1168,6 +1655,714 @@ const FirematFunnel: React.FC = () => {
     productoId !== undefined;
 
   const modalReadOnly = modalMode === "ver";
+  const isFocusedStageEdit = modalMode === "editar" && Boolean(initialEditSection);
+  const isCreateMode = modalMode === "crear";
+  const isFullEditMode = modalMode === "editar" && !initialEditSection;
+  const modalWidth =
+    modalReadOnly
+      ? "min(920px, 95vw)"
+      : isFullEditMode
+      ? "min(960px, 95vw)"
+      : "min(720px, 95vw)";
+
+  const renderIdentityFields = () => (
+    <>
+      <Form.Item name="clienteId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="clienteFirematId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="contactoId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="contactoFirematId" hidden>
+        <Input />
+      </Form.Item>
+    </>
+  );
+
+  const renderClienteSelector = () => (
+    <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,auto] md:items-end">
+        <Form.Item label="Cliente Firemat registrado (opcional)" className="mb-0">
+          <Select
+            showSearch
+            allowClear
+            loading={clientesLoading}
+            value={selectedClienteId ?? undefined}
+            options={clienteOptions}
+            optionFilterProp="label"
+            placeholder="Seleccionar cliente por RUT, nombre o razon social"
+            onClear={() => {
+              limpiarClienteFirematSeleccionado();
+              form.setFieldValue("cliente", "");
+            }}
+            onChange={(clienteId) => {
+              if (clienteId) {
+                void seleccionarClienteFiremat(String(clienteId));
+                return;
+              }
+              limpiarClienteFirematSeleccionado();
+            }}
+          />
+        </Form.Item>
+        {selectedClienteId && (
+          <Button onClick={limpiarClienteFirematSeleccionado}>
+            Quitar cliente asociado
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderContactoField = () => (
+    <Form.Item name="contacto" label="Nombre de contacto">
+      {selectedClienteId ? (
+        <div className="space-y-2">
+          {contactoOptions.length ? (
+            <Select
+              options={contactoOptions}
+              placeholder="Seleccionar contacto"
+              allowClear
+              onChange={(_, option) => {
+                const selectedOption = Array.isArray(option) ? option[0] : option;
+                const contactoId =
+                  typeof selectedOption === "object" && selectedOption
+                    ? (selectedOption as { contactoId?: string }).contactoId
+                    : undefined;
+                const contacto = contactosCliente.find(
+                  (item) => item.id === contactoId
+                );
+                if (!contacto) {
+                  form.setFieldsValue({
+                    contacto: "",
+                    contactoId: undefined,
+                    contactoFirematId: undefined,
+                  });
+                  return;
+                }
+
+                form.setFieldsValue({
+                  contactoId: contacto.id,
+                  contactoFirematId: contacto.id,
+                  contacto: contacto.nombre,
+                  telefono: contacto.telefono || form.getFieldValue("telefono"),
+                  correo: contacto.correo || form.getFieldValue("correo"),
+                });
+              }}
+            />
+          ) : (
+            <Text type="secondary">Este cliente no tiene contactos registrados</Text>
+          )}
+          <Button
+            size="small"
+            type="link"
+            icon={<PlusOutlined />}
+            onClick={abrirNuevoContacto}
+            className="!px-0"
+          >
+            Nuevo contacto
+          </Button>
+        </div>
+      ) : (
+        <Input placeholder="Nombre contacto" />
+      )}
+    </Form.Item>
+  );
+
+  const renderProximaAccionField = () => (
+    <Form.Item name="proximaAccion" label="Próximos pasos">
+      <Input.TextArea
+        rows={3}
+        placeholder="Describe el próximo paso"
+      />
+    </Form.Item>
+  );
+
+  const renderArchivoTipoRow = (
+    tipo: FunnelFirematArchivoTipo,
+    titulo: string
+  ) => {
+    const archivo = archivosFiremat.find((item) => item.tipo === tipo);
+
+    return (
+      <div
+        className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm md:flex-row md:items-center md:justify-between"
+        title={getArchivoFirematTipoLabel(tipo)}
+      >
+        <div className="min-w-0">
+          <p className="font-medium text-beck-ink">{titulo}</p>
+          <p className="break-words text-xs text-beck-muted">
+            {archivo
+              ? archivo.nombreArchivo || "Archivo adjunto"
+              : "Sin archivos adjuntos"}
+          </p>
+        </div>
+        <Space wrap>
+          <Upload
+            beforeUpload={(file) => handleUploadArchivoFiremat(file, tipo)}
+            showUploadList={false}
+            multiple={false}
+          >
+            <Button size="small" loading={uploadingArchivo} icon={<PaperClipOutlined />}>
+              Subir
+            </Button>
+          </Upload>
+          {archivo && (
+            <>
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => openArchivo(archivo.url)}
+              >
+                Ver
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                onClick={() => downloadArchivo(archivo.url)}
+              >
+                Descargar
+              </Button>
+              <Popconfirm
+                title="Eliminar archivo"
+                description="Esta acción eliminará el archivo adjunto."
+                okText="Eliminar"
+                cancelText="Cancelar"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => void handleEliminarArchivoFiremat(archivo.id)}
+              >
+                <Button danger size="small" icon={<DeleteOutlined />}>
+                  Eliminar
+                </Button>
+              </Popconfirm>
+            </>
+          )}
+        </Space>
+      </div>
+    );
+  };
+
+  const renderArchivosEdicionFields = () => (
+    <div className="rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+        Documentos de la oportunidad
+      </p>
+      <div className="space-y-2">
+        {renderArchivoTipoRow("ORDEN_COMPRA", "Orden de compra")}
+        {renderArchivoTipoRow("CORREO_ACEPTACION", "Correo de aceptación")}
+        {renderArchivoTipoRow("DOCUMENTO_RESPALDO", "Documento respaldo")}
+        {renderArchivoTipoRow("COTIZACION", "Cotización")}
+        {renderArchivoTipoRow("FICHA_TECNICA", "Ficha técnica")}
+        {renderArchivoTipoRow("OTRO", "Otro documento")}
+      </div>
+    </div>
+  );
+
+  const renderProspectoFields = () => (
+    <>
+      {renderIdentityFields()}
+      {renderClienteSelector()}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Form.Item
+          name="cliente"
+          label="Cliente no registrado"
+          rules={[
+            {
+              validator: (_, value: string) => {
+                if (selectedClienteId || value?.trim()) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(
+                  new Error("Ingresa el cliente o selecciona uno registrado")
+                );
+              },
+            },
+          ]}
+        >
+          <Input
+            placeholder="Nombre cliente no registrado"
+            disabled={Boolean(selectedClienteId)}
+          />
+        </Form.Item>
+        {renderContactoField()}
+        <Form.Item name="responsable" label="Responsable">
+          <Input placeholder="Responsable comercial" />
+        </Form.Item>
+        <Form.Item name="telefono" label="Telefono">
+          <Input placeholder="+56..." />
+        </Form.Item>
+        <Form.Item name="correo" label="Correo">
+          <Input placeholder="correo@empresa.cl" />
+        </Form.Item>
+        <Form.Item name="tipoCliente" label="Tipo de cliente">
+          <Select options={TIPO_CLIENTE_OPTIONS} placeholder="Tipo" allowClear />
+        </Form.Item>
+        <Form.Item name="rutEmpresa" label="RUT empresa">
+          <Input placeholder="76.123.456-7" />
+        </Form.Item>
+        <Form.Item name="region" label="Region">
+          <Select
+            showSearch
+            allowClear
+            placeholder="Seleccionar region"
+            options={regionOptions}
+            optionFilterProp="label"
+            onChange={() => {
+              form.setFieldValue("comuna", undefined);
+            }}
+          />
+        </Form.Item>
+        <Form.Item name="comuna" label="Comuna">
+          <Select
+            showSearch
+            allowClear
+            placeholder="Seleccionar comuna"
+            options={comunaOptions}
+            optionFilterProp="label"
+            disabled={!regionWatch}
+          />
+        </Form.Item>
+        <Form.Item name="unidadNegocio" label="Unidad de negocio">
+          <Input placeholder="Firemat, Industrial, Construccion..." />
+        </Form.Item>
+        <Form.Item name="productoId" label="Producto">
+          <Select
+            options={productoOptions}
+            placeholder="Producto Firemat"
+            showSearch
+            optionFilterProp="label"
+            allowClear
+          />
+        </Form.Item>
+        <Form.Item name="cantidadEstimada" label="Cantidad estimada">
+          <InputNumber min={0} className="w-full" />
+        </Form.Item>
+        <Form.Item name="montoEstimado" label="Monto estimado">
+          <InputNumber min={0} className="w-full" prefix="$" />
+        </Form.Item>
+        <Form.Item
+          name="etapa"
+          label="Etapa"
+          rules={[{ required: true, message: "Selecciona la etapa" }]}
+        >
+          <Select options={ETAPAS} />
+        </Form.Item>
+        <Form.Item name="probabilidadCierre" label="Probabilidad cierre">
+          <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+        </Form.Item>
+        {renderProximaAccionField()}
+        <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
+          <DatePicker format="DD-MM-YYYY" className="w-full" />
+        </Form.Item>
+        <Form.Item name="origen" label="Origen">
+          <Input placeholder="CRM, web, referido..." />
+        </Form.Item>
+        <Form.Item name="observaciones" label="Observaciones" className="md:col-span-2">
+          <Input.TextArea rows={4} placeholder="Notas comerciales" />
+        </Form.Item>
+      </div>
+    </>
+  );
+
+  const renderPrimerContactoFields = () => (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Form.Item name="urgencia" label="Urgencia">
+        <Select
+          allowClear
+          placeholder="Seleccionar urgencia"
+          options={[
+            { label: "Inmediata", value: "INMEDIATA" },
+            { label: "1-3 meses", value: "1-3 MESES" },
+            { label: "3-6 meses", value: "3-6 MESES" },
+            { label: "+6 meses", value: "+6 MESES" },
+          ]}
+        />
+      </Form.Item>
+      <Form.Item name="tipoUso" label="Tipo de uso">
+        <Select
+          allowClear
+          placeholder="Seleccionar tipo de uso"
+          options={[
+            { label: "Propio", value: "PROPIO" },
+            { label: "Arriendo", value: "ARRIENDO" },
+            { label: "Mixto", value: "MIXTO" },
+          ]}
+        />
+      </Form.Item>
+      <Form.Item name="necesidadSoporteTecnico" label="Soporte tecnico">
+        <Select
+          allowClear
+          placeholder="Requiere soporte tecnico?"
+          options={[
+            { label: "Si", value: true },
+            { label: "No", value: false },
+          ]}
+        />
+      </Form.Item>
+      {renderProximaAccionField()}
+      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      <Form.Item name="observaciones" label="Observaciones" className="md:col-span-2">
+        <Input.TextArea rows={4} placeholder="Notas comerciales" />
+      </Form.Item>
+    </div>
+  );
+
+  const renderDesarrolloCotizacionFields = () => (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Form.Item name="productoId" label="Producto">
+        <Select
+          options={productoOptions}
+          placeholder="Producto Firemat"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
+      <Form.Item name="cantidadEstimada" label="Cantidad estimada">
+        <InputNumber min={0} className="w-full" />
+      </Form.Item>
+      <Form.Item name="alternativaProducto" label="Alternativa de producto">
+        <Input.TextArea
+          rows={2}
+          placeholder="Producto alternativo o solucion sugerida"
+        />
+      </Form.Item>
+      <Form.Item name="comision" label="Comision (%)">
+        <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+      </Form.Item>
+      <Form.Item name="margenEstimado" label="Margen estimado (%)">
+        <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+      </Form.Item>
+      <Form.Item name="fechaComprometidaEnvio" label="Fecha comprometida de envio">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      <Form.Item name="versionCotizacion" label="Version cotizacion">
+        <Input placeholder="Ej: v1, v2, v3" />
+      </Form.Item>
+      <Form.Item name="comentariosCliente" label="Comentarios del cliente" className="md:col-span-2">
+        <Input.TextArea rows={2} placeholder="Comentarios recibidos del cliente" />
+      </Form.Item>
+      <Form.Item name="objeciones" label="Objeciones" className="md:col-span-2">
+        <Input.TextArea rows={2} placeholder="Precio, plazo, stock, competencia..." />
+      </Form.Item>
+      <Form.Item name="probabilidadCierre" label="Probabilidad cierre">
+        <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+      </Form.Item>
+      {renderProximaAccionField()}
+      <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      <Form.Item name="origen" label="Origen">
+        <Input placeholder="CRM, web, referido..." />
+      </Form.Item>
+      <Form.Item name="cotizacionId" label="Cotizacion vinculada">
+        <Select
+          options={cotizacionOptions}
+          placeholder="Seleccionar cotizacion"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
+    </div>
+  );
+
+  const renderCotizacionEnviadaFields = () => (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Form.Item name="cotizacionId" label="Cotizacion vinculada">
+        <Select
+          options={cotizacionOptions}
+          placeholder="Seleccionar cotizacion"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
+      <Form.Item name="versionCotizacion" label="Version cotizacion">
+        <Input placeholder="Ej: v1, v2, v3" />
+      </Form.Item>
+      <Form.Item name="probabilidadCierre" label="Probabilidad cierre">
+        <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+      </Form.Item>
+      <Form.Item name="comentariosCliente" label="Comentarios del cliente" className="md:col-span-2">
+        <Input.TextArea rows={2} placeholder="Comentarios recibidos del cliente" />
+      </Form.Item>
+      <Form.Item name="objeciones" label="Objeciones" className="md:col-span-2">
+        <Input.TextArea rows={2} placeholder="Precio, plazo, stock, competencia..." />
+      </Form.Item>
+      {renderProximaAccionField()}
+      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      <div className="space-y-2 md:col-span-2">
+        {renderArchivoTipoRow("COTIZACION", "Cotización")}
+        {renderArchivoTipoRow("FICHA_TECNICA", "Ficha técnica")}
+      </div>
+    </div>
+  );
+
+  const renderOrdenConfirmadaFields = () => (
+    <div className="rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+        Orden confirmada / documentacion de venta
+      </p>
+      <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+        <Form.Item name="ordenCompra" label="Orden de compra">
+          <Input placeholder="Nro. orden de compra" />
+        </Form.Item>
+        <Form.Item name="correoAceptacion" label="Correo de aceptacion">
+          <Input placeholder="Correo o referencia de aceptacion" />
+        </Form.Item>
+        <Form.Item name="estadoDocumentacion" label="Estado documentacion">
+          <Select
+            allowClear
+            placeholder="Seleccionar estado"
+            options={[
+              { label: "Pendiente", value: "PENDIENTE" },
+              { label: "En proceso", value: "EN_PROCESO" },
+              { label: "Completa", value: "COMPLETA" },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="estadoComercialOrden" label="Estado comercial orden">
+          <Input placeholder="Ej: pendiente administracion, lista para despacho..." />
+        </Form.Item>
+        <Form.Item name="estadoDocumentacionVenta" label="Estado documentacion venta">
+          <Input placeholder="Ej: OC recibida, respaldo pendiente..." />
+        </Form.Item>
+        <Form.Item
+          name="condicionesComerciales"
+          label="Condiciones comerciales"
+          className="md:col-span-2"
+        >
+          <Input.TextArea rows={2} placeholder="Condiciones comerciales acordadas" />
+        </Form.Item>
+        <Form.Item
+          name="coordinacionAdministrativa"
+          label="Coordinacion administrativa"
+          className="md:col-span-2"
+        >
+          <Input.TextArea rows={2} placeholder="Notas de coordinacion administrativa" />
+        </Form.Item>
+        <Form.Item
+          name="coordinacionDespacho"
+          label="Coordinacion despacho"
+          className="md:col-span-2"
+        >
+          <Input.TextArea rows={2} placeholder="Notas de despacho si corresponde" />
+        </Form.Item>
+        <Form.Item name="traspasoAdministracion" label="Traspaso administracion">
+          <Select
+            allowClear
+            placeholder="Seleccionar"
+            options={[
+              { label: "Si", value: true },
+              { label: "No", value: false },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="traspasoERP" label="Traspaso ERP">
+          <Select
+            allowClear
+            placeholder="Seleccionar"
+            options={[
+              { label: "Si", value: true },
+              { label: "No", value: false },
+            ]}
+          />
+        </Form.Item>
+        {renderProximaAccionField()}
+        <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
+          <DatePicker format="DD-MM-YYYY" className="w-full" />
+        </Form.Item>
+      </div>
+      <div className="mt-3 space-y-2">
+        {renderArchivoTipoRow("ORDEN_COMPRA", "Orden de compra")}
+        {renderArchivoTipoRow("CORREO_ACEPTACION", "Correo de aceptación")}
+        {renderArchivoTipoRow("DOCUMENTO_RESPALDO", "Documento respaldo")}
+        {renderArchivoTipoRow("COTIZACION", "Cotización vinculada")}
+        {renderArchivoTipoRow("OTRO", "Otro documento")}
+      </div>
+    </div>
+  );
+
+  const renderGanadaFields = () => (
+    <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+      <Form.Item name="montoEstimado" label="Monto estimado / monto final">
+        <InputNumber min={0} className="w-full" prefix="$" />
+      </Form.Item>
+      <Form.Item name="responsable" label="Responsable">
+        <Input placeholder="Responsable comercial" />
+      </Form.Item>
+      <Form.Item
+        name="documentoRespaldo"
+        label="Documento respaldo"
+        rules={[
+          {
+            required: etapaWatch === "GANADA",
+            message: "Ingresa el documento de respaldo",
+          },
+        ]}
+      >
+        <Input placeholder="OC, contrato, comprobante o documento" />
+      </Form.Item>
+      <Form.Item name="flujoPosterior" label="Flujo posterior">
+        <Select
+          allowClear
+          placeholder="Seleccionar flujo posterior"
+          options={[
+            { label: "Postventa", value: "POSTVENTA" },
+            { label: "Arriendo", value: "ARRIENDO" },
+            { label: "Nuevo proyecto", value: "NUEVO_PROYECTO" },
+          ]}
+        />
+      </Form.Item>
+      <div className="md:col-span-2">
+        {renderArchivoTipoRow("DOCUMENTO_RESPALDO", "Documento respaldo")}
+      </div>
+    </div>
+  );
+
+  const renderPerdidaFields = () => (
+    <Form.Item
+      name="motivoPerdida"
+      label="Motivo perdida"
+      rules={[
+        { required: etapaWatch === "PERDIDA", message: "Ingresa el motivo de perdida" },
+      ]}
+    >
+      <Input.TextArea rows={3} placeholder="Motivo de perdida" />
+    </Form.Item>
+  );
+
+  const renderPostergadaFields = () => (
+    <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+      <Form.Item
+        name="motivoPostergacion"
+        label="Motivo postergacion"
+        rules={[
+          {
+            required: etapaWatch === "POSTERGADA",
+            message: "Ingresa el motivo de postergacion",
+          },
+        ]}
+      >
+        <Input.TextArea rows={3} placeholder="Motivo de postergacion" />
+      </Form.Item>
+      <Form.Item
+        name="fechaReactivacion"
+        label="Fecha reactivacion"
+        rules={[
+          {
+            required: etapaWatch === "POSTERGADA",
+            message: "Ingresa la fecha de reactivacion",
+          },
+        ]}
+      >
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      {renderProximaAccionField()}
+      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+    </div>
+  );
+
+  const renderDescartadoFields = () => (
+    <Form.Item
+      name="motivoDescarte"
+      label="Motivo descarte"
+      rules={[
+        { required: etapaWatch === "DESCARTADO", message: "Ingresa el motivo de descarte" },
+      ]}
+    >
+      <Input.TextArea
+        rows={3}
+        placeholder="Motivo por el cual se descarta la oportunidad"
+      />
+    </Form.Item>
+  );
+
+  const renderReporteriaFields = () => (
+    <>
+      <div className="md:col-span-3 mt-2 border-t border-[#ead7d2] pt-3">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+          Reporteria y seguimiento Firemat
+        </p>
+      </div>
+      <Form.Item name="tipoBroker" label="Tipo broker">
+        <Input placeholder="Broker, distribuidor, instalador, cliente final..." />
+      </Form.Item>
+      <Form.Item name="fechaEstimadaDespacho" label="Fecha estimada despacho">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+      <Form.Item name="fechaSeguimientoPostventa" label="Fecha seguimiento postventa">
+        <DatePicker format="DD-MM-YYYY" className="w-full" />
+      </Form.Item>
+    </>
+  );
+
+  const renderFocusedStageFields = () => {
+    void renderReporteriaFields;
+    switch (initialEditSection) {
+      case "prospecto":
+        return renderProspectoFields();
+      case "primer_contacto":
+        return renderPrimerContactoFields();
+      case "desarrollo_cotizacion":
+        return renderDesarrolloCotizacionFields();
+      case "cotizacion_enviada":
+        return renderCotizacionEnviadaFields();
+      case "orden_confirmada":
+        return renderOrdenConfirmadaFields();
+      case "ganada":
+        return renderGanadaFields();
+      case "perdida":
+        return renderPerdidaFields();
+      case "postergada":
+        return renderPostergadaFields();
+      case "descartado":
+        return renderDescartadoFields();
+      default:
+        return null;
+    }
+  };
+
+  const hasDetailValue = (value: unknown) =>
+    value !== null && value !== undefined && value !== "";
+
+  const shouldShowPhase2Detail = (item: FirematFunnelOportunidad) =>
+    item.etapa === "DESARROLLO_COTIZACION" ||
+    item.etapa === "COTIZACION_ENVIADA" ||
+    hasDetailValue(item.alternativaProducto) ||
+    hasDetailValue(item.comision) ||
+    hasDetailValue(item.margenEstimado) ||
+    hasDetailValue(item.fechaComprometidaEnvio) ||
+    hasDetailValue(item.versionCotizacion) ||
+    hasDetailValue(item.comentariosCliente) ||
+    hasDetailValue(item.objeciones);
+
+  const shouldShowReporteriaDetail = (item: FirematFunnelOportunidad) =>
+    hasDetailValue(item.tipoBroker) ||
+    hasDetailValue(item.fechaEstimadaDespacho) ||
+    hasDetailValue(item.fechaSeguimientoPostventa);
+
+  const shouldShowOrderDetail = (item: FirematFunnelOportunidad) =>
+    item.etapa === "ORDEN_CONFIRMADA" ||
+    hasDetailValue(item.ordenCompra) ||
+    hasDetailValue(item.correoAceptacion) ||
+    hasDetailValue(item.estadoDocumentacion) ||
+    hasDetailValue(item.estadoComercialOrden) ||
+    hasDetailValue(item.estadoDocumentacionVenta) ||
+    hasDetailValue(item.traspasoAdministracion) ||
+    hasDetailValue(item.traspasoERP) ||
+    hasDetailValue(item.condicionesComerciales) ||
+    hasDetailValue(item.coordinacionAdministrativa) ||
+    hasDetailValue(item.coordinacionDespacho);
 
   return (
     <div className="space-y-5">
@@ -1282,122 +2477,126 @@ const FirematFunnel: React.FC = () => {
 
       <Modal
         title={
-          modalMode === "crear"
+          initialEditSection !== null
+            ? `Rellenar ${
+                ETAPAS.find(
+                  (item) => item.value === (targetEtapa ?? etapaWatch ?? selected?.etapa)
+                )
+                  ?.label ?? "etapa"
+              }`
+            : modalMode === "crear"
             ? "Crear oportunidad Firemat"
             : modalMode === "editar"
             ? `Editar oportunidad ${selected?.cliente ?? ""}`
-            : `Detalle oportunidad ${selected?.cliente ?? ""}`
+            : `Oportunidad: ${selected?.cliente ?? ""}`
         }
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
           setSelected(null);
+          setInitialEditSection(null);
+          setTargetEtapa(null);
+          setArchivosFiremat([]);
+          setDetalleExpandido(false);
           limpiarClienteFirematSeleccionado();
           form.resetFields();
         }}
         onOk={() => form.submit()}
         okText={modalMode === "crear" ? "Crear" : "Guardar"}
-        cancelText={modalReadOnly ? "Cerrar" : "Cancelar"}
+        cancelText="Cancelar"
         okButtonProps={{ hidden: modalReadOnly, className: "firemat-action-button" }}
         confirmLoading={saving}
-        width={960}
+        width={modalWidth}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
+        footer={
+          modalReadOnly && selected
+            ? (
+              <Space>
+                <Button
+                  onClick={() => {
+                    setModalOpen(false);
+                    setSelected(null);
+                    setInitialEditSection(null);
+                    setTargetEtapa(null);
+                    setArchivosFiremat([]);
+                    setDetalleExpandido(false);
+                    limpiarClienteFirematSeleccionado();
+                    form.resetFields();
+                  }}
+                >
+                  Cerrar
+                </Button>
+              </Space>
+            )
+            : undefined
+        }
         destroyOnClose
       >
         {modalReadOnly && selected ? (
           <div className="space-y-5">
-            <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
-              <Descriptions.Item label="Cliente">{selected.cliente || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Contacto">{selected.contacto || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Teléfono">{selected.telefono || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Correo">{selected.correo || "—"}</Descriptions.Item>
+            {/* A. Tabla resumen compacta */}
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              className="[&_.ant-descriptions-item-content]:[word-break:normal] [&_.ant-descriptions-item-content]:[overflow-wrap:break-word]"
+            >
+              <Descriptions.Item label="Cliente">
+                <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
+                  {selected.cliente || "—"}
+                </span>
+              </Descriptions.Item>
               <Descriptions.Item label="Etapa">
-                {ETAPAS.find((item) => item.value === selected.etapa)?.label ?? selected.etapa}
+                <Tag color={ETAPAS.find((e) => e.value === selected.etapa)?.color ?? "default"}>
+                  {ETAPAS.find((e) => e.value === selected.etapa)?.label ?? selected.etapa}
+                </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="Producto">
-                {selected.producto?.nombre ??
-                  selected.productoNombre ??
-                  (selected.productoId
-                    ? productoMap.get(selected.productoId)?.nombre
-                    : null) ??
-                  "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Cantidad estimada">
-                {selected.cantidadEstimada ?? "—"}
+                <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
+                  {selected.producto?.nombre ??
+                    selected.productoNombre ??
+                    (selected.productoId
+                      ? productoMap.get(selected.productoId)?.nombre
+                      : null) ??
+                    "—"}
+                </span>
               </Descriptions.Item>
               <Descriptions.Item label="Monto estimado">
                 {formatCLP(selected.montoEstimado)}
               </Descriptions.Item>
-              <Descriptions.Item label="Responsable">
-                {selected.responsable || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Próxima acción">
-                {selected.proximaAccion || "—"}
+              <Descriptions.Item label="Región / Comuna">
+                {[selected.region, selected.comuna].filter(Boolean).join(" / ") || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Fecha próxima acción">
                 {formatDate(selected.fechaProximaAccion)}
               </Descriptions.Item>
-              <Descriptions.Item label="Tipo de cliente">
-                {TIPO_CLIENTE_OPTIONS.find((item) => item.value === selected.tipoCliente)?.label ??
+              <Descriptions.Item label="Responsable">
+                <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
+                  {selected.responsable || "—"}
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label="Tipo cliente">
+                {TIPO_CLIENTE_OPTIONS.find((t) => t.value === selected.tipoCliente)?.label ??
                   selected.tipoCliente ??
                   "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Origen">{selected.origen || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Probabilidad cierre">
-                {selected.probabilidadCierre !== null && selected.probabilidadCierre !== undefined
-                  ? `${selected.probabilidadCierre}%`
-                  : "—"}
+              <Descriptions.Item label="Próximos pasos" span={2}>
+                <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
+                  {selected.proximaAccion || "—"}
+                </span>
               </Descriptions.Item>
-              <Descriptions.Item label="Observaciones" span={2}>
-                {selected.observaciones || "—"}
-              </Descriptions.Item>
+              {relatedCotizaciones.length > 0 && (
+                <Descriptions.Item label="Cotización vinculada" span={2}>
+                  {relatedCotizaciones
+                    .map((cot) => `#${cot.numero ?? cot.id} · ${formatCLP(cot.total)}`)
+                    .join(", ")}
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-beck-ink">
-                  Cotizaciones vinculadas
-                </h3>
-                <p className="text-xs text-beck-muted">
-                  Cotizaciones Firemat asociadas a esta oportunidad.
-                </p>
-              </div>
-              <Space wrap>
-                <Button
-                  icon={<EditOutlined />}
-                  onClick={() => {
-                    setModalMode("editar");
-                    setFormFromOportunidad(selected);
-                  }}
-                >
-                  Editar
-                </Button>
-                <Popconfirm
-                  title="Eliminar oportunidad"
-                  description="Esta acción no se puede deshacer."
-                  okText="Eliminar"
-                  cancelText="Cancelar"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => void handleEliminar(selected)}
-                >
-                  <Button danger icon={<DeleteOutlined />}>
-                    Eliminar
-                  </Button>
-                </Popconfirm>
-                <Button
-                  className="firemat-action-button"
-                  type="primary"
-                  icon={<FileTextOutlined />}
-                  onClick={openCrearCotizacion}
-                >
-                  Crear cotización
-                </Button>
-              </Space>
-            </div>
-
+            {/* B. Cambiar etapa */}
             <div>
-              <p className="mb-1.5 text-xs font-medium text-beck-muted">
-                Cambiar etapa
-              </p>
+              <p className="mb-1.5 text-xs font-medium text-beck-muted">Cambiar etapa</p>
               <Select<FirematFunnelEtapa>
                 value={selected.etapa}
                 onChange={(nextEtapa) => void handleCambiarEtapa(selected, nextEtapa)}
@@ -1406,78 +2605,283 @@ const FirematFunnel: React.FC = () => {
               />
             </div>
 
-            {relatedCotizaciones.length ? (
-              <div className="overflow-x-auto rounded-xl border border-[#ead7d2]">
-                <table className="min-w-full divide-y divide-[#ead7d2] text-sm">
-                  <thead className="bg-[#fff7f5]">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-beck-muted">Nro.</th>
-                      <th className="px-3 py-2 text-left font-medium text-beck-muted">Estado</th>
-                      <th className="px-3 py-2 text-left font-medium text-beck-muted">Total</th>
-                      <th className="px-3 py-2 text-left font-medium text-beck-muted">Fecha</th>
-                      <th className="px-3 py-2 text-right font-medium text-beck-muted">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {relatedCotizaciones.map((cotizacion) => (
-                      <tr key={cotizacion.id}>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {cotizacion.numero ?? cotizacion.id}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Tag color={getEstadoColor(cotizacion.estado)}>
-                            {getEstadoLabel(cotizacion.estado)}
-                          </Tag>
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {formatCLP(cotizacion.total)}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {formatDate(getCotizacionFecha(cotizacion))}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="small"
-                              icon={<EyeOutlined />}
-                              onClick={() => void openCotizacion(cotizacion, "ver")}
-                            >
-                              Ver
-                            </Button>
-                            <Button
-                              size="small"
-                              icon={<DownloadOutlined />}
-                              onClick={() => void handlePdf(cotizacion)}
-                            >
-                              PDF
-                            </Button>
-                            <Button
-                              size="small"
-                              icon={<EditOutlined />}
-                              onClick={() => void openCotizacion(cotizacion, "editar")}
-                            >
-                              Editar
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* C. Cotizaciones vinculadas */}
+            <div>
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Cotizaciones vinculadas
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Cotizaciones Firemat asociadas a esta oportunidad.
+                </p>
               </div>
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="Sin cotizaciones vinculadas"
-              />
+              {relatedCotizaciones.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-[#ead7d2]">
+                  <table className="min-w-full divide-y divide-[#ead7d2] text-sm">
+                    <thead className="bg-[#fff7f5]">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Numero</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Estado</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Total</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Fecha</th>
+                        <th className="px-3 py-2 text-right font-medium text-beck-muted">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {relatedCotizaciones.map((cotizacion) => (
+                        <tr key={cotizacion.id}>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {cotizacion.numero ?? cotizacion.id}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Tag color={getEstadoColor(cotizacion.estado)}>
+                              {getEstadoLabel(cotizacion.estado)}
+                            </Tag>
+                          </td>
+                          <td className="px-3 py-2 tabular-nums">
+                            {formatCLP(cotizacion.total)}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {formatDate(cotizacion.fecha ?? cotizacion.fechaCotizacion ?? cotizacion.createdAt ?? null)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-2">
+                              <Button size="small" icon={<EyeOutlined />} onClick={() => void openCotizacion(cotizacion, "ver")}>Ver</Button>
+                              <Button size="small" icon={<DownloadOutlined />} onClick={() => void handlePdf(cotizacion)}>PDF</Button>
+                              <Button size="small" icon={<EditOutlined />} onClick={() => void openCotizacion(cotizacion, "editar")}>Editar</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* D. Botones de acción */}
+            <Space wrap>
+              <Button
+                className="firemat-action-button"
+                onClick={() => void openRellenarEtapa(selected)}
+              >
+                {getStageActionLabel(selected.etapa)}
+              </Button>
+              <Button
+                icon={<EyeOutlined />}
+                onClick={() => setDetalleExpandido((v) => !v)}
+              >
+                Ver detalle
+              </Button>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setModalMode("editar");
+                  setInitialEditSection(null);
+                  setTargetEtapa(null);
+                  setFormFromOportunidad(selected);
+                }}
+              >
+                Editar
+              </Button>
+              <Popconfirm
+                title="Eliminar oportunidad"
+                description="Esta acción no se puede deshacer."
+                okText="Eliminar"
+                cancelText="Cancelar"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => void handleEliminar(selected)}
+              >
+                <Button danger icon={<DeleteOutlined />}>
+                  Eliminar
+                </Button>
+              </Popconfirm>
+              <Button
+                className="firemat-action-button"
+                type="primary"
+                icon={<FileTextOutlined />}
+                onClick={openCrearCotizacion}
+              >
+                Crear cotización
+              </Button>
+            </Space>
+
+            {/* E. Archivos adjuntos */}
+            {archivosFiremat.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                  Archivos adjuntos
+                </p>
+                <div className="space-y-1">
+                  {archivosFiremat.map((archivo) => (
+                    <div
+                      key={archivo.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-beck-ink">
+                          {getArchivoFirematTipoLabel(archivo.tipo)}
+                        </p>
+                        <p className="text-xs text-beck-muted">
+                          {archivo.nombreArchivo || "Archivo adjunto"}
+                        </p>
+                      </div>
+                      <Space size="small">
+                        <Button size="small" icon={<EyeOutlined />} onClick={() => openArchivo(archivo.url)}>Ver</Button>
+                        <Button size="small" icon={<DownloadOutlined />} onClick={() => downloadArchivo(archivo.url)}>Descargar</Button>
+                      </Space>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* F. Información completa expandible */}
+            {detalleExpandido && (
+              <Descriptions
+                bordered
+                size="small"
+                column={{ xs: 1, sm: 2 }}
+                className="[&_.ant-descriptions-item-content]:break-words [&_.ant-descriptions-item-label]:whitespace-normal"
+              >
+                <Descriptions.Item label="Contacto">{selected.contacto || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Teléfono">{selected.telefono || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Correo">{selected.correo || "—"}</Descriptions.Item>
+                <Descriptions.Item label="RUT empresa">{selected.rutEmpresa || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Unidad negocio">{selected.unidadNegocio || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Urgencia">{selected.urgencia || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Tipo de uso">{selected.tipoUso || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Soporte técnico">
+                  {selected.necesidadSoporteTecnico === true
+                    ? "Sí"
+                    : selected.necesidadSoporteTecnico === false
+                    ? "No"
+                    : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Cantidad estimada">
+                  {selected.cantidadEstimada ?? "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Probabilidad cierre">
+                  {selected.probabilidadCierre !== null && selected.probabilidadCierre !== undefined
+                    ? `${selected.probabilidadCierre}%`
+                    : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Origen">{selected.origen || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Observaciones" span={2}>
+                  {selected.observaciones || "—"}
+                </Descriptions.Item>
+                {shouldShowPhase2Detail(selected) && (
+                  <>
+                    <Descriptions.Item label="Alternativa producto" span={2}>
+                      {selected.alternativaProducto || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Comisión">
+                      {selected.comision !== null && selected.comision !== undefined
+                        ? `${selected.comision}%`
+                        : "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Margen estimado">
+                      {selected.margenEstimado !== null && selected.margenEstimado !== undefined
+                        ? `${selected.margenEstimado}%`
+                        : "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Fecha comprometida envío">
+                      {formatDate(selected.fechaComprometidaEnvio)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Versión cotización">
+                      {selected.versionCotizacion || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Comentarios cliente" span={2}>
+                      {selected.comentariosCliente || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Objeciones" span={2}>
+                      {selected.objeciones || "—"}
+                    </Descriptions.Item>
+                  </>
+                )}
+                {(selected.etapa === "GANADA" || hasDetailValue(selected.flujoPosterior)) && (
+                  <Descriptions.Item label="Flujo posterior">
+                    {selected.flujoPosterior || "—"}
+                  </Descriptions.Item>
+                )}
+                {(selected.etapa === "PERDIDA" || hasDetailValue(selected.motivoPerdida)) && (
+                  <Descriptions.Item label="Motivo pérdida" span={2}>
+                    {selected.motivoPerdida || "—"}
+                  </Descriptions.Item>
+                )}
+                {(selected.etapa === "POSTERGADA" || hasDetailValue(selected.motivoPostergacion)) && (
+                  <Descriptions.Item label="Motivo postergación" span={2}>
+                    {selected.motivoPostergacion || "—"}
+                  </Descriptions.Item>
+                )}
+                {(selected.etapa === "DESCARTADO" || hasDetailValue(selected.motivoDescarte)) && (
+                  <Descriptions.Item label="Motivo descarte" span={2}>
+                    {selected.motivoDescarte || "—"}
+                  </Descriptions.Item>
+                )}
+                {shouldShowReporteriaDetail(selected) && (
+                  <>
+                    <Descriptions.Item label="Tipo broker">
+                      {selected.tipoBroker || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Fecha estimada despacho">
+                      {formatDate(selected.fechaEstimadaDespacho)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Fecha seguimiento postventa">
+                      {formatDate(selected.fechaSeguimientoPostventa)}
+                    </Descriptions.Item>
+                  </>
+                )}
+                {shouldShowOrderDetail(selected) && (
+                  <>
+                    <Descriptions.Item label="Orden compra">
+                      {selected.ordenCompra || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Correo aceptación">
+                      {selected.correoAceptacion || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Estado documentación">
+                      {selected.estadoDocumentacion || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Estado comercial orden">
+                      {selected.estadoComercialOrden || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Estado documentación venta">
+                      {selected.estadoDocumentacionVenta || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Traspaso administración">
+                      {selected.traspasoAdministracion === true
+                        ? "Sí"
+                        : selected.traspasoAdministracion === false
+                        ? "No"
+                        : "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Traspaso ERP">
+                      {selected.traspasoERP === true
+                        ? "Sí"
+                        : selected.traspasoERP === false
+                        ? "No"
+                        : "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Condiciones comerciales" span={2}>
+                      {selected.condicionesComerciales || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Coordinación administrativa" span={2}>
+                      {selected.coordinacionAdministrativa || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Coordinación despacho" span={2}>
+                      {selected.coordinacionDespacho || "—"}
+                    </Descriptions.Item>
+                  </>
+                )}
+              </Descriptions>
             )}
           </div>
         ) : (
         <Form<FunnelFormValues>
           form={form}
           layout="vertical"
+          preserve={true}
           disabled={modalReadOnly}
           onFinish={handleSubmit}
           initialValues={{
@@ -1486,6 +2890,10 @@ const FirematFunnel: React.FC = () => {
             probabilidadCierre: 20,
           }}
         >
+          {isCreateMode && renderProspectoFields()}
+          {isFocusedStageEdit && renderFocusedStageFields()}
+          {isFullEditMode && (
+          <>
           <Form.Item name="clienteId" hidden>
             <Input />
           </Form.Item>
@@ -1551,7 +2959,7 @@ const FirematFunnel: React.FC = () => {
                 disabled={Boolean(selectedClienteId)}
               />
             </Form.Item>
-            <Form.Item name="contacto" label="Contacto">
+            <Form.Item name="contacto" label="Nombre de contacto">
               {selectedClienteId ? (
                 <div className="space-y-2">
                   {contactoOptions.length ? (
@@ -1615,6 +3023,67 @@ const FirematFunnel: React.FC = () => {
             <Form.Item name="tipoCliente" label="Tipo de cliente">
               <Select options={TIPO_CLIENTE_OPTIONS} placeholder="Tipo" allowClear />
             </Form.Item>
+            <Form.Item name="rutEmpresa" label="RUT empresa">
+              <Input placeholder="76.123.456-7" />
+            </Form.Item>
+            <Form.Item name="region" label="Región">
+              <Select
+                showSearch
+                allowClear
+                placeholder="Seleccionar región"
+                options={regionOptions}
+                optionFilterProp="label"
+                onChange={() => {
+                  form.setFieldValue("comuna", undefined);
+                }}
+              />
+            </Form.Item>
+            <Form.Item name="comuna" label="Comuna">
+              <Select
+                showSearch
+                allowClear
+                placeholder="Seleccionar comuna"
+                options={comunaOptions}
+                optionFilterProp="label"
+                disabled={!regionWatch}
+              />
+            </Form.Item>
+            <Form.Item name="unidadNegocio" label="Unidad de negocio">
+              <Input placeholder="Firemat, Industrial, Construcción..." />
+            </Form.Item>
+            <Form.Item name="urgencia" label="Urgencia">
+              <Select
+                allowClear
+                placeholder="Seleccionar urgencia"
+                options={[
+                  { label: "Inmediata", value: "INMEDIATA" },
+                  { label: "1-3 meses", value: "1-3 MESES" },
+                  { label: "3-6 meses", value: "3-6 MESES" },
+                  { label: "+6 meses", value: "+6 MESES" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="tipoUso" label="Tipo de uso">
+              <Select
+                allowClear
+                placeholder="Seleccionar tipo de uso"
+                options={[
+                  { label: "Propio", value: "PROPIO" },
+                  { label: "Arriendo", value: "ARRIENDO" },
+                  { label: "Mixto", value: "MIXTO" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="necesidadSoporteTecnico" label="Soporte técnico">
+              <Select
+                allowClear
+                placeholder="¿Requiere soporte técnico?"
+                options={[
+                  { label: "Sí", value: true },
+                  { label: "No", value: false },
+                ]}
+              />
+            </Form.Item>
             <Form.Item name="productoId" label="Producto">
               <Select
                 options={productoOptions}
@@ -1630,6 +3099,44 @@ const FirematFunnel: React.FC = () => {
             <Form.Item name="montoEstimado" label="Monto estimado">
               <InputNumber min={0} className="w-full" prefix="$" />
             </Form.Item>
+            <div className="md:col-span-3 mt-2 border-t border-[#ead7d2] pt-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                Desarrollo de cotización y seguimiento
+              </p>
+            </div>
+            <Form.Item name="alternativaProducto" label="Alternativa de producto">
+              <Input.TextArea
+                rows={2}
+                placeholder="Producto alternativo o solución sugerida"
+              />
+            </Form.Item>
+            <Form.Item name="comision" label="Comisión (%)">
+              <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+            </Form.Item>
+            <Form.Item name="margenEstimado" label="Margen estimado (%)">
+              <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+            </Form.Item>
+            <Form.Item
+              name="fechaComprometidaEnvio"
+              label="Fecha comprometida de enví­o"
+            >
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item name="versionCotizacion" label="Versión cotización">
+              <Input placeholder="Ej: v1, v2, v3" />
+            </Form.Item>
+            <Form.Item name="comentariosCliente" label="Comentarios del cliente">
+              <Input.TextArea
+                rows={2}
+                placeholder="Comentarios recibidos del cliente"
+              />
+            </Form.Item>
+            <Form.Item name="objeciones" label="Objeciones">
+              <Input.TextArea
+                rows={2}
+                placeholder="Precio, plazo, stock, competencia..."
+              />
+            </Form.Item>
             <Form.Item
               name="etapa"
               label="Etapa"
@@ -1637,12 +3144,108 @@ const FirematFunnel: React.FC = () => {
             >
               <Select options={ETAPAS} />
             </Form.Item>
+            {etapaWatch === "ORDEN_CONFIRMADA" && (
+              <div className="md:col-span-3 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                  Orden confirmada / documentación de venta
+                </p>
+
+                <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+                  <Form.Item name="ordenCompra" label="Orden de compra">
+                    <Input placeholder="NÂ° orden de compra" />
+                  </Form.Item>
+
+                  <Form.Item name="correoAceptacion" label="Correo de aceptación">
+                    <Input placeholder="Correo o referencia de aceptación" />
+                  </Form.Item>
+
+                  <Form.Item name="estadoDocumentacion" label="Estado documentación">
+                    <Select
+                      allowClear
+                      placeholder="Seleccionar estado"
+                      options={[
+                        { label: "Pendiente", value: "PENDIENTE" },
+                        { label: "En proceso", value: "EN_PROCESO" },
+                        { label: "Completa", value: "COMPLETA" },
+                      ]}
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="estadoComercialOrden" label="Estado comercial orden">
+                    <Input placeholder="Ej: pendiente administración, lista para despacho..." />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="estadoDocumentacionVenta"
+                    label="Estado documentación venta"
+                  >
+                    <Input placeholder="Ej: OC recibida, respaldo pendiente..." />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="condicionesComerciales"
+                    label="Condiciones comerciales"
+                    className="md:col-span-2"
+                  >
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="Condiciones comerciales acordadas"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="coordinacionAdministrativa"
+                    label="Coordinación administrativa"
+                    className="md:col-span-2"
+                  >
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="Notas de coordinación administrativa"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="coordinacionDespacho"
+                    label="Coordinación despacho"
+                    className="md:col-span-2"
+                  >
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="Notas de despacho si corresponde"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="traspasoAdministracion"
+                    label="Traspaso administración"
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Seleccionar"
+                      options={[
+                        { label: "Sí­", value: true },
+                        { label: "No", value: false },
+                      ]}
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="traspasoERP" label="Traspaso ERP">
+                    <Select
+                      allowClear
+                      placeholder="Seleccionar"
+                      options={[
+                        { label: "Sí", value: true },
+                        { label: "No", value: false },
+                      ]}
+                    />
+                  </Form.Item>
+                </div>
+              </div>
+            )}
             <Form.Item name="probabilidadCierre" label="Probabilidad cierre">
               <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
             </Form.Item>
-            <Form.Item name="proximaAccion" label="Próxima acción">
-              <Input placeholder="Llamar, enviar ficha técnica..." />
-            </Form.Item>
+            {renderProximaAccionField()}
             <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
               <DatePicker format="DD-MM-YYYY" className="w-full" />
             </Form.Item>
@@ -1657,6 +3260,23 @@ const FirematFunnel: React.FC = () => {
                 optionFilterProp="label"
                 allowClear
               />
+            </Form.Item>
+            <div className="md:col-span-3 mt-2 border-t border-[#ead7d2] pt-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                Reporterí­a y seguimiento Firemat
+              </p>
+            </div>
+            <Form.Item name="tipoBroker" label="Tipo broker">
+              <Input placeholder="Broker, distribuidor, instalador, cliente final..." />
+            </Form.Item>
+            <Form.Item name="fechaEstimadaDespacho" label="Fecha estimada despacho">
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item
+              name="fechaSeguimientoPostventa"
+              label="Fecha seguimiento postventa"
+            >
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
             </Form.Item>
           </div>
 
@@ -1694,18 +3314,48 @@ const FirematFunnel: React.FC = () => {
           )}
 
           {etapaWatch === "GANADA" && (
+            <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+              <Form.Item
+                name="documentoRespaldo"
+                label="Documento respaldo"
+                rules={[{ required: true, message: "Ingresa el documento de respaldo" }]}
+              >
+                <Input placeholder="OC, contrato, comprobante o documento" />
+              </Form.Item>
+              <Form.Item name="flujoPosterior" label="Flujo posterior">
+                <Select
+                  allowClear
+                  placeholder="Seleccionar flujo posterior"
+                  options={[
+                    { label: "Postventa", value: "POSTVENTA" },
+                    { label: "Arriendo", value: "ARRIENDO" },
+                    { label: "Nuevo proyecto", value: "NUEVO_PROYECTO" },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+          )}
+
+          {etapaWatch === "DESCARTADO" && (
             <Form.Item
-              name="documentoRespaldo"
-              label="Documento respaldo"
-              rules={[{ required: true, message: "Ingresa el documento de respaldo" }]}
+              name="motivoDescarte"
+              label="Motivo descarte"
+              rules={[{ required: true, message: "Ingresa el motivo de descarte" }]}
             >
-              <Input placeholder="OC, contrato, comprobante o documento" />
+              <Input.TextArea
+                rows={3}
+                placeholder="Motivo por el cual se descarta la oportunidad"
+              />
             </Form.Item>
           )}
+
+          {modalMode === "editar" && selected && renderArchivosEdicionFields()}
 
           <Form.Item name="observaciones" label="Observaciones">
             <Input.TextArea rows={4} placeholder="Notas comerciales" />
           </Form.Item>
+          </>
+          )}
         </Form>
         )}
       </Modal>
@@ -1831,7 +3481,7 @@ const FirematFunnel: React.FC = () => {
             >
               <Input placeholder="Cliente" />
             </Form.Item>
-            <Form.Item name="contacto" label="Contacto">
+            <Form.Item name="contacto" label="Nombre de contacto">
               <Input placeholder="Nombre, teléfono o correo" />
             </Form.Item>
             <Form.Item
