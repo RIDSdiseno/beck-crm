@@ -322,7 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && (
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
-            <nav className={collapsed ? "flex flex-col items-center" : ""}>
+            <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
               {access.configuracion && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : "/firemat/usuarios-parametros"}

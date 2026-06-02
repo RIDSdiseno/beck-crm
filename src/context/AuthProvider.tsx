@@ -60,7 +60,7 @@ const isRolUsuario = (value: unknown): value is RolUsuario =>
   value === "VisualizadorFiremat";
 
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>
-  rol === "Terreno" || rol === "JefeObra";
+  rol === "Terreno";
 
 const isSameAuthUser = (left: AuthUser | null, right: AuthUser): boolean =>
   Boolean(

@@ -55,8 +55,7 @@ const { Content } = Layout;
 
 const ACCESS_DENIED_PATH = "/access-denied";
 
-const isCrmBlockedRole = (rol: RolUsuario): boolean =>
-  rol === "Terreno" || rol === "JefeObra";
+const isCrmBlockedRole = (rol: RolUsuario): boolean => rol === "Terreno";
 
 const NO_FIREMAT: Pick<RoleAccess,
   "firemat" | "firematDashboard" | "firematFunnel" | "firematCotizaciones" |
@@ -136,8 +135,13 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         firematVentas: true, firematReportes: false, firematMovimientos: false,
         firematClientes: true,
       };
-    case "Terreno":
     case "JefeObra":
+      return {
+        dashboard: true, funnel: false, registro: true, ingenieria: false,
+        oficinaTecnica: false, reportes: true, cotizaciones: false, movimientos: false, obras: true,
+        configuracion: true, clientes: false, ...NO_FIREMAT,
+      };
+    case "Terreno":
     default:
       return { ...NO_BECK, ...NO_FIREMAT };
   }
@@ -160,6 +164,8 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
       return "/beck/funnel";
     case "Ingenieria":
       return "/beck/procesamiento-ingenieria";
+    case "JefeObra":
+      return "/beck/dashboard";
     case "VendedorFiremat":
     case "Bodeguero":
     case "VisualizadorFiremat":

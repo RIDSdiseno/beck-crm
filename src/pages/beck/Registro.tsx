@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
-  PlusOutlined,
   FireOutlined,
   TableOutlined,
   DownloadOutlined,
@@ -548,8 +547,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const canReview =
     user?.rol === "Administrador" || user?.rol === "Ingenieria";
   const canCreateRegistro = user?.rol === "Administrador";
-  const canDownloadPdf =
+  const canImportarExcel =
+    user?.rol === "Administrador" || user?.rol === "JefeObra";
+  const canEditRegistro =
     user?.rol === "Administrador" || user?.rol === "Ingenieria";
+  const canDownloadPdf =
+    user?.rol === "Administrador" || user?.rol === "Ingenieria" || user?.rol === "JefeObra";
   const [itemizadosMandante, setItemizadosMandante] = useState<ItemizadoMandante[]>([]);
   void canReview;
 
@@ -1228,7 +1231,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             >
               Ver
             </Button>
-            {esCorreccionEditable && (
+            {esCorreccionEditable && canEditRegistro && (
               <Button
                 size="small"
                 type="primary"
@@ -1488,9 +1491,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     [vistaCompleta, camposConfigurados, filteredData, tipoSeleccionado]
   );
 
-  const openNuevo = () => {
-    setOpenDrawer(true);
-  };
 
   const handleSubmit = (values: NuevoRegistroValues) => {
     const obra = loadObras().find((o) => o.id === values.obraId);
@@ -2404,7 +2404,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </div>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {canCreateRegistro && (
+          {canImportarExcel && (
             <>
               <input
                 ref={fileInputRef}
@@ -2444,16 +2444,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           >
             Exportar vista a Excel
           </Button>
-          {canCreateRegistro && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
-              onClick={openNuevo}
-            >
-              Nuevo registro
-            </Button>
-          )}
         </div>
       </div>
 
@@ -2829,7 +2819,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         registro={registroDetalle}
         open={!!registroDetalle}
         mode={detalleMode}
-        canEdit={registroDetalle?.esCorreccion === true && registroDetalle?.estado !== "en_revision"}
+        canEdit={registroDetalle?.esCorreccion === true && registroDetalle?.estado !== "en_revision" && canEditRegistro}
         saving={savingDetalle}
         onClose={() => setRegistroDetalle(null)}
         onEdit={() => setDetalleMode("edit")}

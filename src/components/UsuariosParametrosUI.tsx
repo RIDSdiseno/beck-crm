@@ -152,9 +152,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const isSaving = (id: string) => Boolean(savingById[id]);
   const refreshUsuarios = () => setReloadKey((prev) => prev + 1);
   const isCurrentIngenieriaBeck =
-    empresa === "beck" && currentUser?.rol === "Ingenieria";
+    empresa === "beck" && (currentUser?.rol === "Ingenieria" || currentUser?.rol === "JefeObra");
   const canChangePassword =
-    currentUser?.rol === "Administrador" || currentUser?.rol === "Ingenieria";
+    currentUser?.rol === "Administrador" || currentUser?.rol === "Ingenieria" || currentUser?.rol === "JefeObra";
   const rolesForCurrentUser = useMemo(
     () =>
       isCurrentIngenieriaBeck

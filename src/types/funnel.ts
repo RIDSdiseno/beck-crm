@@ -141,5 +141,14 @@ export type FunnelDeal = {
   observaciones?: string | null;
   urgencia?: string | null;
   observacionCamposFaltantes?: string | null;
+  // Punto 12 - Campos específicos Beck
+  tipoProyecto?: string | null;
+  empresaMandante?: string | null;
+  necesidadLevantamiento?: boolean | null;
+  oficinaTecnicaAsignada?: string | null;
+  duracionEstimada?: string | null;
+  estadoRevisionTecnica?: string | null;
+  garantiasRequeridas?: string | null;
+  estadoDocumentacionVenta?: string | null;
   updatedAt?: string;
 };

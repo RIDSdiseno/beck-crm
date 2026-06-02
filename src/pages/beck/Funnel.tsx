@@ -170,6 +170,15 @@
     unidadNegocio: string;
     observaciones: string;
     urgencia: string;
+    // Punto 12 - Campos específicos Beck
+    tipoProyecto: string;
+    empresaMandante: string;
+    necesidadLevantamiento: string;
+    oficinaTecnicaAsignada: string;
+    duracionEstimada: string;
+    estadoRevisionTecnica: string;
+    garantiasRequeridas: string;
+    estadoDocumentacionVenta: string;
   };
 
   type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
@@ -477,6 +486,14 @@
     unidadNegocio: "",
     observaciones: "",
     urgencia: "",
+    tipoProyecto: "",
+    empresaMandante: "",
+    necesidadLevantamiento: "",
+    oficinaTecnicaAsignada: "",
+    duracionEstimada: "",
+    estadoRevisionTecnica: "",
+    garantiasRequeridas: "",
+    estadoDocumentacionVenta: "",
   });
 
   const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
@@ -2395,6 +2412,144 @@
               </div>
             </div>
 
+            {/* CAMPOS ESPECÍFICOS BECK */}
+            <div className="border-t border-beck-border-light pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                Campos específicos Beck
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label htmlFor="funnel-tipoProyecto" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Tipo de proyecto
+                  </label>
+                  <Select
+                    id="funnel-tipoProyecto"
+                    allowClear
+                    value={draft.tipoProyecto || undefined}
+                    onChange={(value) => onFieldChange("tipoProyecto", value ?? "")}
+                    disabled={submitting}
+                    className="w-full"
+                    placeholder="Selecciona tipo de proyecto"
+                    options={[
+                      { value: "OBRA_NUEVA", label: "Obra nueva" },
+                      { value: "AMPLIACION", label: "Ampliación" },
+                      { value: "MANTENCION", label: "Mantención" },
+                      { value: "LICITACION", label: "Licitación" },
+                      { value: "REQUERIMIENTO_TECNICO", label: "Requerimiento técnico" },
+                      { value: "OTRO", label: "Otro" },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-empresaMandante" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Empresa mandante / contratista / subcontratista
+                  </label>
+                  <input
+                    id="funnel-empresaMandante"
+                    type="text"
+                    value={draft.empresaMandante}
+                    onChange={(e) => onFieldChange("empresaMandante", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    placeholder="Nombre de la empresa"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-oficinaTecnicaAsignada" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Oficina técnica asignada
+                  </label>
+                  <input
+                    id="funnel-oficinaTecnicaAsignada"
+                    type="text"
+                    value={draft.oficinaTecnicaAsignada}
+                    onChange={(e) => onFieldChange("oficinaTecnicaAsignada", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    placeholder="Oficina técnica asignada"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-duracionEstimada" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Duración estimada
+                  </label>
+                  <input
+                    id="funnel-duracionEstimada"
+                    type="text"
+                    value={draft.duracionEstimada}
+                    onChange={(e) => onFieldChange("duracionEstimada", e.target.value)}
+                    disabled={submitting}
+                    className={`${inputClassName} ${disabledInputClassName}`}
+                    placeholder="Ej: 2 semanas, 3 meses, 45 días"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-estadoRevisionTecnica" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Estado de revisión técnica
+                  </label>
+                  <Select
+                    id="funnel-estadoRevisionTecnica"
+                    allowClear
+                    value={draft.estadoRevisionTecnica || undefined}
+                    onChange={(value) => onFieldChange("estadoRevisionTecnica", value ?? "")}
+                    disabled={submitting}
+                    className="w-full"
+                    placeholder="Selecciona estado"
+                    options={[
+                      { value: "PENDIENTE", label: "Pendiente" },
+                      { value: "EN_REVISION", label: "En revisión" },
+                      { value: "APROBADA", label: "Aprobada" },
+                      { value: "RECHAZADA", label: "Rechazada" },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-estadoDocumentacionVenta" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Estado de documentación de venta
+                  </label>
+                  <Select
+                    id="funnel-estadoDocumentacionVenta"
+                    allowClear
+                    value={draft.estadoDocumentacionVenta || undefined}
+                    onChange={(value) => onFieldChange("estadoDocumentacionVenta", value ?? "")}
+                    disabled={submitting}
+                    className="w-full"
+                    placeholder="Selecciona estado"
+                    options={[
+                      { value: "PENDIENTE", label: "Pendiente" },
+                      { value: "EN_REVISION", label: "En revisión" },
+                      { value: "COMPLETA", label: "Completa" },
+                      { value: "INCOMPLETA", label: "Incompleta" },
+                      { value: "NO_APLICA", label: "No aplica" },
+                    ]}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="funnel-necesidadLevantamiento"
+                    checked={draft.necesidadLevantamiento === "true"}
+                    onChange={(checked) => onFieldChange("necesidadLevantamiento", String(checked))}
+                    disabled={submitting}
+                  />
+                  <label htmlFor="funnel-necesidadLevantamiento" className="text-xs font-medium text-slate-600 cursor-pointer">
+                    Necesidad de levantamiento en terreno
+                  </label>
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="funnel-garantiasRequeridas" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Garantías requeridas
+                  </label>
+                  <Input.TextArea
+                    id="funnel-garantiasRequeridas"
+                    value={draft.garantiasRequeridas}
+                    onChange={(e) => onFieldChange("garantiasRequeridas", e.target.value)}
+                    disabled={submitting}
+                    rows={3}
+                    placeholder="Descripción de garantías requeridas"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* PRIMER CONTACTO */}
             <div className="border-t border-beck-border-light pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
@@ -3261,6 +3416,14 @@
         observaciones: toText(item.observaciones, "") || undefined,
         urgencia: toText(item.urgencia, "") || undefined,
         observacionCamposFaltantes: toText(item.observacionCamposFaltantes, "") || undefined,
+        tipoProyecto: toText(item.tipoProyecto, "") || undefined,
+        empresaMandante: toText(item.empresaMandante, "") || undefined,
+        necesidadLevantamiento: toOptionalBoolean(item.necesidadLevantamiento),
+        oficinaTecnicaAsignada: toText(item.oficinaTecnicaAsignada, "") || undefined,
+        duracionEstimada: toText(item.duracionEstimada, "") || undefined,
+        estadoRevisionTecnica: toText(item.estadoRevisionTecnica, "") || undefined,
+        garantiasRequeridas: toText(item.garantiasRequeridas, "") || undefined,
+        estadoDocumentacionVenta: toText(item.estadoDocumentacionVenta, "") || undefined,
         updatedAt: toText(item.updatedAt, "") || undefined,
       };
     };
@@ -3377,6 +3540,17 @@
       unidadNegocio: deal.unidadNegocio || "",
       observaciones: deal.observaciones || "",
       urgencia: deal.urgencia ?? "",
+      tipoProyecto: deal.tipoProyecto || "",
+      empresaMandante: deal.empresaMandante || "",
+      necesidadLevantamiento:
+        typeof deal.necesidadLevantamiento === "boolean"
+          ? String(deal.necesidadLevantamiento)
+          : "",
+      oficinaTecnicaAsignada: deal.oficinaTecnicaAsignada || "",
+      duracionEstimada: deal.duracionEstimada || "",
+      estadoRevisionTecnica: deal.estadoRevisionTecnica || "",
+      garantiasRequeridas: deal.garantiasRequeridas || "",
+      estadoDocumentacionVenta: deal.estadoDocumentacionVenta || "",
     });
 
     const loadDeals = async () => {
@@ -4358,6 +4532,19 @@
         unidadNegocio: draft.unidadNegocio.trim() || undefined,
         observaciones: draft.observaciones.trim() || undefined,
         urgencia: draft.urgencia?.trim() || undefined,
+        tipoProyecto: draft.tipoProyecto.trim() || undefined,
+        empresaMandante: draft.empresaMandante.trim() || undefined,
+        necesidadLevantamiento:
+          draft.necesidadLevantamiento === "true"
+            ? true
+            : draft.necesidadLevantamiento === "false"
+              ? false
+              : undefined,
+        oficinaTecnicaAsignada: draft.oficinaTecnicaAsignada.trim() || undefined,
+        duracionEstimada: draft.duracionEstimada.trim() || undefined,
+        estadoRevisionTecnica: draft.estadoRevisionTecnica.trim() || undefined,
+        garantiasRequeridas: draft.garantiasRequeridas.trim() || undefined,
+        estadoDocumentacionVenta: draft.estadoDocumentacionVenta.trim() || undefined,
       };
     };
 
@@ -4997,6 +5184,17 @@
           { label: "Flujo posterior", value: renderFlujoPosteriorDetail(deal.flujoPosterior) },
           { label: "Motivo pérdida", value: deal.motivoPerdida },
           { label: "Motivo postergación", value: deal.motivoPostergacion },
+        ])}
+
+        {renderDetailSection("CAMPOS ESPECÍFICOS BECK", [
+          { label: "Tipo de proyecto", value: deal.tipoProyecto },
+          { label: "Empresa mandante / contratista / subcontratista", value: deal.empresaMandante },
+          { label: "Necesidad de levantamiento en terreno", value: formatBooleanDetail(deal.necesidadLevantamiento ?? undefined) },
+          { label: "Oficina técnica asignada", value: deal.oficinaTecnicaAsignada },
+          { label: "Duración estimada", value: deal.duracionEstimada },
+          { label: "Estado de revisión técnica", value: deal.estadoRevisionTecnica },
+          { label: "Garantías requeridas", value: deal.garantiasRequeridas },
+          { label: "Estado de documentación de venta", value: deal.estadoDocumentacionVenta },
         ])}
       </div>
     );
