@@ -371,7 +371,19 @@ export interface FunnelBeckUpsertPayload {
   // Cliente Beck asociado
   clienteBeckId?: string | null;
   contactoBeckId?: string | null;
+  // Punto 10
+  direccionProyecto?: string | null;
+  unidadNegocio?: string | null;
+  observaciones?: string | null;
+  urgencia?: string | null;
+  observacionCamposFaltantes?: string | null;
 }
+
+export type BeckCamposCriticosError = {
+  advertenciasCamposCriticos: string[];
+  requiereObservacionCamposFaltantes: boolean;
+  message: string;
+};
 
 export const funnelBeckAPI = {
   listar: async (): Promise<FunnelBeckOpportunity[]> => {
@@ -1559,6 +1571,16 @@ export type FirematFunnelOportunidad = {
   tipoBroker?: string | null;
   fechaEstimadaDespacho?: string | null;
   fechaSeguimientoPostventa?: string | null;
+  nombreOportunidad?: string | null;
+  cargoContacto?: string | null;
+  direccionProyecto?: string | null;
+  tipoOportunidad?: string | null;
+  fechaProbableCierre?: string | null;
+  riesgoTecnico?: string | null;
+  comentariosInternos?: string | null;
+  observacionesTecnicas?: string | null;
+  observacionCamposFaltantes?: string | null;
+  clienteRegistrado?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -1615,6 +1637,21 @@ export type FirematFunnelPayload = {
   tipoBroker?: string | null;
   fechaEstimadaDespacho?: string | null;
   fechaSeguimientoPostventa?: string | null;
+  nombreOportunidad?: string | null;
+  cargoContacto?: string | null;
+  direccionProyecto?: string | null;
+  tipoOportunidad?: string | null;
+  fechaProbableCierre?: string | null;
+  riesgoTecnico?: string | null;
+  comentariosInternos?: string | null;
+  observacionesTecnicas?: string | null;
+  observacionCamposFaltantes?: string | null;
+};
+
+export type FirematCamposCriticosError = {
+  advertenciasCamposCriticos: string[];
+  requiereObservacionCamposFaltantes: true;
+  message: string;
 };
 
 export type FunnelFirematArchivoTipo =
@@ -1734,11 +1771,14 @@ export const firematFunnelAPI = {
 
   cambiarEtapa: async (
     id: string,
-    etapa: FirematFunnelEtapa
+    etapa: FirematFunnelEtapa,
+    observacionCamposFaltantes?: string | null
   ): Promise<FirematFunnelOportunidad> => {
+    const body: { etapa: FirematFunnelEtapa; observacionCamposFaltantes?: string | null } = { etapa };
+    if (observacionCamposFaltantes) body.observacionCamposFaltantes = observacionCamposFaltantes;
     const response = await api.patch<
       ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
-    >(`/firemat/funnel/${id}/etapa`, { etapa });
+    >(`/firemat/funnel/${id}/etapa`, body);
     return "success" in response.data
       ? unwrapApiResponse(response.data)
       : response.data;

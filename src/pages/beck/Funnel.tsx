@@ -2,6 +2,7 @@
   import {
     Button,
     Descriptions,
+    Input,
     Modal as AntdModal,
     Select,
     Space,
@@ -164,6 +165,11 @@
     // Cliente Beck
     clienteBeckId: string;
     contactoBeckId: string;
+    // Punto 10
+    direccionProyecto: string;
+    unidadNegocio: string;
+    observaciones: string;
+    urgencia: string;
   };
 
   type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
@@ -230,7 +236,8 @@
   };
 
   type FunnelColumnProps = {
-    etapa: FunnelStage;
+    columnKey: string;
+    label: string;
     deals: FunnelDeal[];
     canEditFunnel: boolean;
     onStageChange: (dealId: string, etapa: FunnelStage) => void;
@@ -466,6 +473,10 @@
     fechaCierre: "",
     clienteBeckId: "",
     contactoBeckId: "",
+    direccionProyecto: "",
+    unidadNegocio: "",
+    observaciones: "",
+    urgencia: "",
   });
 
   const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
@@ -556,6 +567,17 @@
 
       if (!draft.flujoPosterior.trim()) {
         errors.flujoPosterior = "El flujo posterior es obligatorio";
+      }
+    }
+
+    // Validación para oportunidades activas
+    const isActive = draft.etapa !== "cerrada";
+    if (isActive) {
+      if (!draft.proximaAccion.trim()) {
+        errors.proximaAccion = "La próxima acción es obligatoria para oportunidades activas";
+      }
+      if (!draft.fechaProximaAccion.trim()) {
+        errors.fechaProximaAccion = "La fecha de próxima acción es obligatoria para oportunidades activas";
       }
     }
 
@@ -1103,7 +1125,8 @@
   };
 
   const FunnelColumn: React.FC<FunnelColumnProps> = ({
-    etapa,
+    columnKey,
+    label,
     deals,
     canEditFunnel,
     onStageChange,
@@ -1111,7 +1134,7 @@
     onCreateCotizacion,
   }) => {
     const { setNodeRef } = useDroppable({
-      id: etapa,
+      id: columnKey,
       disabled: !canEditFunnel,
     });
 
@@ -1121,8 +1144,8 @@
         className="flex min-h-[420px] w-[220px] flex-shrink-0 flex-col rounded-xl border border-[#ece8d8] bg-[#f7f6ef] p-3"
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-beck-ink">
-            {etapasLabel[etapa]}
+          <h3 className="text-sm font-semibold" style={{ color: "#17181a" }}>
+            {label}
           </h3>
           <span className="rounded-full border border-beck-border-light bg-white px-2 py-0.5 text-xs text-beck-ink-soft">
             {deals.length}
@@ -2236,6 +2259,18 @@
               </div>
             </div>
 
+            {/* INFORMACIÓN DEL PROYECTO */}
+            <div className="border-t border-beck-border-light pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
+                Información del proyecto
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                {renderTextInput("direccionProyecto", "Dirección / ubicación del proyecto")}
+                {renderTextInput("unidadNegocio", "Unidad de negocio", { required: true })}
+                {renderTextarea("observaciones", "Observaciones generales", "Comentarios u observaciones sobre la oportunidad")}
+              </div>
+            </div>
+
             {/* PROSPECTO */}
             <div className="border-t border-beck-border-light pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
@@ -2244,7 +2279,7 @@
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label htmlFor="funnel-rut-empresa" className="mb-1.5 block text-xs font-medium text-slate-600">
-                    RUT empresa
+                    RUT empresa <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="funnel-rut-empresa"
@@ -2263,7 +2298,7 @@
                 </div>
                 <div>
                   <label htmlFor="funnel-nombre-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
-                    Nombre contacto
+                    Nombre contacto <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="funnel-nombre-contacto"
@@ -2291,7 +2326,7 @@
                 </div>
                 <div>
                   <label htmlFor="funnel-telefono-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
-                    Telefono
+                    Telefono <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="funnel-telefono-contacto"
@@ -2303,11 +2338,12 @@
                     placeholder="56912345678"
                     aria-invalid={Boolean(fieldErrors.telefonoContacto)}
                   />
+                  <p className="mt-1 text-xs text-slate-400">Debe existir teléfono o correo</p>
                   {renderFieldError("telefonoContacto")}
                 </div>
                 <div>
                   <label htmlFor="funnel-correo-contacto" className="mb-1.5 block text-xs font-medium text-slate-600">
-                    Correo
+                    Correo <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="funnel-correo-contacto"
@@ -2319,6 +2355,7 @@
                     placeholder="contacto@empresa.cl"
                     aria-invalid={Boolean(fieldErrors.correoContacto)}
                   />
+                  <p className="mt-1 text-xs text-slate-400">Debe existir teléfono o correo</p>
                   {renderFieldError("correoContacto")}
                 </div>
                 <div>
@@ -2333,6 +2370,26 @@
                     disabled={submitting}
                     className={`${inputClassName} ${disabledInputClassName}`}
                     placeholder="Tipo de oportunidad"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="funnel-urgencia" className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Urgencia
+                  </label>
+                  <Select
+                    id="funnel-urgencia"
+                    allowClear
+                    value={draft.urgencia || undefined}
+                    onChange={(value) => onFieldChange("urgencia", value ?? "")}
+                    disabled={submitting}
+                    className="w-full"
+                    placeholder="Selecciona urgencia"
+                    options={[
+                      { value: "INMEDIATA", label: "Inmediata" },
+                      { value: "1-3 MESES", label: "1-3 meses" },
+                      { value: "3-6 MESES", label: "3-6 meses" },
+                      { value: "+6 MESES", label: "+6 meses" },
+                    ]}
                   />
                 </div>
               </div>
@@ -2428,6 +2485,7 @@
                 <div>
                   <label htmlFor="funnel-proxima-accion" className="mb-1.5 block text-xs font-medium text-slate-600">
                     Proxima accion
+                    {draft.etapa !== "cerrada" && <span className="ml-1 text-red-500">*</span>}
                   </label>
                   <input
                     id="funnel-proxima-accion"
@@ -2435,13 +2493,16 @@
                     value={draft.proximaAccion}
                     onChange={(e) => onFieldChange("proximaAccion", e.target.value)}
                     disabled={submitting}
-                    className={`${inputClassName} ${disabledInputClassName}`}
+                    className={getFieldClassName("proximaAccion")}
                     placeholder="Describe la proxima accion"
+                    aria-invalid={Boolean(fieldErrors.proximaAccion)}
                   />
+                  {renderFieldError("proximaAccion")}
                 </div>
                 <div>
                   <label htmlFor="funnel-fecha-proxima-accion" className="mb-1.5 block text-xs font-medium text-slate-600">
                     Fecha proxima accion
+                    {draft.etapa !== "cerrada" && <span className="ml-1 text-red-500">*</span>}
                   </label>
                   <input
                     id="funnel-fecha-proxima-accion"
@@ -2449,8 +2510,10 @@
                     value={draft.fechaProximaAccion}
                     onChange={(e) => onFieldChange("fechaProximaAccion", e.target.value)}
                     disabled={submitting}
-                    className={`${inputClassName} ${disabledInputClassName}`}
+                    className={getFieldClassName("fechaProximaAccion")}
+                    aria-invalid={Boolean(fieldErrors.fechaProximaAccion)}
                   />
+                  {renderFieldError("fechaProximaAccion")}
                 </div>
                 <div className="md:col-span-2">
                   <label htmlFor="funnel-necesidad-detectada" className="mb-1.5 block text-xs font-medium text-slate-600">
@@ -2498,7 +2561,7 @@
                   {renderTextarea("antecedentesLevantados", "Antecedentes levantados")}
                   {renderTextInput("basesTecnicas", "Bases técnicas")}
                   {renderTextInput("especificaciones", "Especificaciones")}
-                  {renderTextInput("fechaProximaAccion", "Fecha próxima acción", { type: "date" })}
+                  {renderTextInput("fechaProximaAccion", "Fecha próxima acción", { type: "date", required: draft.etapa !== "cerrada" })}
                   {renderArchivoUploaders(visitaArchivoConfigs)}
                   {renderTextarea("observacionesTecnicas", "Observaciones técnicas")}
                   {renderBooleanSwitch("necesidadOficinaTecnica", "¿Requiere oficina técnica?")}
@@ -2748,6 +2811,41 @@
     );
   };
 
+  const getCamposCriticosBeck = (draft: FunnelDraft): string[] => {
+    const missing: string[] = [];
+    if (!draft.empresa.trim()) missing.push("Empresa / cliente");
+    if (!draft.rutEmpresa.trim()) missing.push("RUT empresa");
+    if (!draft.nombreProyecto.trim()) missing.push("Nombre del proyecto u oportunidad");
+    if (!draft.nombreContacto.trim()) missing.push("Nombre del contacto");
+    if (!draft.telefonoContacto.trim() && !draft.correoContacto.trim()) missing.push("Teléfono y/o correo");
+    if (!draft.vendedor.trim()) missing.push("Responsable comercial");
+    if (!draft.unidadNegocio.trim()) missing.push("Unidad de negocio");
+    if (!draft.etapa.trim()) missing.push("Etapa del pipeline");
+    if (draft.etapa !== "cerrada" && !draft.proximaAccion.trim()) missing.push("Próxima acción");
+    if (draft.etapa !== "cerrada" && !draft.fechaProximaAccion.trim()) missing.push("Fecha de próxima acción");
+    return missing;
+  };
+
+  type BeckCamposCriticosException = Error & { campos: string[]; beckCamposCriticos: boolean };
+
+  const isBeckCamposCriticosException = (e: unknown): e is BeckCamposCriticosException =>
+    e instanceof Error && (e as BeckCamposCriticosException).beckCamposCriticos === true;
+
+  const isBeckCamposCriticosAxiosError = (err: unknown): boolean => {
+    const e = err as { response?: { status?: number; data?: Record<string, unknown> } };
+    return e?.response?.status === 409 && Array.isArray(e?.response?.data?.advertenciasCamposCriticos);
+  };
+
+  const getBeckCamposCriticosFromAxiosError = (err: unknown): string[] => {
+    const e = err as { response?: { data?: Record<string, unknown> } };
+    return (e?.response?.data?.advertenciasCamposCriticos as string[]) ?? [];
+  };
+
+  const getBeckMessageFromAxiosError = (err: unknown): string => {
+    const e = err as { response?: { data?: Record<string, unknown> } };
+    return String(e?.response?.data?.message ?? "Faltan campos críticos para avanzar.");
+  };
+
   const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
     void themeMode;
 
@@ -2838,6 +2936,17 @@
     const [asignarJefeModalOpen, setAsignarJefeModalOpen] = useState(false);
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
+
+    // Advertencia campos críticos
+    const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
+    const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
+    const [advertenciaMsg, setAdvertenciaMsg] = useState("");
+    const [advertenciaObs, setAdvertenciaObs] = useState("");
+    const [advertenciaPendingPayload, setAdvertenciaPendingPayload] = useState<FunnelBeckUpsertPayload | null>(null);
+    const [advertenciaPendingId, setAdvertenciaPendingId] = useState<string | null>(null);
+    const [advertenciaMode, setAdvertenciaMode] = useState<"submit" | "cambiarEtapa" | null>(null);
+    const [advertenciaStageDealId, setAdvertenciaStageDealId] = useState<string | null>(null);
+    const [advertenciaStageBody, setAdvertenciaStageBody] = useState<Record<string, unknown> | null>(null);
 
     void ufFecha;
 
@@ -3147,6 +3256,12 @@
               direccion: toText(item.obra.direccion, "") || undefined,
             }
           : undefined,
+        direccionProyecto: toText(item.direccionProyecto, "") || undefined,
+        unidadNegocio: toText(item.unidadNegocio, "") || undefined,
+        observaciones: toText(item.observaciones, "") || undefined,
+        urgencia: toText(item.urgencia, "") || undefined,
+        observacionCamposFaltantes: toText(item.observacionCamposFaltantes, "") || undefined,
+        updatedAt: toText(item.updatedAt, "") || undefined,
       };
     };
 
@@ -3258,6 +3373,10 @@
       fechaCierre: deal.fechaCierre || "",
       clienteBeckId: deal.clienteBeckId || "",
       contactoBeckId: deal.contactoBeckId || "",
+      direccionProyecto: deal.direccionProyecto || "",
+      unidadNegocio: deal.unidadNegocio || "",
+      observaciones: deal.observaciones || "",
+      urgencia: deal.urgencia ?? "",
     });
 
     const loadDeals = async () => {
@@ -3846,24 +3965,28 @@
         body: JSON.stringify(payload),
       });
 
-      const result = (await response.json()) as {
-        success: boolean;
-        error?: string;
-      };
+      const result = (await response.json()) as Record<string, unknown>;
+
+      if (response.status === 409 && Array.isArray(result.advertenciasCamposCriticos)) {
+        const err = new Error(String(result.message ?? "Faltan campos críticos")) as BeckCamposCriticosException;
+        err.beckCamposCriticos = true;
+        err.campos = result.advertenciasCamposCriticos as string[];
+        throw err;
+      }
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.error || "El backend rechazo la actualizacion de etapa"
+          String(result.error) || "El backend rechazo la actualizacion de etapa"
         );
       }
     };
 
-    const handleStageChange = async (dealId: string, etapa: FunnelStage) => {
+    const handleStageChange = async (dealId: string, etapa: FunnelStage, estadoCierrePreset?: FunnelEstadoCierre) => {
       if (!canEditFunnel || dealSaving) return;
 
       if (etapa === "cerrada") {
         setDealEnCierre(dealId);
-        setEstadoCierreModal("");
+        setEstadoCierreModal(estadoCierrePreset ?? "");
         setMotivoPerdidaModal("");
         setMontoFinalGanadoModal("");
         setFechaCierreModal("");
@@ -3891,8 +4014,18 @@
         void loadDeals();
       } catch (error) {
         setDeals(previousDeals);
-        message.error("No se pudo actualizar la etapa");
-        console.error("Error al actualizar etapa:", error);
+        if (isBeckCamposCriticosException(error)) {
+          setAdvertenciaCampos(error.campos);
+          setAdvertenciaMsg(error.message);
+          setAdvertenciaObs("");
+          setAdvertenciaMode("cambiarEtapa");
+          setAdvertenciaStageDealId(dealId);
+          setAdvertenciaStageBody({ etapa: etapaFrontendToBackendMap[etapa] });
+          setAdvertenciaModalOpen(true);
+        } else {
+          message.error("No se pudo actualizar la etapa");
+          console.error("Error al actualizar etapa:", error);
+        }
       }
     };
 
@@ -3911,23 +4044,9 @@
 
       try {
         setUpdatingStage(true);
-        const response = await fetchWithAuth(
-          `/funnel-beck/${selectedDeal.id}/etapa`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ etapa: etapaFrontendToBackendMap[nuevaEtapa] }),
-          }
-        );
-        const result = (await response.json()) as {
-          success: boolean;
-          error?: string;
-        };
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.error || "El backend rechazo la actualizacion de etapa"
-          );
-        }
+        await updateDealStage(selectedDeal.id, {
+          etapa: etapaFrontendToBackendMap[nuevaEtapa],
+        });
         setSelectedDeal((current) =>
           current ? { ...current, etapa: nuevaEtapa } : current
         );
@@ -3939,7 +4058,17 @@
         message.success("Etapa actualizada");
         void loadDeals();
       } catch (error) {
-        message.error(getErrorMessage(error, "No se pudo actualizar la etapa"));
+        if (isBeckCamposCriticosException(error)) {
+          setAdvertenciaCampos(error.campos);
+          setAdvertenciaMsg(error.message);
+          setAdvertenciaObs("");
+          setAdvertenciaMode("cambiarEtapa");
+          setAdvertenciaStageDealId(selectedDeal.id);
+          setAdvertenciaStageBody({ etapa: etapaFrontendToBackendMap[nuevaEtapa] });
+          setAdvertenciaModalOpen(true);
+        } else {
+          message.error(getErrorMessage(error, "No se pudo actualizar la etapa"));
+        }
       } finally {
         setUpdatingStage(false);
       }
@@ -3960,20 +4089,42 @@
       }
 
       const dealId = String(event.active.id);
-      const nuevaEtapa = event.over?.id as FunnelStage | undefined;
+      const columnKeyRaw = event.over?.id as string | undefined;
 
-      if (!nuevaEtapa) {
+      if (!columnKeyRaw) {
         setActiveDragDeal(null);
         return;
       }
+
+      const cerradaSubcolumnMap: Record<string, FunnelEstadoCierre> = {
+        cerrada_ganada: "ganada",
+        cerrada_perdida: "perdida",
+        cerrada_postergada: "postergada",
+      };
+
+      const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw] as FunnelEstadoCierre | undefined;
+      const nuevaEtapa: FunnelStage = estadoCierrePreset ? "cerrada" : (columnKeyRaw as FunnelStage);
 
       const deal = deals.find((item) => item.id === dealId);
-      if (!deal || deal.etapa === nuevaEtapa) {
+      if (!deal) {
         setActiveDragDeal(null);
         return;
       }
 
-      void handleStageChange(dealId, nuevaEtapa);
+      // Calcular la columna actual del deal para evitar mover a la misma
+      const currentColumnKey =
+        deal.etapa !== "cerrada" ? deal.etapa :
+        deal.estadoCierre === "ganada" ? "cerrada_ganada" :
+        deal.estadoCierre === "perdida" ? "cerrada_perdida" :
+        deal.estadoCierre === "postergada" ? "cerrada_postergada" :
+        "cerrada";
+
+      if (columnKeyRaw === currentColumnKey) {
+        setActiveDragDeal(null);
+        return;
+      }
+
+      void handleStageChange(dealId, nuevaEtapa, estadoCierrePreset);
       setActiveDragDeal(null);
     };
 
@@ -4038,7 +4189,18 @@
         handleCloseCierreModal();
         await loadDeals();
       } catch (error) {
-        console.error("Error al actualizar etapa:", error);
+        if (isBeckCamposCriticosException(error)) {
+          setAdvertenciaCampos(error.campos);
+          setAdvertenciaMsg(error.message);
+          setAdvertenciaObs("");
+          setAdvertenciaMode("cambiarEtapa");
+          setAdvertenciaStageDealId(dealEnCierre);
+          setAdvertenciaStageBody(payload as unknown as Record<string, unknown>);
+          setAdvertenciaModalOpen(true);
+        } else {
+          console.error("Error al actualizar etapa:", error);
+          message.error(getErrorMessage(error, "No se pudo actualizar el cierre"));
+        }
       }
     };
 
@@ -4192,6 +4354,10 @@
         fechaCierre: draft.fechaCierre.trim() || undefined,
         clienteBeckId: draft.clienteBeckId || null,
         contactoBeckId: draft.contactoBeckId || null,
+        direccionProyecto: draft.direccionProyecto.trim() || undefined,
+        unidadNegocio: draft.unidadNegocio.trim() || undefined,
+        observaciones: draft.observaciones.trim() || undefined,
+        urgencia: draft.urgencia?.trim() || undefined,
       };
     };
 
@@ -4306,15 +4472,21 @@
 
       if (!canEditFunnel || dealSaving || submitLockRef.current) return;
 
-      const nombreProyecto = draft.nombreProyecto.trim();
-      const empresa = draft.empresa.trim();
-      const fechaProbableCierre = draft.fechaProbableCierre.trim();
-      const vendedor = draft.vendedor.trim();
-      const region = draft.region.trim();
-      const comuna = draft.comuna.trim();
-      const validationErrors = validateFunnelDraft(draft);
-      const parsedValor = Number(draft.valorEstimado.replace(",", "."));
+      // Validación client-side de campos críticos (primero, como en Firemat)
+      const camposCriticos = getCamposCriticosBeck(draft);
+      if (camposCriticos.length > 0) {
+        const payload = buildFunnelUpsertPayloadForDraft(draft);
+        setAdvertenciaCampos(camposCriticos);
+        setAdvertenciaMsg("La oportunidad tiene campos críticos sin completar. Puedes corregirlos ahora o justificar el avance.");
+        setAdvertenciaObs("");
+        setAdvertenciaPendingPayload(payload);
+        setAdvertenciaPendingId(funnelModalMode === "edit" ? editingDealId : null);
+        setAdvertenciaMode("submit");
+        setAdvertenciaModalOpen(true);
+        return;
+      }
 
+      const validationErrors = validateFunnelDraft(draft);
       setShowValidationSummary(true);
 
       if (Object.keys(validationErrors).length > 0) {
@@ -4328,146 +4500,7 @@
       try {
         setDealSaving(true);
 
-        const isNegociacionStage = ["enviada", "negociacion", "cerrada"].includes(draft.etapa);
-
-        const payload = {
-          nombreProyecto,
-          empresa,
-          valorOriginal: parsedValor,
-          monedaOriginal: draft.moneda,
-          fechaProbableCierre,
-          vendedor,
-          region,
-          comuna,
-          fuenteLead: draft.fuenteLead
-            ? fuenteLeadFrontendToBackendMap[draft.fuenteLead]
-            : undefined,
-          etapa: etapaFrontendToBackendMap[draft.etapa],
-          estadoCierre: draft.etapa === "cerrada" ? "ganada" : undefined,
-          rutEmpresa: draft.rutEmpresa.trim() || undefined,
-          nombreContacto: draft.nombreContacto.trim() || undefined,
-          cargoContacto: draft.cargoContacto.trim() || undefined,
-          telefonoContacto: draft.telefonoContacto.trim() || undefined,
-          correoContacto: draft.correoContacto.trim() || undefined,
-          tipoCliente: draft.tipoCliente.trim() || undefined,
-          tipoOportunidad: draft.tipoOportunidad.trim() || undefined,
-          fechaPrimerContacto: draft.fechaPrimerContacto.trim() || undefined,
-          tipoContacto: draft.tipoContacto.trim() || undefined,
-          necesidadDetectada: draft.necesidadDetectada.trim() || undefined,
-          timingEstimado: draft.timingEstimado.trim() || undefined,
-          nivelInteres: draft.nivelInteres.trim() || undefined,
-          proximaAccion: draft.proximaAccion.trim() || undefined,
-          fechaProximaAccion: draft.fechaProximaAccion.trim() || undefined,
-          comentariosPrimerContacto: draft.comentariosPrimerContacto.trim() || undefined,
-          fechaVisita: draft.fechaVisita.trim() || undefined,
-          responsableTecnico: draft.responsableTecnico.trim() || undefined,
-          asistentes: draft.asistentes.trim() || undefined,
-          lugarVisita: draft.lugarVisita.trim() || undefined,
-          antecedentesLevantados:
-            draft.antecedentesLevantados.trim() || undefined,
-          documentosRecibidos: draft.documentosRecibidos.trim() || undefined,
-          planos: draft.planos.trim() || undefined,
-          basesTecnicas: draft.basesTecnicas.trim() || undefined,
-          especificaciones: draft.especificaciones.trim() || undefined,
-          fotografias: draft.fotografias.trim() || undefined,
-          observacionesTecnicas:
-            draft.observacionesTecnicas.trim() || undefined,
-          necesidadOficinaTecnica:
-            draft.necesidadOficinaTecnica === "true"
-              ? true
-              : draft.necesidadOficinaTecnica === "false"
-                ? false
-                : undefined,
-          proximosPasos: draft.proximosPasos.trim() || undefined,
-          estadoDesarrolloPropuesta:
-            draft.estadoDesarrolloPropuesta.trim() || undefined,
-          informacionPendiente: draft.informacionPendiente.trim() || undefined,
-          documentosRequeridos:
-            draft.documentosRequeridos.trim() || undefined,
-          riesgoTecnico: draft.riesgoTecnico.trim() || undefined,
-          condicionesEspeciales: draft.condicionesEspeciales.trim() || undefined,
-          necesidadValidacionGerencial:
-            draft.necesidadValidacionGerencial === "true"
-              ? true
-              : draft.necesidadValidacionGerencial === "false"
-                ? false
-                : undefined,
-          fechaComprometidaEnvio:
-            draft.fechaComprometidaEnvio.trim() || undefined,
-          comentariosInternos: draft.comentariosInternos.trim() || undefined,
-          fechaEnvioPropuesta: draft.fechaEnvioPropuesta.trim() || undefined,
-          versionPropuesta: draft.versionPropuesta.trim() || undefined,
-          numeroPropuesta: draft.numeroPropuesta.trim() || undefined,
-          montoPropuesto: draft.montoPropuesto
-            ? Number(draft.montoPropuesto.replace(",", "."))
-            : undefined,
-          fechaVencimientoPropuesta:
-            draft.fechaVencimientoPropuesta.trim() || undefined,
-          comentariosCliente: draft.comentariosCliente.trim() || undefined,
-          probabilidadCierre: isNegociacionStage && draft.probabilidadCierre
-            ? Number(draft.probabilidadCierre)
-            : undefined,
-          objeciones: isNegociacionStage ? (draft.objeciones.trim() || undefined) : undefined,
-          contrapropuestas: isNegociacionStage ? (draft.contrapropuestas.trim() || undefined) : undefined,
-          ajustesSolicitados: isNegociacionStage ? (draft.ajustesSolicitados.trim() || undefined) : undefined,
-          ordenCompra: draft.ordenCompra.trim() || undefined,
-          contrato: draft.contrato.trim() || undefined,
-          correoAceptacion: draft.correoAceptacion.trim() || undefined,
-          anticipo: draft.anticipo.trim() || undefined,
-          aprobacionInternaCliente:
-            draft.aprobacionInternaCliente.trim() || undefined,
-          condicionesPago: draft.condicionesPago.trim() || undefined,
-          documentosAdministrativosPendientes:
-            draft.documentosAdministrativosPendientes.trim() || undefined,
-          responsableAdministrativo:
-            draft.responsableAdministrativo.trim() || undefined,
-          fechaFirma: draft.fechaFirma.trim() || undefined,
-          fechaInicioProyecto: draft.fechaInicioProyecto.trim() || undefined,
-          traspasadoOperaciones:
-            draft.traspasadoOperaciones === "true"
-              ? true
-              : draft.traspasadoOperaciones === "false"
-                ? false
-                : undefined,
-          fechaTraspasoOperaciones:
-            draft.traspasadoOperaciones === "true"
-              ? draft.fechaTraspasoOperaciones.trim() || undefined
-              : undefined,
-          responsableTraspasoOperaciones:
-            draft.traspasadoOperaciones === "true"
-              ? draft.responsableTraspasoOperaciones.trim() || undefined
-              : undefined,
-          observacionesTraspasoOperaciones:
-            draft.traspasadoOperaciones === "true"
-              ? draft.observacionesTraspasoOperaciones.trim() || undefined
-              : undefined,
-          traspasadoAdministracion:
-            draft.traspasadoAdministracion === "true"
-              ? true
-              : draft.traspasadoAdministracion === "false"
-                ? false
-                : undefined,
-          fechaTraspasoAdministracion:
-            draft.traspasadoAdministracion === "true"
-              ? draft.fechaTraspasoAdministracion.trim() || undefined
-              : undefined,
-          responsableTraspasoAdministracion:
-            draft.traspasadoAdministracion === "true"
-              ? draft.responsableTraspasoAdministracion.trim() || undefined
-              : undefined,
-          observacionesTraspasoAdministracion:
-            draft.traspasadoAdministracion === "true"
-              ? draft.observacionesTraspasoAdministracion.trim() || undefined
-              : undefined,
-          documentoRespaldo: draft.documentoRespaldo.trim() || undefined,
-          flujoPosterior: draft.flujoPosterior.trim() || undefined,
-          montoFinalGanado: draft.montoFinalGanado
-            ? Number(draft.montoFinalGanado.replace(",", "."))
-            : undefined,
-          fechaCierre: draft.fechaCierre.trim() || undefined,
-          clienteBeckId: draft.clienteBeckId || null,
-          contactoBeckId: draft.contactoBeckId || null,
-        };
+        const payload = buildFunnelUpsertPayloadForDraft(draft);
 
         const savedOpportunity =
           funnelModalMode === "create"
@@ -4495,13 +4528,73 @@
             : "Oportunidad actualizada"
         );
       } catch (error) {
-        message.error(
-          getErrorMessage(error, "Error al guardar la oportunidad")
-        );
-        console.error("Error al guardar la oportunidad:", error);
+        if (isBeckCamposCriticosAxiosError(error)) {
+          const payload = buildFunnelUpsertPayloadForDraft(draft);
+          setAdvertenciaCampos(getBeckCamposCriticosFromAxiosError(error));
+          setAdvertenciaMsg(getBeckMessageFromAxiosError(error));
+          setAdvertenciaObs("");
+          setAdvertenciaPendingPayload(payload);
+          setAdvertenciaPendingId(funnelModalMode === "edit" ? editingDealId : null);
+          setAdvertenciaMode("submit");
+          setAdvertenciaModalOpen(true);
+        } else {
+          message.error(getErrorMessage(error, "Error al guardar la oportunidad"));
+          console.error("Error al guardar la oportunidad:", error);
+        }
       } finally {
         setDealSaving(false);
         submitLockRef.current = false;
+      }
+    };
+
+    const handleAdvertenciaGuardarBeck = async () => {
+      if (!advertenciaObs.trim()) {
+        void message.error("Debes ingresar una observación para continuar.");
+        return;
+      }
+      setDealSaving(true);
+      try {
+        if (advertenciaMode === "submit" && advertenciaPendingPayload) {
+          const payload: FunnelBeckUpsertPayload = {
+            ...advertenciaPendingPayload,
+            observacionCamposFaltantes: advertenciaObs.trim(),
+          };
+          if (advertenciaPendingId) {
+            await funnelBeckAPI.actualizar(advertenciaPendingId, payload);
+          } else {
+            await funnelBeckAPI.crear(payload);
+          }
+          void message.success("Oportunidad guardada con observación");
+          setAdvertenciaModalOpen(false);
+          setIsModalOpen(false);
+          setFunnelModalMode("create");
+          setEditingDealId(null);
+          setDraft(createEmptyDraft());
+          setFieldErrors({});
+          setShowValidationSummary(false);
+          await loadDeals();
+        } else if (advertenciaMode === "cambiarEtapa" && advertenciaStageDealId && advertenciaStageBody) {
+          const response = await fetchWithAuth(
+            `/funnel-beck/${advertenciaStageDealId}/etapa`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...advertenciaStageBody, observacionCamposFaltantes: advertenciaObs.trim() }),
+            }
+          );
+          const result = (await response.json()) as { success: boolean; error?: string };
+          if (!response.ok || !result.success) {
+            throw new Error(result.error || "No se pudo actualizar la etapa");
+          }
+          void message.success("Etapa actualizada con observación");
+          setAdvertenciaModalOpen(false);
+          handleCloseCierreModal();
+          await loadDeals();
+        }
+      } catch (error) {
+        void message.error(getErrorMessage(error, "No se pudo guardar"));
+      } finally {
+        setDealSaving(false);
       }
     };
 
@@ -4607,6 +4700,12 @@
 
     const formatDateDetail = (value?: string) =>
       value ? formatDisplayDate(value) : undefined;
+
+    const formatDateTimeDetail = (value?: string) => {
+      if (!value) return undefined;
+      const date = dayjs(value);
+      return date.isValid() ? date.format("DD-MM-YYYY HH:mm") : value;
+    };
 
     const renderRiesgoTecnicoDetail = (value?: string) => {
       if (!value) return undefined;
@@ -4771,6 +4870,12 @@
           { label: "Valor", value: formatMoneyDetail(deal.valorEstimado, deal.moneda) },
           { label: "Moneda", value: deal.moneda },
           { label: "Fecha cierre", value: formatDateDetail(deal.fechaProbableCierre) },
+          { label: "Dirección / ubicación", value: deal.direccionProyecto },
+          { label: "Unidad de negocio", value: deal.unidadNegocio },
+          { label: "Urgencia", value: deal.urgencia },
+          { label: "Observaciones generales", value: deal.observaciones },
+          { label: "Observación por campos faltantes", value: deal.observacionCamposFaltantes },
+          { label: "Última actividad", value: formatDateTimeDetail(deal.updatedAt) },
         ])}
 
         {renderDetailSection("PRIMER CONTACTO", [
@@ -4971,21 +5076,51 @@
               onDragCancel={handleDragCancel}
             >
               <div className="flex gap-4 overflow-x-auto p-4 scrollbar-thin">
-                {etapas.map((etapa) => {
-                  const dealsForStage = deals.filter((deal) => deal.etapa === etapa);
+                {(() => {
+                  const baseColumns = etapas
+                    .filter((e) => e !== "cerrada")
+                    .map((e) => ({
+                      key: e as string,
+                      label: etapasLabel[e],
+                      colDeals: deals.filter((d) => d.etapa === e),
+                    }));
 
-                  return (
+                  const closedColumns = [
+                    {
+                      key: "cerrada_ganada",
+                      label: "Ganada",
+                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "ganada"),
+                    },
+                    {
+                      key: "cerrada_perdida",
+                      label: "Perdida",
+                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "perdida"),
+                    },
+                    {
+                      key: "cerrada_postergada",
+                      label: "Postergada",
+                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "postergada"),
+                    },
+                    {
+                      key: "cerrada",
+                      label: etapasLabel.cerrada,
+                      colDeals: deals.filter((d) => d.etapa === "cerrada" && !d.estadoCierre),
+                    },
+                  ];
+
+                  return [...baseColumns, ...closedColumns].map(({ key, label, colDeals }) => (
                     <FunnelColumn
-                      key={etapa}
-                      etapa={etapa}
-                      deals={dealsForStage}
+                      key={key}
+                      columnKey={key}
+                      label={label}
+                      deals={colDeals}
                       canEditFunnel={canEditFunnel}
                       onStageChange={handleStageChange}
                       onViewDetail={openDealDetail}
                       onCreateCotizacion={openCreateCotizacion}
                     />
-                  );
-                })}
+                  ));
+                })()}
               </div>
               <DragOverlay>
                 {activeDragDeal ? (
@@ -5079,6 +5214,11 @@
                 <Descriptions.Item label="Fecha probable cierre">
                   {selectedDeal.fechaProbableCierre
                     ? formatDisplayDate(selectedDeal.fechaProbableCierre)
+                    : "-"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Última actividad">
+                  {selectedDeal.updatedAt
+                    ? formatDateTimeDetail(selectedDeal.updatedAt)
                     : "-"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Region / Comuna">
@@ -5549,6 +5689,58 @@
             }}
           />
         )}
+
+        {/* Modal advertencia campos críticos */}
+        <AntdModal
+          title="Faltan campos críticos"
+          open={advertenciaModalOpen}
+          onCancel={() => setAdvertenciaModalOpen(false)}
+          destroyOnClose
+          footer={[
+            <Button
+              key="corregir"
+              onClick={() => setAdvertenciaModalOpen(false)}
+            >
+              Corregir ahora
+            </Button>,
+            <Button
+              key="guardar"
+              loading={dealSaving}
+              style={{ backgroundColor: "#F2C230", borderColor: "#cfad21", color: "#1a1a1a" }}
+              onClick={() => { void handleAdvertenciaGuardarBeck(); }}
+            >
+              Guardar igualmente con observación
+            </Button>,
+          ]}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-beck-ink">{advertenciaMsg}</p>
+            {advertenciaCampos.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold text-beck-muted">Campos con advertencia:</p>
+                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                  {advertenciaCampos.map((campo) => (
+                    <li key={campo}>{campo}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div>
+              <p className="mb-1 text-xs font-semibold text-beck-muted">
+                Observación de justificación <span className="text-red-500">*</span>
+              </p>
+              <Input.TextArea
+                rows={4}
+                value={advertenciaObs}
+                onChange={(e) => setAdvertenciaObs(e.target.value)}
+                placeholder="Explica por qué se avanza sin completar los campos críticos..."
+              />
+              {advertenciaObs.trim() === "" && (
+                <p className="mt-1 text-xs text-red-500">Debes ingresar una observación para continuar.</p>
+              )}
+            </div>
+          </div>
+        </AntdModal>
 
         <CierreDeProyecto
           open={cierreModalOpen && canEditFunnel}

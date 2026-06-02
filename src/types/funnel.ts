@@ -135,4 +135,11 @@ export type FunnelDeal = {
     cliente?: string | null;
     direccion?: string | null;
   } | null;
+  // Punto 10
+  direccionProyecto?: string | null;
+  unidadNegocio?: string | null;
+  observaciones?: string | null;
+  urgencia?: string | null;
+  observacionCamposFaltantes?: string | null;
+  updatedAt?: string;
 };

@@ -44,6 +44,7 @@ import {
   type FirematCotizacionTipoCliente,
   type FunnelFirematArchivo,
   type FunnelFirematArchivoTipo,
+  type FirematCamposCriticosError,
   type FirematFunnelEtapa,
   type FirematFunnelOportunidad,
   type FirematFunnelPayload,
@@ -139,6 +140,15 @@ type FunnelFormValues = {
   tipoBroker?: string;
   fechaEstimadaDespacho?: Dayjs | null;
   fechaSeguimientoPostventa?: Dayjs | null;
+  nombreOportunidad?: string;
+  cargoContacto?: string;
+  direccionProyecto?: string;
+  tipoOportunidad?: string;
+  fechaProbableCierre?: Dayjs | null;
+  riesgoTecnico?: string;
+  comentariosInternos?: string;
+  observacionesTecnicas?: string;
+  observacionCamposFaltantes?: string;
 };
 
 const ETAPAS: Array<{
@@ -279,6 +289,57 @@ const downloadBlob = (blob: Blob, fileName: string) => {
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+};
+
+const ETAPAS_CERRADAS: FirematFunnelEtapa[] = ["GANADA", "PERDIDA", "DESCARTADO", "POSTERGADA"];
+
+const getProximasAccionesByEtapa = (etapa?: FirematFunnelEtapa): Array<{ label: string; value: string }> => {
+  switch (etapa) {
+    case "PROSPECTO":
+      return [
+        { label: "Agendar llamada de prospección", value: "Agendar llamada de prospección" },
+        { label: "Enviar información inicial", value: "Enviar información inicial" },
+        { label: "Visita presencial inicial", value: "Visita presencial inicial" },
+        { label: "Otro", value: "Otro" },
+      ];
+    case "PRIMER_CONTACTO":
+      return [
+        { label: "Reunión de levantamiento", value: "Reunión de levantamiento" },
+        { label: "Enviar ficha técnica", value: "Enviar ficha técnica" },
+        { label: "Cotización pendiente", value: "Cotización pendiente" },
+        { label: "Seguimiento por correo", value: "Seguimiento por correo" },
+        { label: "Otro", value: "Otro" },
+      ];
+    case "DESARROLLO_COTIZACION":
+      return [
+        { label: "Preparar cotización", value: "Preparar cotización" },
+        { label: "Revisión técnica interna", value: "Revisión técnica interna" },
+        { label: "Validar stock y precios", value: "Validar stock y precios" },
+        { label: "Otro", value: "Otro" },
+      ];
+    case "COTIZACION_ENVIADA":
+      return [
+        { label: "Seguimiento cotización enviada", value: "Seguimiento cotización enviada" },
+        { label: "Resolver objeciones", value: "Resolver objeciones" },
+        { label: "Negociación comercial", value: "Negociación comercial" },
+        { label: "Esperar respuesta cliente", value: "Esperar respuesta cliente" },
+        { label: "Otro", value: "Otro" },
+      ];
+    case "ORDEN_CONFIRMADA":
+      return [
+        { label: "Gestionar documentación", value: "Gestionar documentación" },
+        { label: "Coordinar despacho", value: "Coordinar despacho" },
+        { label: "Traspaso a administración", value: "Traspaso a administración" },
+        { label: "Otro", value: "Otro" },
+      ];
+    default:
+      return [
+        { label: "Seguimiento", value: "Seguimiento" },
+        { label: "Llamada", value: "Llamada" },
+        { label: "Reunión", value: "Reunión" },
+        { label: "Otro", value: "Otro" },
+      ];
+  }
 };
 
 const needsExtraFields = (etapa: FirematFunnelEtapa) =>
@@ -566,6 +627,18 @@ const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
   );
 };
 
+const getCamposCriticosFaltantes = (payload: FirematFunnelPayload): string[] => {
+  const missing: string[] = [];
+  if (!payload.cliente?.trim()) missing.push("Cliente / Empresa");
+  if (!payload.rutEmpresa?.trim()) missing.push("RUT empresa");
+  if (!payload.nombreOportunidad?.trim()) missing.push("Nombre del proyecto u oportunidad");
+  if (!payload.contacto?.trim()) missing.push("Nombre del contacto");
+  if (!payload.telefono?.trim() && !payload.correo?.trim()) missing.push("Teléfono y/o correo");
+  if (!payload.responsable?.trim()) missing.push("Responsable comercial");
+  if (!payload.unidadNegocio?.trim()) missing.push("Unidad de negocio");
+  return missing;
+};
+
 const FirematFunnel: React.FC = () => {
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
@@ -606,7 +679,16 @@ const FirematFunnel: React.FC = () => {
   const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
   const [dropOverEtapa, setDropOverEtapa] =
     useState<FirematFunnelEtapa | null>(null);
-  const [detalleExpandido, setDetalleExpandido] = useState(false);
+  const [detalleModalOpen, setDetalleModalOpen] = useState(false);
+  const [showClienteSelector, setShowClienteSelector] = useState(false);
+  const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
+  const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
+  const [advertenciaMsg, setAdvertenciaMsg] = useState("");
+  const [advertenciaObs, setAdvertenciaObs] = useState("");
+  const [advertenciaPendingPayload, setAdvertenciaPendingPayload] = useState<FirematFunnelPayload | null>(null);
+  const [advertenciaPendingId, setAdvertenciaPendingId] = useState<string | null>(null);
+  const [advertenciaEtapa, setAdvertenciaEtapa] = useState<FirematFunnelEtapa | null>(null);
+  const [advertenciaMode, setAdvertenciaMode] = useState<"submit" | "cambiarEtapa" | null>(null);
 
   const [q, setQ] = useState("");
   const [etapa, setEtapa] = useState<FirematFunnelEtapa | "">("");
@@ -807,10 +889,16 @@ const FirematFunnel: React.FC = () => {
           comuna: preservarDatosOportunidad
             ? form.getFieldValue("comuna")
             : cliente.comuna ?? "",
+          direccionProyecto: preservarDatosOportunidad
+            ? form.getFieldValue("direccionProyecto")
+            : cliente.direccion ?? "",
           contacto: "",
           contactoId: undefined,
           contactoFirematId: undefined,
         });
+        if (!preservarDatosOportunidad) {
+          setShowClienteSelector(false);
+        }
       } catch {
         void message.error("No se pudo cargar el cliente Firemat");
       } finally {
@@ -939,6 +1027,16 @@ const FirematFunnel: React.FC = () => {
       fechaSeguimientoPostventa: oportunidad.fechaSeguimientoPostventa
         ? dayjs(oportunidad.fechaSeguimientoPostventa)
         : null,
+      nombreOportunidad: oportunidad.nombreOportunidad ?? "",
+      cargoContacto: oportunidad.cargoContacto ?? "",
+      direccionProyecto: oportunidad.direccionProyecto ?? "",
+      tipoOportunidad: oportunidad.tipoOportunidad ?? undefined,
+      fechaProbableCierre: oportunidad.fechaProbableCierre
+        ? dayjs(oportunidad.fechaProbableCierre)
+        : null,
+      riesgoTecnico: oportunidad.riesgoTecnico ?? undefined,
+      comentariosInternos: oportunidad.comentariosInternos ?? "",
+      observacionesTecnicas: oportunidad.observacionesTecnicas ?? "",
     });
 
     const clienteId = oportunidad.clienteId ?? oportunidad.clienteFirematId;
@@ -956,6 +1054,7 @@ const FirematFunnel: React.FC = () => {
     setTargetEtapa(null);
     setSelectedClienteId(null);
     setContactosCliente([]);
+    setShowClienteSelector(false);
     form.resetFields();
     form.setFieldsValue({
       etapa: "PROSPECTO",
@@ -978,7 +1077,8 @@ const FirematFunnel: React.FC = () => {
       setTargetEtapa(
         mode === "editar" && editSection && etapaOverride ? etapaOverride : null
       );
-      setDetalleExpandido(false);
+      setDetalleModalOpen(false);
+      setShowClienteSelector(false);
       void cargarClientesActivos();
       const detalle = await firematFunnelAPI.obtener(record.id);
       setSelected(detalle);
@@ -1009,6 +1109,7 @@ const FirematFunnel: React.FC = () => {
       setInitialEditSection(getStageEditSection(detalle.etapa));
       setTargetEtapa(detalle.etapa);
       setModalMode("editar");
+      setShowClienteSelector(false);
       setModalOpen(true);
     } catch {
       setModalOpen(false);
@@ -1218,7 +1319,73 @@ const FirematFunnel: React.FC = () => {
       values.fechaSeguimientoPostventa,
       selected?.fechaSeguimientoPostventa
     ),
+    nombreOportunidad: keepString(values.nombreOportunidad, selected?.nombreOportunidad),
+    cargoContacto: keepString(values.cargoContacto, selected?.cargoContacto),
+    direccionProyecto: keepString(values.direccionProyecto, selected?.direccionProyecto),
+    tipoOportunidad: keepString(values.tipoOportunidad, selected?.tipoOportunidad),
+    fechaProbableCierre: keepDate(values.fechaProbableCierre, selected?.fechaProbableCierre),
+    riesgoTecnico: keepString(values.riesgoTecnico, selected?.riesgoTecnico),
+    comentariosInternos: keepString(values.comentariosInternos, selected?.comentariosInternos),
+    observacionesTecnicas: keepString(values.observacionesTecnicas, selected?.observacionesTecnicas),
+    observacionCamposFaltantes: keepString(values.observacionCamposFaltantes, selected?.observacionCamposFaltantes),
   });
+
+  const isCamposCriticosError = (err: unknown): err is { response: { status: 409; data: FirematCamposCriticosError } } => {
+    const e = err as { response?: { status?: number; data?: { advertenciasCamposCriticos?: unknown } } };
+    return e?.response?.status === 409 && Array.isArray(e?.response?.data?.advertenciasCamposCriticos);
+  };
+
+  const openAdvertenciaModal = (err: { response: { status: 409; data: FirematCamposCriticosError } }, mode: "submit" | "cambiarEtapa", pendingPayload: FirematFunnelPayload | null, pendingId: string | null, pendingEtapa: FirematFunnelEtapa | null) => {
+    const { advertenciasCamposCriticos, message: msg } = err.response.data;
+    setAdvertenciaCampos(advertenciasCamposCriticos);
+    setAdvertenciaMsg(msg);
+    setAdvertenciaObs("");
+    setAdvertenciaPendingPayload(pendingPayload);
+    setAdvertenciaPendingId(pendingId);
+    setAdvertenciaEtapa(pendingEtapa);
+    setAdvertenciaMode(mode);
+    setAdvertenciaModalOpen(true);
+  };
+
+  const handleAdvertenciaGuardar = async () => {
+    if (!advertenciaObs.trim()) {
+      void message.error("Debes ingresar una observación para continuar.");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (advertenciaMode === "submit" && advertenciaPendingPayload) {
+        const payload: FirematFunnelPayload = { ...advertenciaPendingPayload, observacionCamposFaltantes: advertenciaObs.trim() };
+        if (advertenciaPendingId) {
+          await firematFunnelAPI.actualizar(advertenciaPendingId, payload);
+        } else {
+          await firematFunnelAPI.crear(payload);
+        }
+        void message.success("Oportunidad guardada con observación");
+        setAdvertenciaModalOpen(false);
+        setModalOpen(false);
+        setSelected(null);
+        setInitialEditSection(null);
+        setTargetEtapa(null);
+        setArchivosFiremat([]);
+        limpiarClienteFirematSeleccionado();
+        form.resetFields();
+        await cargar();
+      } else if (advertenciaMode === "cambiarEtapa" && advertenciaPendingId && advertenciaEtapa) {
+        const updated = await firematFunnelAPI.cambiarEtapa(advertenciaPendingId, advertenciaEtapa, advertenciaObs.trim());
+        setOportunidades((current) =>
+          current.map((item) => (item.id === advertenciaPendingId ? { ...item, ...updated } : item))
+        );
+        setSelected((current) => (current?.id === advertenciaPendingId ? updated : current));
+        void message.success("Etapa actualizada con observación");
+        setAdvertenciaModalOpen(false);
+      }
+    } catch {
+      void message.error("No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const validateStageRequirements = (values: FunnelFormValues) => {
     if (values.etapa === "PERDIDA" && !values.motivoPerdida?.trim()) {
@@ -1261,9 +1428,26 @@ const FirematFunnel: React.FC = () => {
     }
     if (!validateStageRequirements(values)) return;
 
+    const payload = buildPayload(values);
+
+    // Validación client-side de campos críticos (crear, edición completa y edición focalizada por etapa)
+    if (modalMode === "crear" || modalMode === "editar") {
+      const camposFaltantes = getCamposCriticosFaltantes(payload);
+      if (camposFaltantes.length > 0) {
+        setAdvertenciaCampos(camposFaltantes);
+        setAdvertenciaMsg("La oportunidad tiene campos críticos sin completar. Puedes corregirlos ahora o justificar el avance.");
+        setAdvertenciaObs("");
+        setAdvertenciaPendingPayload(payload);
+        setAdvertenciaPendingId(selected?.id ?? null);
+        setAdvertenciaEtapa(null);
+        setAdvertenciaMode("submit");
+        setAdvertenciaModalOpen(true);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const payload = buildPayload(values);
       if (modalMode === "editar" && selected) {
         await firematFunnelAPI.actualizar(selected.id, payload);
         void message.success("Oportunidad actualizada");
@@ -1279,8 +1463,12 @@ const FirematFunnel: React.FC = () => {
       limpiarClienteFirematSeleccionado();
       form.resetFields();
       await cargar();
-    } catch {
-      void message.error("No se pudo guardar la oportunidad");
+    } catch (error) {
+      if (isCamposCriticosError(error)) {
+        openAdvertenciaModal(error, "submit", payload, selected?.id ?? null, null);
+      } else {
+        void message.error("No se pudo guardar la oportunidad");
+      }
     } finally {
       setSaving(false);
     }
@@ -1321,7 +1509,7 @@ const FirematFunnel: React.FC = () => {
       );
       setSelected((current) => (current?.id === record.id ? updated : current));
       void message.success("Etapa actualizada");
-    } catch {
+    } catch (error) {
       setOportunidades((current) =>
         current.map((item) =>
           item.id === record.id ? { ...item, etapa: etapaOrigen } : item
@@ -1330,7 +1518,11 @@ const FirematFunnel: React.FC = () => {
       setSelected((current) =>
         current?.id === record.id ? { ...current, etapa: etapaOrigen } : current
       );
-      void message.error("No se pudo cambiar la etapa");
+      if (isCamposCriticosError(error)) {
+        openAdvertenciaModal(error, "cambiarEtapa", null, record.id, nextEtapa);
+      } else {
+        void message.error("No se pudo cambiar la etapa");
+      }
     }
   };
 
@@ -1486,6 +1678,15 @@ const FirematFunnel: React.FC = () => {
     tipoBroker: oportunidad.tipoBroker ?? null,
     fechaEstimadaDespacho: oportunidad.fechaEstimadaDespacho ?? null,
     fechaSeguimientoPostventa: oportunidad.fechaSeguimientoPostventa ?? null,
+    nombreOportunidad: oportunidad.nombreOportunidad ?? null,
+    cargoContacto: oportunidad.cargoContacto ?? null,
+    direccionProyecto: oportunidad.direccionProyecto ?? null,
+    tipoOportunidad: oportunidad.tipoOportunidad ?? null,
+    fechaProbableCierre: oportunidad.fechaProbableCierre ?? null,
+    riesgoTecnico: oportunidad.riesgoTecnico ?? null,
+    comentariosInternos: oportunidad.comentariosInternos ?? null,
+    observacionesTecnicas: oportunidad.observacionesTecnicas ?? null,
+    observacionCamposFaltantes: oportunidad.observacionCamposFaltantes ?? null,
   });
 
   const buildCotizacionPayload = (
@@ -1682,42 +1883,8 @@ const FirematFunnel: React.FC = () => {
     </>
   );
 
-  const renderClienteSelector = () => (
-    <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,auto] md:items-end">
-        <Form.Item label="Cliente Firemat registrado (opcional)" className="mb-0">
-          <Select
-            showSearch
-            allowClear
-            loading={clientesLoading}
-            value={selectedClienteId ?? undefined}
-            options={clienteOptions}
-            optionFilterProp="label"
-            placeholder="Seleccionar cliente por RUT, nombre o razon social"
-            onClear={() => {
-              limpiarClienteFirematSeleccionado();
-              form.setFieldValue("cliente", "");
-            }}
-            onChange={(clienteId) => {
-              if (clienteId) {
-                void seleccionarClienteFiremat(String(clienteId));
-                return;
-              }
-              limpiarClienteFirematSeleccionado();
-            }}
-          />
-        </Form.Item>
-        {selectedClienteId && (
-          <Button onClick={limpiarClienteFirematSeleccionado}>
-            Quitar cliente asociado
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-
   const renderContactoField = () => (
-    <Form.Item name="contacto" label="Nombre de contacto">
+    <Form.Item name="contacto" label={<>Nombre de contacto <span className="text-red-500">*</span></>}>
       {selectedClienteId ? (
         <div className="space-y-2">
           {contactoOptions.length ? (
@@ -1771,12 +1938,29 @@ const FirematFunnel: React.FC = () => {
     </Form.Item>
   );
 
+  const isEtapaActiva = !ETAPAS_CERRADAS.includes(etapaWatch as FirematFunnelEtapa);
+
   const renderProximaAccionField = () => (
-    <Form.Item name="proximaAccion" label="Próximos pasos">
-      <Input.TextArea
-        rows={3}
-        placeholder="Describe el próximo paso"
+    <Form.Item
+      name="proximaAccion"
+      label="Próxima actividad"
+      rules={[{ required: isEtapaActiva, message: "La próxima actividad es requerida" }]}
+    >
+      <Select
+        allowClear
+        placeholder="Seleccionar próxima actividad"
+        options={getProximasAccionesByEtapa(etapaWatch as FirematFunnelEtapa)}
       />
+    </Form.Item>
+  );
+
+  const renderFechaProximaAccionField = () => (
+    <Form.Item
+      name="fechaProximaAccion"
+      label="Fecha próxima acción"
+      rules={[{ required: isEtapaActiva, message: "La fecha de próxima acción es requerida" }]}
+    >
+      <DatePicker format="DD-MM-YYYY" className="w-full" />
     </Form.Item>
   );
 
@@ -1860,46 +2044,167 @@ const FirematFunnel: React.FC = () => {
     </div>
   );
 
-  const renderProspectoFields = () => (
+  const renderProspectoFields = () => {
+    const hasClienteData = !isCreateMode && Boolean(selected?.cliente?.trim());
+    const shouldShowSummary = hasClienteData && !showClienteSelector;
+
+    return (
     <>
       {renderIdentityFields()}
-      {renderClienteSelector()}
+      {shouldShowSummary ? (
+        <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-beck-muted">
+              Cliente / datos del prospecto
+            </p>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => setShowClienteSelector(true)}
+              className="!px-0 text-xs"
+            >
+              Cambiar cliente
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            {(form.getFieldValue("cliente") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Cliente / empresa:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("cliente") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("rutEmpresa") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">RUT empresa:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("rutEmpresa") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("contacto") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Contacto:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("contacto") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("telefono") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Teléfono:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("telefono") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("correo") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Correo:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("correo") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("region") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Región:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("region") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("comuna") as string | undefined) && (
+              <div>
+                <span className="text-beck-muted">Comuna:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("comuna") as string}</p>
+              </div>
+            )}
+            {(form.getFieldValue("direccionProyecto") as string | undefined) && (
+              <div className="col-span-2">
+                <span className="text-beck-muted">Dirección / ubicación del proyecto:</span>
+                <p className="font-medium text-beck-ink">{form.getFieldValue("direccionProyecto") as string}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
+          {hasClienteData && (
+            <div className="mb-2 flex justify-end">
+              <Button
+                size="small"
+                type="link"
+                onClick={() => setShowClienteSelector(false)}
+                className="!px-0 text-xs"
+              >
+                Cancelar
+              </Button>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,auto] md:items-end">
+            <Form.Item label="Cliente Firemat registrado (opcional)" className="mb-0">
+              <Select
+                showSearch
+                allowClear
+                loading={clientesLoading}
+                value={selectedClienteId ?? undefined}
+                options={clienteOptions}
+                optionFilterProp="label"
+                placeholder="Seleccionar cliente por RUT, nombre o razon social"
+                onClear={() => {
+                  limpiarClienteFirematSeleccionado();
+                  form.setFieldValue("cliente", "");
+                }}
+                onChange={(clienteId) => {
+                  if (clienteId) {
+                    void seleccionarClienteFiremat(String(clienteId));
+                    return;
+                  }
+                  limpiarClienteFirematSeleccionado();
+                }}
+              />
+            </Form.Item>
+            {selectedClienteId && (
+              <Button onClick={limpiarClienteFirematSeleccionado}>
+                Quitar cliente asociado
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Form.Item
-          name="cliente"
-          label="Cliente no registrado"
-          rules={[
-            {
-              validator: (_, value: string) => {
-                if (selectedClienteId || value?.trim()) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error("Ingresa el cliente o selecciona uno registrado")
-                );
+        {selected?.clienteRegistrado === true ? (
+          <Form.Item name="cliente" hidden><Input /></Form.Item>
+        ) : (
+          <Form.Item
+            name="cliente"
+            label={<>Cliente no registrado <span className="text-red-500">*</span></>}
+            rules={[
+              {
+                validator: (_, value: string) => {
+                  if (selectedClienteId || value?.trim()) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(
+                    new Error("Ingresa el cliente o selecciona uno registrado")
+                  );
+                },
               },
-            },
-          ]}
-        >
-          <Input
-            placeholder="Nombre cliente no registrado"
-            disabled={Boolean(selectedClienteId)}
-          />
-        </Form.Item>
+            ]}
+          >
+            <Input
+              placeholder="Nombre cliente no registrado"
+              disabled={Boolean(selectedClienteId)}
+            />
+          </Form.Item>
+        )}
         {renderContactoField()}
-        <Form.Item name="responsable" label="Responsable">
+        <Form.Item name="cargoContacto" label="Cargo del contacto">
+          <Input placeholder="Cargo o rol del contacto" />
+        </Form.Item>
+        <Form.Item name="responsable" label={<>Responsable comercial <span className="text-red-500">*</span></>}>
           <Input placeholder="Responsable comercial" />
         </Form.Item>
-        <Form.Item name="telefono" label="Telefono">
+        <Form.Item name="telefono" label={<>Teléfono <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
           <Input placeholder="+56..." />
         </Form.Item>
-        <Form.Item name="correo" label="Correo">
+        <Form.Item name="correo" label={<>Correo <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
           <Input placeholder="correo@empresa.cl" />
         </Form.Item>
         <Form.Item name="tipoCliente" label="Tipo de cliente">
           <Select options={TIPO_CLIENTE_OPTIONS} placeholder="Tipo" allowClear />
         </Form.Item>
-        <Form.Item name="rutEmpresa" label="RUT empresa">
+        <Form.Item name="rutEmpresa" label={<>RUT empresa <span className="text-red-500">*</span></>}>
           <Input placeholder="76.123.456-7" />
         </Form.Item>
         <Form.Item name="region" label="Region">
@@ -1924,8 +2229,14 @@ const FirematFunnel: React.FC = () => {
             disabled={!regionWatch}
           />
         </Form.Item>
-        <Form.Item name="unidadNegocio" label="Unidad de negocio">
+        <Form.Item name="direccionProyecto" label="Dirección / ubicación del proyecto">
+          <Input placeholder="Dirección, sector o ubicación" />
+        </Form.Item>
+        <Form.Item name="unidadNegocio" label={<>Unidad de negocio <span className="text-red-500">*</span></>}>
           <Input placeholder="Firemat, Industrial, Construccion..." />
+        </Form.Item>
+        <Form.Item name="nombreOportunidad" label={<>Nombre del proyecto u oportunidad <span className="text-red-500">*</span></>}>
+          <Input placeholder="Nombre del proyecto o descripción de la oportunidad" />
         </Form.Item>
         <Form.Item name="productoId" label="Producto">
           <Select
@@ -1953,18 +2264,50 @@ const FirematFunnel: React.FC = () => {
           <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
         </Form.Item>
         {renderProximaAccionField()}
-        <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
-          <DatePicker format="DD-MM-YYYY" className="w-full" />
-        </Form.Item>
+        {renderFechaProximaAccionField()}
         <Form.Item name="origen" label="Origen">
           <Input placeholder="CRM, web, referido..." />
         </Form.Item>
         <Form.Item name="observaciones" label="Observaciones" className="md:col-span-2">
           <Input.TextArea rows={4} placeholder="Notas comerciales" />
         </Form.Item>
+        <Form.Item name="tipoOportunidad" label="Tipo de oportunidad">
+          <Select
+            allowClear
+            placeholder="Seleccionar tipo"
+            options={[
+              { label: "Nueva venta", value: "NUEVA_VENTA" },
+              { label: "Recompra", value: "RECOMPRA" },
+              { label: "Ampliación", value: "AMPLIACION" },
+              { label: "Proyecto", value: "PROYECTO" },
+              { label: "Servicio técnico", value: "SERVICIO_TECNICO" },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="fechaProbableCierre" label="Fecha probable de cierre">
+          <DatePicker format="DD-MM-YYYY" className="w-full" />
+        </Form.Item>
+        <Form.Item name="riesgoTecnico" label="Riesgo técnico">
+          <Select
+            allowClear
+            placeholder="Seleccionar riesgo"
+            options={[
+              { label: "Bajo", value: "BAJO" },
+              { label: "Medio", value: "MEDIO" },
+              { label: "Alto", value: "ALTO" },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="comentariosInternos" label="Comentarios internos" className="md:col-span-2">
+          <Input.TextArea rows={3} placeholder="Notas internas del equipo (no visibles para el cliente)" />
+        </Form.Item>
+        <Form.Item name="observacionesTecnicas" label="Observaciones técnicas" className="md:col-span-2">
+          <Input.TextArea rows={3} placeholder="Detalles técnicos de la oportunidad" />
+        </Form.Item>
       </div>
     </>
-  );
+    );
+  };
 
   const renderPrimerContactoFields = () => (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2002,9 +2345,7 @@ const FirematFunnel: React.FC = () => {
         />
       </Form.Item>
       {renderProximaAccionField()}
-      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
-        <DatePicker format="DD-MM-YYYY" className="w-full" />
-      </Form.Item>
+      {renderFechaProximaAccionField()}
       <Form.Item name="observaciones" label="Observaciones" className="md:col-span-2">
         <Input.TextArea rows={4} placeholder="Notas comerciales" />
       </Form.Item>
@@ -2053,9 +2394,7 @@ const FirematFunnel: React.FC = () => {
         <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
       </Form.Item>
       {renderProximaAccionField()}
-      <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
-        <DatePicker format="DD-MM-YYYY" className="w-full" />
-      </Form.Item>
+      {renderFechaProximaAccionField()}
       <Form.Item name="origen" label="Origen">
         <Input placeholder="CRM, web, referido..." />
       </Form.Item>
@@ -2095,9 +2434,7 @@ const FirematFunnel: React.FC = () => {
         <Input.TextArea rows={2} placeholder="Precio, plazo, stock, competencia..." />
       </Form.Item>
       {renderProximaAccionField()}
-      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
-        <DatePicker format="DD-MM-YYYY" className="w-full" />
-      </Form.Item>
+      {renderFechaProximaAccionField()}
       <div className="space-y-2 md:col-span-2">
         {renderArchivoTipoRow("COTIZACION", "Cotización")}
         {renderArchivoTipoRow("FICHA_TECNICA", "Ficha técnica")}
@@ -2176,9 +2513,7 @@ const FirematFunnel: React.FC = () => {
           />
         </Form.Item>
         {renderProximaAccionField()}
-        <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
-          <DatePicker format="DD-MM-YYYY" className="w-full" />
-        </Form.Item>
+        {renderFechaProximaAccionField()}
       </div>
       <div className="mt-3 space-y-2">
         {renderArchivoTipoRow("ORDEN_COMPRA", "Orden de compra")}
@@ -2266,9 +2601,7 @@ const FirematFunnel: React.FC = () => {
         <DatePicker format="DD-MM-YYYY" className="w-full" />
       </Form.Item>
       {renderProximaAccionField()}
-      <Form.Item name="fechaProximaAccion" label="Fecha proxima accion">
-        <DatePicker format="DD-MM-YYYY" className="w-full" />
-      </Form.Item>
+      {renderFechaProximaAccionField()}
     </div>
   );
 
@@ -2331,38 +2664,6 @@ const FirematFunnel: React.FC = () => {
         return null;
     }
   };
-
-  const hasDetailValue = (value: unknown) =>
-    value !== null && value !== undefined && value !== "";
-
-  const shouldShowPhase2Detail = (item: FirematFunnelOportunidad) =>
-    item.etapa === "DESARROLLO_COTIZACION" ||
-    item.etapa === "COTIZACION_ENVIADA" ||
-    hasDetailValue(item.alternativaProducto) ||
-    hasDetailValue(item.comision) ||
-    hasDetailValue(item.margenEstimado) ||
-    hasDetailValue(item.fechaComprometidaEnvio) ||
-    hasDetailValue(item.versionCotizacion) ||
-    hasDetailValue(item.comentariosCliente) ||
-    hasDetailValue(item.objeciones);
-
-  const shouldShowReporteriaDetail = (item: FirematFunnelOportunidad) =>
-    hasDetailValue(item.tipoBroker) ||
-    hasDetailValue(item.fechaEstimadaDespacho) ||
-    hasDetailValue(item.fechaSeguimientoPostventa);
-
-  const shouldShowOrderDetail = (item: FirematFunnelOportunidad) =>
-    item.etapa === "ORDEN_CONFIRMADA" ||
-    hasDetailValue(item.ordenCompra) ||
-    hasDetailValue(item.correoAceptacion) ||
-    hasDetailValue(item.estadoDocumentacion) ||
-    hasDetailValue(item.estadoComercialOrden) ||
-    hasDetailValue(item.estadoDocumentacionVenta) ||
-    hasDetailValue(item.traspasoAdministracion) ||
-    hasDetailValue(item.traspasoERP) ||
-    hasDetailValue(item.condicionesComerciales) ||
-    hasDetailValue(item.coordinacionAdministrativa) ||
-    hasDetailValue(item.coordinacionDespacho);
 
   return (
     <div className="space-y-5">
@@ -2497,7 +2798,8 @@ const FirematFunnel: React.FC = () => {
           setInitialEditSection(null);
           setTargetEtapa(null);
           setArchivosFiremat([]);
-          setDetalleExpandido(false);
+          setDetalleModalOpen(false);
+          setShowClienteSelector(false);
           limpiarClienteFirematSeleccionado();
           form.resetFields();
         }}
@@ -2519,7 +2821,8 @@ const FirematFunnel: React.FC = () => {
                     setInitialEditSection(null);
                     setTargetEtapa(null);
                     setArchivosFiremat([]);
-                    setDetalleExpandido(false);
+                    setDetalleModalOpen(false);
+                    setShowClienteSelector(false);
                     limpiarClienteFirematSeleccionado();
                     form.resetFields();
                   }}
@@ -2580,7 +2883,10 @@ const FirematFunnel: React.FC = () => {
                   selected.tipoCliente ??
                   "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Próximos pasos" span={2}>
+              <Descriptions.Item label="Última actividad">
+                {selected.updatedAt ? dayjs(selected.updatedAt).format("DD-MM-YYYY HH:mm") : "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Próxima actividad" span={2}>
                 <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
                   {selected.proximaAccion || "—"}
                 </span>
@@ -2669,7 +2975,7 @@ const FirematFunnel: React.FC = () => {
               </Button>
               <Button
                 icon={<EyeOutlined />}
-                onClick={() => setDetalleExpandido((v) => !v)}
+                onClick={() => setDetalleModalOpen(true)}
               >
                 Ver detalle
               </Button>
@@ -2736,146 +3042,6 @@ const FirematFunnel: React.FC = () => {
               </div>
             )}
 
-            {/* F. Información completa expandible */}
-            {detalleExpandido && (
-              <Descriptions
-                bordered
-                size="small"
-                column={{ xs: 1, sm: 2 }}
-                className="[&_.ant-descriptions-item-content]:break-words [&_.ant-descriptions-item-label]:whitespace-normal"
-              >
-                <Descriptions.Item label="Contacto">{selected.contacto || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Teléfono">{selected.telefono || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Correo">{selected.correo || "—"}</Descriptions.Item>
-                <Descriptions.Item label="RUT empresa">{selected.rutEmpresa || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Unidad negocio">{selected.unidadNegocio || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Urgencia">{selected.urgencia || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Tipo de uso">{selected.tipoUso || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Soporte técnico">
-                  {selected.necesidadSoporteTecnico === true
-                    ? "Sí"
-                    : selected.necesidadSoporteTecnico === false
-                    ? "No"
-                    : "—"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Cantidad estimada">
-                  {selected.cantidadEstimada ?? "—"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Probabilidad cierre">
-                  {selected.probabilidadCierre !== null && selected.probabilidadCierre !== undefined
-                    ? `${selected.probabilidadCierre}%`
-                    : "—"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Origen">{selected.origen || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Observaciones" span={2}>
-                  {selected.observaciones || "—"}
-                </Descriptions.Item>
-                {shouldShowPhase2Detail(selected) && (
-                  <>
-                    <Descriptions.Item label="Alternativa producto" span={2}>
-                      {selected.alternativaProducto || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Comisión">
-                      {selected.comision !== null && selected.comision !== undefined
-                        ? `${selected.comision}%`
-                        : "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Margen estimado">
-                      {selected.margenEstimado !== null && selected.margenEstimado !== undefined
-                        ? `${selected.margenEstimado}%`
-                        : "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Fecha comprometida envío">
-                      {formatDate(selected.fechaComprometidaEnvio)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Versión cotización">
-                      {selected.versionCotizacion || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Comentarios cliente" span={2}>
-                      {selected.comentariosCliente || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Objeciones" span={2}>
-                      {selected.objeciones || "—"}
-                    </Descriptions.Item>
-                  </>
-                )}
-                {(selected.etapa === "GANADA" || hasDetailValue(selected.flujoPosterior)) && (
-                  <Descriptions.Item label="Flujo posterior">
-                    {selected.flujoPosterior || "—"}
-                  </Descriptions.Item>
-                )}
-                {(selected.etapa === "PERDIDA" || hasDetailValue(selected.motivoPerdida)) && (
-                  <Descriptions.Item label="Motivo pérdida" span={2}>
-                    {selected.motivoPerdida || "—"}
-                  </Descriptions.Item>
-                )}
-                {(selected.etapa === "POSTERGADA" || hasDetailValue(selected.motivoPostergacion)) && (
-                  <Descriptions.Item label="Motivo postergación" span={2}>
-                    {selected.motivoPostergacion || "—"}
-                  </Descriptions.Item>
-                )}
-                {(selected.etapa === "DESCARTADO" || hasDetailValue(selected.motivoDescarte)) && (
-                  <Descriptions.Item label="Motivo descarte" span={2}>
-                    {selected.motivoDescarte || "—"}
-                  </Descriptions.Item>
-                )}
-                {shouldShowReporteriaDetail(selected) && (
-                  <>
-                    <Descriptions.Item label="Tipo broker">
-                      {selected.tipoBroker || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Fecha estimada despacho">
-                      {formatDate(selected.fechaEstimadaDespacho)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Fecha seguimiento postventa">
-                      {formatDate(selected.fechaSeguimientoPostventa)}
-                    </Descriptions.Item>
-                  </>
-                )}
-                {shouldShowOrderDetail(selected) && (
-                  <>
-                    <Descriptions.Item label="Orden compra">
-                      {selected.ordenCompra || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Correo aceptación">
-                      {selected.correoAceptacion || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Estado documentación">
-                      {selected.estadoDocumentacion || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Estado comercial orden">
-                      {selected.estadoComercialOrden || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Estado documentación venta">
-                      {selected.estadoDocumentacionVenta || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Traspaso administración">
-                      {selected.traspasoAdministracion === true
-                        ? "Sí"
-                        : selected.traspasoAdministracion === false
-                        ? "No"
-                        : "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Traspaso ERP">
-                      {selected.traspasoERP === true
-                        ? "Sí"
-                        : selected.traspasoERP === false
-                        ? "No"
-                        : "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Condiciones comerciales" span={2}>
-                      {selected.condicionesComerciales || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Coordinación administrativa" span={2}>
-                      {selected.coordinacionAdministrativa || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Coordinación despacho" span={2}>
-                      {selected.coordinacionDespacho || "—"}
-                    </Descriptions.Item>
-                  </>
-                )}
-              </Descriptions>
-            )}
           </div>
         ) : (
         <Form<FunnelFormValues>
@@ -2938,28 +3104,32 @@ const FirematFunnel: React.FC = () => {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-x-3 md:grid-cols-3">
-            <Form.Item
-              name="cliente"
-              label="Cliente no registrado"
-              rules={[
-                {
-                  validator: (_, value: string) => {
-                    if (selectedClienteId || value?.trim()) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error("Ingresa el cliente o selecciona uno registrado")
-                    );
+            {selected?.clienteRegistrado === true ? (
+              <Form.Item name="cliente" hidden><Input /></Form.Item>
+            ) : (
+              <Form.Item
+                name="cliente"
+                label={<>Cliente no registrado <span className="text-red-500">*</span></>}
+                rules={[
+                  {
+                    validator: (_, value: string) => {
+                      if (selectedClienteId || value?.trim()) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(
+                        new Error("Ingresa el cliente o selecciona uno registrado")
+                      );
+                    },
                   },
-                },
-              ]}
-            >
-              <Input
-                placeholder="Nombre cliente no registrado"
-                disabled={Boolean(selectedClienteId)}
-              />
-            </Form.Item>
-            <Form.Item name="contacto" label="Nombre de contacto">
+                ]}
+              >
+                <Input
+                  placeholder="Nombre cliente no registrado"
+                  disabled={Boolean(selectedClienteId)}
+                />
+              </Form.Item>
+            )}
+            <Form.Item name="contacto" label={<>Nombre de contacto <span className="text-red-500">*</span></>}>
               {selectedClienteId ? (
                 <div className="space-y-2">
                   {contactoOptions.length ? (
@@ -3011,19 +3181,22 @@ const FirematFunnel: React.FC = () => {
                 <Input placeholder="Nombre contacto" />
               )}
             </Form.Item>
-            <Form.Item name="responsable" label="Responsable">
+            <Form.Item name="cargoContacto" label="Cargo del contacto">
+              <Input placeholder="Cargo o rol del contacto" />
+            </Form.Item>
+            <Form.Item name="responsable" label={<>Responsable comercial <span className="text-red-500">*</span></>}>
               <Input placeholder="Responsable comercial" />
             </Form.Item>
-            <Form.Item name="telefono" label="Teléfono">
+            <Form.Item name="telefono" label={<>Teléfono <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
               <Input placeholder="+56..." />
             </Form.Item>
-            <Form.Item name="correo" label="Correo">
+            <Form.Item name="correo" label={<>Correo <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
               <Input placeholder="correo@empresa.cl" />
             </Form.Item>
             <Form.Item name="tipoCliente" label="Tipo de cliente">
               <Select options={TIPO_CLIENTE_OPTIONS} placeholder="Tipo" allowClear />
             </Form.Item>
-            <Form.Item name="rutEmpresa" label="RUT empresa">
+            <Form.Item name="rutEmpresa" label={<>RUT empresa <span className="text-red-500">*</span></>}>
               <Input placeholder="76.123.456-7" />
             </Form.Item>
             <Form.Item name="region" label="Región">
@@ -3048,8 +3221,14 @@ const FirematFunnel: React.FC = () => {
                 disabled={!regionWatch}
               />
             </Form.Item>
-            <Form.Item name="unidadNegocio" label="Unidad de negocio">
+            <Form.Item name="direccionProyecto" label="Dirección / ubicación del proyecto">
+              <Input placeholder="Dirección, sector o ubicación" />
+            </Form.Item>
+            <Form.Item name="unidadNegocio" label={<>Unidad de negocio <span className="text-red-500">*</span></>}>
               <Input placeholder="Firemat, Industrial, Construcción..." />
+            </Form.Item>
+            <Form.Item name="nombreOportunidad" label={<>Nombre del proyecto u oportunidad <span className="text-red-500">*</span></>}>
+              <Input placeholder="Nombre del proyecto o descripción de la oportunidad" />
             </Form.Item>
             <Form.Item name="urgencia" label="Urgencia">
               <Select
@@ -3246,9 +3425,7 @@ const FirematFunnel: React.FC = () => {
               <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
             </Form.Item>
             {renderProximaAccionField()}
-            <Form.Item name="fechaProximaAccion" label="Fecha próxima acción">
-              <DatePicker format="DD-MM-YYYY" className="w-full" />
-            </Form.Item>
+            {renderFechaProximaAccionField()}
             <Form.Item name="origen" label="Origen">
               <Input placeholder="CRM, web, referido..." />
             </Form.Item>
@@ -3277,6 +3454,39 @@ const FirematFunnel: React.FC = () => {
               label="Fecha seguimiento postventa"
             >
               <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item name="tipoOportunidad" label="Tipo de oportunidad">
+              <Select
+                allowClear
+                placeholder="Seleccionar tipo"
+                options={[
+                  { label: "Nueva venta", value: "NUEVA_VENTA" },
+                  { label: "Recompra", value: "RECOMPRA" },
+                  { label: "Ampliación", value: "AMPLIACION" },
+                  { label: "Proyecto", value: "PROYECTO" },
+                  { label: "Servicio técnico", value: "SERVICIO_TECNICO" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="fechaProbableCierre" label="Fecha probable de cierre">
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item name="riesgoTecnico" label="Riesgo técnico">
+              <Select
+                allowClear
+                placeholder="Seleccionar riesgo"
+                options={[
+                  { label: "Bajo", value: "BAJO" },
+                  { label: "Medio", value: "MEDIO" },
+                  { label: "Alto", value: "ALTO" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="comentariosInternos" label="Comentarios internos" className="md:col-span-3">
+              <Input.TextArea rows={3} placeholder="Notas internas del equipo (no visibles para el cliente)" />
+            </Form.Item>
+            <Form.Item name="observacionesTecnicas" label="Observaciones técnicas" className="md:col-span-3">
+              <Input.TextArea rows={3} placeholder="Detalles técnicos de la oportunidad" />
             </Form.Item>
           </div>
 
@@ -3357,6 +3567,129 @@ const FirematFunnel: React.FC = () => {
           </>
           )}
         </Form>
+        )}
+      </Modal>
+
+      {/* Modal de detalle completo */}
+      <Modal
+        title={selected ? `Detalle: ${selected.nombreOportunidad ?? selected.cliente ?? "Oportunidad"}` : "Detalle"}
+        open={detalleModalOpen}
+        onCancel={() => setDetalleModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setDetalleModalOpen(false)}>
+            Cerrar
+          </Button>,
+        ]}
+        width="min(860px, 95vw)"
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
+        destroyOnClose
+      >
+        {selected && (
+          <Descriptions
+            bordered
+            size="small"
+            column={{ xs: 1, sm: 2 }}
+            className="[&_.ant-descriptions-item-content]:break-words [&_.ant-descriptions-item-label]:whitespace-normal"
+          >
+            <Descriptions.Item label="Nombre del proyecto u oportunidad" span={2}>
+              {selected.nombreOportunidad || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Cliente / empresa">
+              {selected.cliente || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Estado cliente">
+              <Tag color={selected.clienteRegistrado ? "green" : "orange"}>
+                {selected.clienteRegistrado ? "Cliente registrado" : "Cliente no registrado"}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="RUT empresa">
+              {selected.rutEmpresa || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Contacto">
+              {selected.contacto || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Cargo del contacto">
+              {selected.cargoContacto || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Teléfono">
+              {selected.telefono || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Correo">
+              {selected.correo || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Región">
+              {selected.region || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Comuna">
+              {selected.comuna || "—"}
+            </Descriptions.Item>
+            {(selected.direccionProyecto) && (
+              <Descriptions.Item label="Dirección / ubicación del proyecto" span={2}>
+                {selected.direccionProyecto}
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="Fecha de ingreso">
+              {formatDate(selected.createdAt)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Responsable comercial">
+              {selected.responsable || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Unidad de negocio">
+              {selected.unidadNegocio || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Origen del prospecto">
+              {selected.origen || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Etapa del pipeline" span={2}>
+              <Tag color={ETAPAS.find((e) => e.value === selected.etapa)?.color ?? "default"}>
+                {ETAPAS.find((e) => e.value === selected.etapa)?.label ?? selected.etapa}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Última actividad">
+              {selected.updatedAt ? dayjs(selected.updatedAt).format("DD-MM-YYYY HH:mm") : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Próxima actividad">
+              {selected.proximaAccion || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha de próxima acción">
+              {formatDate(selected.fechaProximaAccion)}
+            </Descriptions.Item>
+            {selected.observaciones && (
+              <Descriptions.Item label="Observaciones" span={2}>
+                {selected.observaciones}
+              </Descriptions.Item>
+            )}
+            {selected.tipoOportunidad && (
+              <Descriptions.Item label="Tipo de oportunidad">
+                {selected.tipoOportunidad}
+              </Descriptions.Item>
+            )}
+            {selected.fechaProbableCierre && (
+              <Descriptions.Item label="Fecha probable de cierre">
+                {formatDate(selected.fechaProbableCierre)}
+              </Descriptions.Item>
+            )}
+            {selected.riesgoTecnico && (
+              <Descriptions.Item label="Riesgo técnico">
+                {selected.riesgoTecnico}
+              </Descriptions.Item>
+            )}
+            {selected.comentariosInternos && (
+              <Descriptions.Item label="Comentarios internos" span={2}>
+                {selected.comentariosInternos}
+              </Descriptions.Item>
+            )}
+            {selected.observacionesTecnicas && (
+              <Descriptions.Item label="Observaciones técnicas" span={2}>
+                {selected.observacionesTecnicas}
+              </Descriptions.Item>
+            )}
+            {selected.observacionCamposFaltantes && (
+              <Descriptions.Item label="Observación campos faltantes" span={2}>
+                {selected.observacionCamposFaltantes}
+              </Descriptions.Item>
+            )}
+          </Descriptions>
         )}
       </Modal>
 
@@ -3637,6 +3970,58 @@ const FirematFunnel: React.FC = () => {
             </div>
           </div>
         </Form>
+      </Modal>
+
+      {/* Modal advertencia campos críticos (respuesta 409) */}
+      <Modal
+        title="Faltan campos críticos"
+        open={advertenciaModalOpen}
+        onCancel={() => setAdvertenciaModalOpen(false)}
+        destroyOnClose
+        footer={[
+          <Button
+            key="corregir"
+            onClick={() => setAdvertenciaModalOpen(false)}
+          >
+            Corregir ahora
+          </Button>,
+          <Button
+            key="guardar"
+            loading={saving}
+            style={{ backgroundColor: "#e63c1e", borderColor: "#e63c1e", color: "#fff" }}
+            onClick={() => void handleAdvertenciaGuardar()}
+          >
+            Guardar igualmente con observación
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-beck-ink">{advertenciaMsg}</p>
+          {advertenciaCampos.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-beck-muted">Campos con advertencia:</p>
+              <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                {advertenciaCampos.map((campo) => (
+                  <li key={campo}>{campo}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div>
+            <p className="mb-1 text-xs font-semibold text-beck-muted">
+              Observación de justificación <span className="text-red-500">*</span>
+            </p>
+            <Input.TextArea
+              rows={4}
+              value={advertenciaObs}
+              onChange={(e) => setAdvertenciaObs(e.target.value)}
+              placeholder="Explica por qué se avanza sin completar los campos críticos..."
+            />
+            {advertenciaObs.trim() === "" && (
+              <p className="mt-1 text-xs text-red-500">Debes ingresar una observación para continuar.</p>
+            )}
+          </div>
+        </div>
       </Modal>
     </div>
   );

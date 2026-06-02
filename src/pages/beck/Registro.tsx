@@ -1477,6 +1477,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           return juntaLinealActive || hasValue(["metrosLineales", "metros_lineales"]);
         }
 
+        // itemizadoMandante: clave de columna ≠ clave de configuración (solo aplica para jefeobra)
+        if (key === "itemizadoMandanteNombre") return !hiddenKeys.has("itemizado_mandante");
+
         // Filtro general por configuración del rol
         return !hiddenKeys.has(key);
       });

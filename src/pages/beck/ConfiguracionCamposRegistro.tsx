@@ -83,6 +83,7 @@ const matrixCampoLabels: Record<string, string> = {
   cantidad_sellos_aislacion: "Cantidad sellos aislación",
   cantidad_final: "Cantidad final",
   folio: "FOLIO",
+  itemizado_mandante: "Itemizado Mandante",
 };
 
 const jefeObraConfigurableCampos = new Set([
@@ -95,6 +96,7 @@ const jefeObraConfigurableCampos = new Set([
   "cantidad_sellos_con_factores",
   "cantidad_final",
   "folio",
+  "itemizado_mandante",
 ]);
 
 const trabajadorConfigurableCampos = new Set([
@@ -296,14 +298,30 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     visible: boolean
   ) => {
     setConfig((current) => {
-      return {
-        ...current,
-        [role]: current[role].map((field) =>
+      const roleFields = current[role];
+      const found = roleFields.some(
+        (field) =>
           normalizeCampoKey(field.campo) === fieldKey ||
           normalizeCampoKey(field.key) === fieldKey
-            ? { ...field, visible }
-            : field
-        ),
+      );
+      if (found) {
+        return {
+          ...current,
+          [role]: roleFields.map((field) =>
+            normalizeCampoKey(field.campo) === fieldKey ||
+            normalizeCampoKey(field.key) === fieldKey
+              ? { ...field, visible }
+              : field
+          ),
+        };
+      }
+      // Campo no existe aún en backend — se agrega para que buildPayload lo incluya al guardar
+      return {
+        ...current,
+        [role]: [
+          ...roleFields,
+          { campo: fieldKey, label: matrixCampoLabels[fieldKey] || fieldKey, color: "azul" as const, visible },
+        ],
       };
     });
   };
