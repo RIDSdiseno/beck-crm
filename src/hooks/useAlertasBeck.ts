@@ -3,8 +3,11 @@ import { notification } from "antd";
 import { alertasAPI, type AlertaBeck } from "../services/api";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const STORAGE_KEY = "alertas_beck_notificadas_session";
 const NOTIFICATION_KEY = "alertas-beck-session";
+
+// Runtime-only memory: lives in the JS module, wiped on page reload / F5.
+// Survives React navigation (module is not re-evaluated on route changes).
+const notifiedInSession = new Set<string>();
 
 interface AlertasState {
   nuevas: AlertaBeck[];
@@ -20,26 +23,6 @@ const INITIAL_STATE: AlertasState = {
   total: 0,
   loading: false,
   error: null,
-};
-
-const readNotifiedKeys = (): Set<string> => {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return new Set(parsed as string[]);
-  } catch {
-    // sessionStorage no disponible o JSON inválido
-  }
-  return new Set();
-};
-
-const saveNotifiedKeys = (keys: Set<string>): void => {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...keys]));
-  } catch {
-    // sessionStorage no disponible
-  }
 };
 
 export const useAlertasBeck = () => {
@@ -58,14 +41,12 @@ export const useAlertasBeck = () => {
       });
 
       if (showPopup && data.nuevas.length > 0) {
-        const notifiedKeys = readNotifiedKeys();
         const sinNotificar = data.nuevas.filter(
-          (a) => !notifiedKeys.has(a.alertaKey)
+          (a) => !notifiedInSession.has(a.alertaKey)
         );
 
         if (sinNotificar.length > 0) {
-          sinNotificar.forEach((a) => notifiedKeys.add(a.alertaKey));
-          saveNotifiedKeys(notifiedKeys);
+          sinNotificar.forEach((a) => notifiedInSession.add(a.alertaKey));
 
           const n = sinNotificar.length;
           notification.warning({
