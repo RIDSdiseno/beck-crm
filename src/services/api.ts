@@ -394,6 +394,184 @@ export type BeckCamposCriticosError = {
   message: string;
 };
 
+export interface FunnelBeckDashboardKpis {
+  totalOportunidades: number;
+  oportunidadesActivas: number;
+  oportunidadesGanadas: number;
+  oportunidadesPerdidas: number;
+  oportunidadesPostergadas: number;
+  pipelineTotalClp: number;
+  montoGanadoClp: number;
+  montoPerdidoClp: number;
+  tasaCierre: number;
+}
+
+export interface FunnelBeckDashboardVendedor {
+  vendedor: string;
+  total: number;
+  ganadas: number;
+  perdidas: number;
+  postergadas: number;
+  activas: number;
+  montoTotalClp: number;
+  montoGanadoClp: number;
+}
+
+export interface FunnelBeckDashboardSinSeguimientoItem {
+  id: string;
+  nombreProyecto: string;
+  empresa: string;
+  vendedor: string;
+  etapa: string;
+  updatedAt: string;
+  fechaProximaAccion: string | null;
+  valorClp: number;
+}
+
+export interface FunnelBeckDashboardProspectos {
+  nuevosSemana: number;
+  nuevosMes: number;
+  porOrigen: { origen: string; cantidad: number }[];
+  porResponsable: { vendedor: string; cantidad: number }[];
+}
+
+export interface FunnelBeckDashboardPipelineAvanzado {
+  porResponsable: { vendedor: string; cantidad: number; montoClp: number }[];
+  porUnidadNegocio: { unidadNegocio: string; cantidad: number; montoClp: number }[];
+  porOrigen: { origen: string; cantidad: number; montoClp: number }[];
+  porTipoCliente: { tipoCliente: string; cantidad: number; montoClp: number }[];
+  porCliente: { cliente: string; cantidad: number; montoClp: number }[];
+  porProyecto: { proyecto: string; cliente: string; vendedor: string; etapa: string; montoClp: number }[];
+}
+
+export interface FunnelBeckDashboardForecast {
+  dias30: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+  dias60: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+  dias90: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+}
+
+export interface FunnelBeckDashboardGanadas {
+  montoGanadoMesActualClp: number;
+  montoGanadoUltimos12Meses: { mes: string; cantidad: number; montoClp: number }[];
+}
+
+export interface FunnelBeckDashboardMotivos {
+  perdida: { motivo: string; cantidad: number }[];
+  postergacion: { motivo: string; cantidad: number }[];
+  descarte: { motivo: string; cantidad: number }[];
+}
+
+export interface FunnelBeckDashboardRiesgoItem {
+  id: string;
+  nombreProyecto: string;
+  empresa: string;
+  vendedor: string;
+  etapa: string;
+  updatedAt?: string;
+  valorClp: number;
+}
+
+export interface FunnelBeckDashboardRiesgoComercial {
+  oportunidadesDetenidas: {
+    total: number;
+    diasSinMovimiento: number;
+    items: FunnelBeckDashboardRiesgoItem[];
+  };
+  oportunidadesSinProximaAccion: {
+    total: number;
+    items: Omit<FunnelBeckDashboardRiesgoItem, "updatedAt">[];
+  };
+}
+
+export interface FunnelBeckDashboardConversionEtapas {
+  etapas: {
+    etapa: string;
+    label: string;
+    cantidad: number;
+    porcentajeSobreTotal: number;
+  }[];
+  transiciones: {
+    desde: string;
+    hasta: string;
+    desdeLabel: string;
+    hastaLabel: string;
+    cantidadDesde: number;
+    cantidadHasta: number;
+    tasaConversion: number;
+  }[];
+}
+
+export interface FunnelBeckDashboardData {
+  kpis: FunnelBeckDashboardKpis;
+  distribucionEstado: {
+    activas: number;
+    ganadas: number;
+    perdidas: number;
+    postergadas: number;
+  };
+  porEtapa: Record<string, { cantidad: number; montoClp: number }>;
+  rankingVendedores: FunnelBeckDashboardVendedor[];
+  sinSeguimiento: {
+    totalSinSeguimiento: number;
+    diasSinSeguimiento: number;
+    oportunidadesSinSeguimiento: FunnelBeckDashboardSinSeguimientoItem[];
+  };
+  proximasAcciones: {
+    accionesVencidas: number;
+    accionesHoy: number;
+    accionesProximos7Dias: number;
+  };
+  prospectos?: FunnelBeckDashboardProspectos;
+  pipelineAvanzado?: FunnelBeckDashboardPipelineAvanzado;
+  forecast?: FunnelBeckDashboardForecast;
+  ganadas?: FunnelBeckDashboardGanadas;
+  motivos?: FunnelBeckDashboardMotivos;
+  riesgoComercial?: FunnelBeckDashboardRiesgoComercial;
+  conversionEtapas?: FunnelBeckDashboardConversionEtapas;
+}
+
+export interface FunnelBeckDashboardParams {
+  fechaDesde?: string;
+  fechaHasta?: string;
+  tipoFecha?: string;
+  vendedor?: string;
+  etapa?: string;
+  diasSinSeguimiento?: number;
+  unidadNegocio?: string;
+  origen?: string;
+  tipoCliente?: string;
+  tipoOportunidad?: string;
+  cliente?: string;
+  proyecto?: string;
+  estado?: string;
+  fechaIngresoDesde?: string;
+  fechaIngresoHasta?: string;
+  fechaCierreDesde?: string;
+  fechaCierreHasta?: string;
+}
+
+export type HistorialEtapaBeck = {
+  id: number;
+  oportunidadId: string;
+  etapaAnterior: string | null;
+  etapaNueva: string;
+  usuarioId: string | null;
+  usuarioNombre: string | null;
+  usuarioEmail: string | null;
+  createdAt: string;
+};
+
+export type HistorialEtapaFiremat = {
+  id: number;
+  oportunidadId: number;
+  etapaAnterior: string | null;
+  etapaNueva: string;
+  usuarioId: string | null;
+  usuarioNombre: string | null;
+  usuarioEmail: string | null;
+  createdAt: string;
+};
+
 export const funnelBeckAPI = {
   listar: async (): Promise<FunnelBeckOpportunity[]> => {
     const response = await api.get<ApiResponseEnvelope<FunnelBeckOpportunity[]>>(
@@ -487,6 +665,21 @@ export const funnelBeckAPI = {
       `/funnel-beck/archivos/${archivoId}`
     );
     unwrapApiResponse(response.data);
+  },
+
+  getDashboard: async (params?: FunnelBeckDashboardParams): Promise<FunnelBeckDashboardData> => {
+    const response = await api.get<ApiResponseEnvelope<FunnelBeckDashboardData>>(
+      "/funnel-beck/dashboard",
+      { params }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  getHistorialEtapas: async (id: string): Promise<HistorialEtapaBeck[]> => {
+    const response = await api.get<ApiResponseEnvelope<HistorialEtapaBeck[]>>(
+      `/funnel-beck/${id}/historial-etapas`
+    );
+    return unwrapApiResponse(response.data);
   },
 };
 
@@ -1513,6 +1706,169 @@ export const firematCotizacionesAPI = {
   },
 };
 
+export interface FirematDashboardKpis {
+  totalOportunidades: number;
+  oportunidadesActivas: number;
+  oportunidadesGanadas: number;
+  oportunidadesPerdidas: number;
+  oportunidadesPostergadas: number;
+  oportunidadesDescartadas: number;
+  pipelineTotalClp: number;
+  montoGanadoClp: number;
+  montoPerdidoClp: number;
+  tasaCierre: number;
+  tasaRecompra: number;
+}
+
+export interface FirematDashboardResponsable {
+  responsable: string;
+  total: number;
+  ganadas: number;
+  perdidas: number;
+  postergadas: number;
+  activas: number;
+  montoTotalClp: number;
+  montoGanadoClp: number;
+}
+
+export interface FirematDashboardSinSeguimientoItem {
+  id: string;
+  nombreOportunidad: string;
+  cliente: string;
+  responsable: string;
+  etapa: string;
+  updatedAt: string;
+  fechaProximaAccion: string | null;
+  montoEstimado: number;
+}
+
+export interface FirematDashboardProspectos {
+  nuevosSemana: number;
+  nuevosMes: number;
+  porOrigen: { origen: string; cantidad: number }[];
+  porResponsable: { responsable: string; cantidad: number }[];
+}
+
+export interface FirematDashboardPipelineAvanzado {
+  porResponsable: { responsable: string; cantidad: number; montoClp: number }[];
+  porUnidadNegocio: { unidadNegocio: string; cantidad: number; montoClp: number }[];
+  porOrigen: { origen: string; cantidad: number; montoClp: number }[];
+  porTipoCliente: { tipoCliente: string; cantidad: number; montoClp: number }[];
+  porCliente: { cliente: string; cantidad: number; montoClp: number }[];
+  porProyecto: { proyecto: string; cliente: string; responsable: string; etapa: string; montoClp: number }[];
+}
+
+export interface FirematDashboardForecast {
+  dias30: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+  dias60: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+  dias90: { cantidad: number; montoClp: number; montoPonderadoClp: number };
+}
+
+export interface FirematDashboardGanadas {
+  montoGanadoMesActualClp: number;
+  montoGanadoUltimos12Meses: { mes: string; cantidad: number; montoClp: number }[];
+}
+
+export interface FirematDashboardMotivos {
+  perdida: { motivo: string; cantidad: number }[];
+  postergacion: { motivo: string; cantidad: number }[];
+  descarte: { motivo: string; cantidad: number }[];
+}
+
+export interface FirematDashboardRiesgoItem {
+  id: string;
+  nombreOportunidad: string;
+  cliente: string;
+  responsable: string;
+  etapa: string;
+  updatedAt?: string;
+  montoEstimado: number;
+}
+
+export interface FirematDashboardRiesgoComercial {
+  oportunidadesDetenidas: {
+    total: number;
+    diasSinMovimiento: number;
+    items: FirematDashboardRiesgoItem[];
+  };
+  oportunidadesSinProximaAccion: {
+    total: number;
+    items: Omit<FirematDashboardRiesgoItem, "updatedAt">[];
+  };
+}
+
+export interface FirematDashboardConversionEtapas {
+  etapas: {
+    etapa: string;
+    label: string;
+    cantidad: number;
+    porcentajeSobreTotal: number;
+  }[];
+  transiciones: {
+    desde: string;
+    hasta: string;
+    desdeLabel: string;
+    hastaLabel: string;
+    cantidadDesde: number;
+    cantidadHasta: number;
+    tasaConversion: number;
+  }[];
+}
+
+export interface FirematDashboardTiemposPromedio {
+  tiempoPromedioDesarrolloCotizacion: number;
+  tiempoPromedioCotizacionEnviada: number;
+}
+
+export interface FirematDashboardData {
+  kpis: FirematDashboardKpis;
+  distribucionEstado: {
+    activas: number;
+    ganadas: number;
+    perdidas: number;
+    postergadas: number;
+    descartadas: number;
+  };
+  porEtapa: Record<string, { cantidad: number; montoClp: number }>;
+  rankingResponsables: FirematDashboardResponsable[];
+  sinSeguimiento: {
+    totalSinSeguimiento: number;
+    diasSinSeguimiento: number;
+    oportunidadesSinSeguimiento: FirematDashboardSinSeguimientoItem[];
+  };
+  proximasAcciones: {
+    accionesVencidas: number;
+    accionesHoy: number;
+    accionesProximos7Dias: number;
+  };
+  prospectos?: FirematDashboardProspectos;
+  pipelineAvanzado?: FirematDashboardPipelineAvanzado;
+  forecast?: FirematDashboardForecast;
+  ganadas?: FirematDashboardGanadas;
+  motivos?: FirematDashboardMotivos;
+  riesgoComercial?: FirematDashboardRiesgoComercial;
+  conversionEtapas?: FirematDashboardConversionEtapas;
+  tiemposPromedio?: FirematDashboardTiemposPromedio;
+}
+
+export interface FirematDashboardParams {
+  responsable?: string;
+  etapa?: string;
+  estado?: string;
+  unidadNegocio?: string;
+  origen?: string;
+  tipoCliente?: string;
+  tipoOportunidad?: string;
+  cliente?: string;
+  proyecto?: string;
+  productoId?: number;
+  diasSinSeguimiento?: number;
+  fechaIngresoDesde?: string;
+  fechaIngresoHasta?: string;
+  fechaCierreDesde?: string;
+  fechaCierreHasta?: string;
+}
+
 export type FirematFunnelEtapa =
   | "PROSPECTO"
   | "PRIMER_CONTACTO"
@@ -1537,10 +1893,13 @@ export type FirematFunnelOportunidad = {
   region?: string | null;
   comuna?: string | null;
   unidadNegocio?: string | null;
+  lineaProducto?: string | null;
   productoId?: number | null;
   producto?: ProductoFiremat | null;
   productoNombre?: string | null;
   cantidadEstimada?: number | null;
+  descuento?: number | null;
+  stockOportunidad?: string | null;
   urgencia?: string | null;
   tipoUso?: string | null;
   necesidadSoporteTecnico?: boolean | null;
@@ -1606,8 +1965,11 @@ export type FirematFunnelPayload = {
   region?: string | null;
   comuna?: string | null;
   unidadNegocio?: string | null;
+  lineaProducto?: string | null;
   productoId?: number | null;
   cantidadEstimada?: number | null;
+  descuento?: number | null;
+  stockOportunidad?: string | null;
   urgencia?: string | null;
   tipoUso?: string | null;
   necesidadSoporteTecnico?: boolean | null;
@@ -1838,6 +2200,21 @@ export const firematFunnelAPI = {
     if ("success" in response.data) {
       unwrapApiResponse(response.data);
     }
+  },
+
+  getHistorialEtapas: async (id: string | number): Promise<HistorialEtapaFiremat[]> => {
+    const response = await api.get<ApiResponseEnvelope<HistorialEtapaFiremat[]>>(
+      `/firemat/funnel/${id}/historial-etapas`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  getDashboard: async (params?: FirematDashboardParams): Promise<FirematDashboardData> => {
+    const response = await api.get<ApiResponseEnvelope<FirematDashboardData>>(
+      "/firemat/funnel/dashboard",
+      { params }
+    );
+    return unwrapApiResponse(response.data);
   },
 };
 
@@ -2495,5 +2872,162 @@ export const clientesFirematAPI = {
       { headers: { "Content-Type": "multipart/form-data" } }
     );
     return normalizeImportarClientesResult(unwrapItem(response.data));
+  },
+};
+
+// ── Itemizado Opciones ────────────────────────────────────────────────────────
+
+export type ItemizadoOpcion = {
+  id: string;
+  codigoBeck?: string | null;
+  tipo?: string | null;
+  elementoPasante?: string | null;
+  elementoPenetra?: string | null;
+  materialidad?: string | null;
+  visible: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ItemizadoOpcionPayload = {
+  codigoBeck?: string | null;
+  tipo?: string | null;
+  elementoPasante?: string | null;
+  elementoPenetra?: string | null;
+  materialidad?: string | null;
+  visible?: boolean;
+};
+
+export type ItemizadoImportarResult = {
+  totalFilas: number;
+  importadas: number;
+  omitidas: number;
+  duplicadas: number;
+  errores: string[];
+};
+
+export const itemizadoOpcionesAPI = {
+  listar: async (params?: {
+    codigoBeck?: string;
+    tipo?: string;
+    elementoPasante?: string;
+    elementoPenetra?: string;
+    materialidad?: string;
+    visible?: boolean;
+  }): Promise<ItemizadoOpcion[]> => {
+    const response = await api.get<ApiResponseEnvelope<ItemizadoOpcion[]> | ItemizadoOpcion[]>("/itemizado-opciones", { params });
+    return unwrapArray(response.data);
+  },
+
+  obtenerPorId: async (id: string): Promise<ItemizadoOpcion> => {
+    const response = await api.get<ItemizadoOpcion>(`/itemizado-opciones/${id}`);
+    return response.data;
+  },
+
+  crear: async (payload: ItemizadoOpcionPayload): Promise<ItemizadoOpcion> => {
+    const response = await api.post<ItemizadoOpcion>("/itemizado-opciones", payload);
+    return response.data;
+  },
+
+  actualizar: async (id: string, payload: Partial<ItemizadoOpcionPayload>): Promise<ItemizadoOpcion> => {
+    const response = await api.put<ItemizadoOpcion>(`/itemizado-opciones/${id}`, payload);
+    return response.data;
+  },
+
+  actualizarVisible: async (id: string, visible: boolean): Promise<ItemizadoOpcion> => {
+    const response = await api.patch<ApiResponseEnvelope<ItemizadoOpcion> | ItemizadoOpcion>(
+      `/itemizado-opciones/${id}/visible`,
+      { visible }
+    );
+    return unwrapItem(response.data);
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    await api.delete(`/itemizado-opciones/${id}`);
+  },
+
+  importarExcel: async (
+    file: File,
+    reemplazar?: boolean
+  ): Promise<ItemizadoImportarResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const url = reemplazar
+      ? "/itemizado-opciones/importar?reemplazar=true"
+      : "/itemizado-opciones/importar";
+    const response = await api.post<ItemizadoImportarResult>(url, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+};
+
+// ── Alertas Beck ────────────────────────────────────────────────────────────
+
+export type AlertaBeckSeveridad = "ALTA" | "MEDIA" | "BAJA";
+
+export interface AlertaBeck {
+  alertaKey: string;
+  modulo: "BECK";
+  tipo: string;
+  oportunidadId: string;
+  titulo: string;
+  descripcion: string;
+  responsable: string | null;
+  severidad: AlertaBeckSeveridad;
+  fechaReferencia?: string | null;
+  diasRestantes?: number | null;
+  diasAtraso?: number | null;
+  url?: string;
+}
+
+export interface AlertasBeckResponse {
+  nuevas: AlertaBeck[];
+  vistas: AlertaBeck[];
+  total: number;
+}
+
+// ── Alertas Firemat ──────────────────────────────────────────────────────────
+
+export type AlertaFirematSeveridad = "ALTA" | "MEDIA" | "BAJA";
+
+export interface AlertaFiremat {
+  alertaKey: string;
+  modulo: "FIREMAT";
+  tipo: string;
+  oportunidadId: number;
+  titulo: string;
+  descripcion: string;
+  responsable: string | null;
+  severidad: AlertaFirematSeveridad;
+  fechaReferencia?: string | null;
+  diasRestantes?: number | null;
+  diasAtraso?: number | null;
+  url?: string;
+}
+
+export interface AlertasFirematResponse {
+  nuevas: AlertaFiremat[];
+  vistas: AlertaFiremat[];
+  total: number;
+}
+
+export const alertasAPI = {
+  getAlertasBeck: async (): Promise<AlertasBeckResponse> => {
+    const response = await api.get<AlertasBeckResponse>("/alertas/beck");
+    return response.data;
+  },
+
+  marcarVista: async (alertaKeys: string[]): Promise<void> => {
+    await api.post("/alertas/marcar-vista", { alertaKeys });
+  },
+
+  getAlertasFiremat: async (): Promise<AlertasFirematResponse> => {
+    const response = await api.get<AlertasFirematResponse>("/alertas/firemat");
+    return response.data;
+  },
+
+  marcarVistaFiremat: async (alertaKeys: string[]): Promise<void> => {
+    await api.post("/alertas/firemat/marcar-vista", { alertaKeys });
   },
 };

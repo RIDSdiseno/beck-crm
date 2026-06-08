@@ -9,6 +9,7 @@
     Spin,
     Switch,
     Tag,
+    Timeline,
     Typography,
     message,
   } from "antd";
@@ -32,9 +33,10 @@
     useSensors,
   } from "@dnd-kit/core";
   import dayjs, { Dayjs } from "dayjs";
-  import { useNavigate } from "react-router-dom";
+  import { useLocation, useNavigate } from "react-router-dom";
   import CierreDeProyecto from "../../components/Cierredeproyecto";
   import FunnelCalendario from "../../components/FunnelCalendario";
+  import FunnelBeckDashboard from "./FunnelBeckDashboard";
   import CotizacionEditorModal, {
     type CotizacionEditorValues,
     type LineaCotizacion,
@@ -54,6 +56,7 @@
     type FunnelBeckArchivo,
     type FunnelBeckArchivoTipo,
     type FunnelBeckUpsertPayload,
+    type HistorialEtapaBeck,
     type SolicitudOficinaTecnica,
     type UsuarioResumen,
   } from "../../services/api";
@@ -73,6 +76,7 @@
 
   type FunnelPageProps = {
     themeMode: ThemeMode;
+    alertaBell?: React.ReactNode;
   };
 
   type FunnelDraft = {
@@ -3001,11 +3005,14 @@
     return String(e?.response?.data?.message ?? "Faltan campos críticos para avanzar.");
   };
 
-  const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode }) => {
+  const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode, alertaBell }) => {
     void themeMode;
 
     const { user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const pendingOportunidadId = useRef<string | null>(null);
+    const lastOpenedAlertTs = useRef<number | null>(null);
     const canEditFunnel =
       user?.rol === "Administrador" ||
       user?.rol === "Vendedor" ||
@@ -3023,7 +3030,7 @@
     const [deals, setDeals] = useState<FunnelDeal[]>([]);
     const [activeDragDeal, setActiveDragDeal] = useState<FunnelDeal | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
+    const [viewMode, setViewMode] = useState<"kanban" | "calendar" | "dashboard">("kanban");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [funnelModalMode, setFunnelModalMode] = useState<"create" | "edit">("create");
     const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -3053,6 +3060,9 @@
     const [ufFecha, setUfFecha] = useState<string | null>(null);
     const [selectedDeal, setSelectedDeal] = useState<FunnelDeal | null>(null);
     const [fullDetailOpen, setFullDetailOpen] = useState(false);
+    const [historialEtapas, setHistorialEtapas] = useState<HistorialEtapaBeck[]>([]);
+    const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
+    const [historialEtapasError, setHistorialEtapasError] = useState<string | null>(null);
     const [archivosFunnel, setArchivosFunnel] = useState<FunnelBeckArchivo[]>([]);
     const [archivosFunnelLoading, setArchivosFunnelLoading] = useState(false);
     const [relatedCotizaciones, setRelatedCotizaciones] = useState<
@@ -3643,12 +3653,48 @@
       );
     };
 
+    const ETAPA_HISTORIAL_LABELS: Record<string, string> = {
+      prospecto: "Prospecto identificado",
+      visita: "Visita / levantamiento",
+      cotizacion: "Cotización elaborada",
+      enviada: "Cotización enviada",
+      negociacion: "En negociación",
+      documentacion: "Documentación de venta",
+      cerrada: "Cerrada",
+      prospecto_identificado: "Prospecto identificado",
+      visita_levantamiento: "Visita / levantamiento",
+      cotizacion_elaborada: "Cotización elaborada",
+      cotizacion_enviada: "Cotización enviada",
+      en_negociacion: "En negociación",
+      documentacion_venta: "Documentación de venta",
+    };
+
+    const formatEtapaHistorial = (etapa: string | null): string => {
+      if (!etapa) return "Sin etapa anterior";
+      return ETAPA_HISTORIAL_LABELS[etapa] ?? etapa.replace(/_/g, " ");
+    };
+
+    const loadHistorialEtapas = async (id: string) => {
+      setHistorialEtapasLoading(true);
+      setHistorialEtapasError(null);
+      setHistorialEtapas([]);
+      try {
+        const data = await funnelBeckAPI.getHistorialEtapas(id);
+        setHistorialEtapas(data);
+      } catch {
+        setHistorialEtapasError("No se pudo cargar el historial de etapas");
+      } finally {
+        setHistorialEtapasLoading(false);
+      }
+    };
+
     const openDealDetail = async (deal: FunnelDeal) => {
       setSelectedDeal(deal);
       setArchivosFunnel([]);
       setRelatedCotizaciones([]);
       void loadArchivosFunnel(deal);
       void loadRelatedCotizaciones(deal.id);
+      void loadHistorialEtapas(deal.id);
     };
 
     const closeDealDetail = () => {
@@ -3660,6 +3706,9 @@
       setCotizacionVersionesById({});
       setSelectedCotizacion(null);
       setSelectedCotizacionLoading(false);
+      setHistorialEtapas([]);
+      setHistorialEtapasLoading(false);
+      setHistorialEtapasError(null);
     };
 
     const openCreateCotizacion = (deal: FunnelDeal) => {
@@ -3930,6 +3979,36 @@
       void loadDolarActual();
       void loadJefesObra();
     }, []);
+
+    // Reacciona a cada navegación desde una alerta (funciona tanto al montar como estando ya en funnel)
+    useEffect(() => {
+      const state = location.state as {
+        oportunidadId?: string;
+        alertNavigationTs?: number;
+      } | null;
+      const ts = state?.alertNavigationTs;
+      const id = state?.oportunidadId;
+      if (!ts || !id) return;
+      if (lastOpenedAlertTs.current === ts) return; // evitar re-apertura
+      lastOpenedAlertTs.current = ts;
+
+      if (deals.length > 0) {
+        const target = deals.find((d) => d.id === id);
+        if (target) void openDealDetail(target);
+      } else {
+        // deals aún cargando: delegar al effect de [deals]
+        pendingOportunidadId.current = id;
+      }
+    }, [location.state]);
+
+    // Resuelve oportunidad pendiente una vez que deals está cargado
+    useEffect(() => {
+      if (!pendingOportunidadId.current || deals.length === 0) return;
+      const id = pendingOportunidadId.current;
+      pendingOportunidadId.current = null;
+      const target = deals.find((d) => d.id === id);
+      if (target) void openDealDetail(target);
+    }, [deals]);
     /* eslint-enable react-hooks/exhaustive-deps */
 
     const resetClienteBeckState = () => {
@@ -5245,6 +5324,17 @@
                 >
                   Calendario
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("dashboard")}
+                  className={`beck-tab-button ${
+                    viewMode === "dashboard"
+                      ? "beck-tab-button-active"
+                      : ""
+                  }`}
+                >
+                  Dashboard
+                </button>
               </div>
 
               {canEditFunnel && (
@@ -5257,11 +5347,27 @@
                   Nueva oportunidad
                 </button>
               )}
+
+              {alertaBell && (
+                <div style={{ marginLeft: 4 }}>{alertaBell}</div>
+              )}
             </div>
           </div>
         </section>
 
-        {isLoading ? (
+        {viewMode === "dashboard" ? (
+          <section className="beck-panel px-5 py-4">
+            <FunnelBeckDashboard
+              vendedoresDisponibles={[...new Set(deals.map((d) => d.vendedor).filter((v): v is string => Boolean(v)))]}
+              unidadesNegocioDisponibles={[...new Set(deals.map((d) => d.unidadNegocio).filter((v): v is string => Boolean(v)))]}
+              origenesDisponibles={[...new Set(deals.map((d) => d.fuenteLead).filter((v): v is FunnelLeadSource => Boolean(v)))]}
+              tiposClienteDisponibles={[...new Set(deals.map((d) => d.tipoCliente).filter((v): v is string => Boolean(v)))]}
+              tiposOportunidadDisponibles={[...new Set(deals.map((d) => d.tipoOportunidad).filter((v): v is string => Boolean(v)))]}
+              clientesDisponibles={[...new Set(deals.map((d) => d.empresa).filter((v): v is string => Boolean(v)))]}
+              proyectosDisponibles={[...new Set(deals.map((d) => d.nombreProyecto).filter((v): v is string => Boolean(v)))]}
+            />
+          </section>
+        ) : isLoading ? (
           <section className="beck-panel px-5 py-6 text-sm text-beck-ink-soft">
             Cargando funnel...
           </section>
@@ -5756,6 +5862,56 @@
                   Esta oportunidad aun no tiene cotizaciones vinculadas.
                 </div>
               )}
+
+              {/* ── Historial de etapas ── */}
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">
+                  Historial de etapas
+                </h3>
+                {historialEtapasLoading ? (
+                  <div className="flex justify-center py-6">
+                    <Spin size="small" />
+                  </div>
+                ) : historialEtapasError ? (
+                  <p className="text-xs text-red-500">{historialEtapasError}</p>
+                ) : historialEtapas.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+                    Sin historial de etapas
+                  </div>
+                ) : (
+                  <Timeline
+                    mode="left"
+                    items={historialEtapas.map((h) => ({
+                      key: h.id,
+                      label: (
+                        <span className="text-xs text-slate-400">
+                          {new Date(h.createdAt).toLocaleString("es-CL", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      ),
+                      children: (
+                        <div className="pb-1">
+                          <p className="text-sm font-medium text-slate-800">
+                            {h.etapaAnterior
+                              ? `${formatEtapaHistorial(h.etapaAnterior)} → ${formatEtapaHistorial(h.etapaNueva)}`
+                              : `Inicio: ${formatEtapaHistorial(h.etapaNueva)}`}
+                          </p>
+                          {(h.usuarioNombre ?? h.usuarioEmail) && (
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              Por: {h.usuarioNombre ?? h.usuarioEmail}
+                            </p>
+                          )}
+                        </div>
+                      ),
+                    }))}
+                  />
+                )}
+              </div>
             </div>
           )}
         </AntdModal>

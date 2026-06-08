@@ -89,6 +89,31 @@ body {
     @apply bg-beck-primary text-beck-ink shadow-sm hover:bg-beck-primary;
   }
 
+  .firemat-tab-group {
+    @apply inline-flex rounded-xl border bg-white p-1 shadow-sm;
+    border-color: var(--firemat-border);
+  }
+
+  .firemat-tab-button {
+    @apply rounded-lg px-3 py-2 text-sm font-medium transition;
+    color: #6b7280;
+  }
+
+  .firemat-tab-button:hover {
+    background-color: var(--firemat-bg-light);
+    color: #111827;
+  }
+
+  .firemat-tab-button-active {
+    @apply shadow-sm;
+    background-color: var(--firemat-primary) !important;
+    color: white !important;
+  }
+
+  .firemat-tab-button-active:hover {
+    background-color: var(--firemat-primary-dark) !important;
+  }
+
   .beck-kpi-card {
     @apply relative overflow-hidden rounded-2xl border border-[#e6d794] bg-gradient-to-br from-white via-beck-surface-light to-[#f7f1d0] shadow-beck-panel;
   }
@@ -168,6 +193,29 @@ body {
 
 .beck-obra-filter-select .ant-select-arrow {
   inset-inline-end: 11px;
+}
+
+/* ── Global fix: allowClear X and ▼ arrow side by side, not overlapping ──
+   Ant Design v6 positions both icons at the same inset-inline-end by default.
+   :has(.ant-select-clear) only matches selects that actually render the clear
+   button (i.e. those with allowClear), so non-clearable selects are unaffected.
+   The more-specific .beck-obra-filter-select rules above still take precedence
+   for that component. ── */
+.ant-select:has(.ant-select-clear) .ant-select-selector {
+  padding-inline-end: 48px !important;
+}
+.ant-select:has(.ant-select-clear) .ant-select-selection-search {
+  inset-inline-end: 48px !important;
+}
+.ant-select:has(.ant-select-clear) .ant-select-selection-item,
+.ant-select:has(.ant-select-clear) .ant-select-selection-placeholder {
+  padding-inline-end: 0 !important;
+}
+.ant-select:has(.ant-select-clear) .ant-select-clear {
+  inset-inline-end: 28px !important;
+}
+.ant-select:has(.ant-select-clear) .ant-select-arrow {
+  inset-inline-end: 8px !important;
 }
 
 .theme-firemat .ant-btn-primary {

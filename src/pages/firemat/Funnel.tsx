@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -13,6 +14,7 @@ import {
   Space,
   Spin,
   Tag,
+  Timeline,
   Typography,
   Upload,
   message,
@@ -31,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
+import FunnelFirematDashboard from "./FunnelFirematDashboard";
 import {
   clientesFirematAPI,
   firematCotizacionesAPI,
@@ -49,6 +52,7 @@ import {
   type FirematFunnelOportunidad,
   type FirematFunnelPayload,
   type FirematFunnelResumen,
+  type HistorialEtapaFiremat,
   type ProductoFiremat,
 } from "../../services/api";
 
@@ -120,8 +124,11 @@ type FunnelFormValues = {
   coordinacionDespacho?: string;
   estadoComercialOrden?: string;
   estadoDocumentacionVenta?: string;
+  lineaProducto?: string;
   productoId?: number;
   cantidadEstimada?: number;
+  descuento?: number | null;
+  stockOportunidad?: string;
   responsable?: string;
   etapa: FirematFunnelEtapa;
   montoEstimado?: number;
@@ -180,6 +187,31 @@ const TIPO_CLIENTE_OPTIONS: Array<{
   { label: "Comisionista", value: "COMISIONISTA" },
   { label: "Recompra", value: "RECOMPRA" },
 ];
+
+const TIPO_BROKER_OPTIONS = [
+  { label: "Instalador", value: "INSTALADOR" },
+  { label: "Distribuidor", value: "DISTRIBUIDOR" },
+  { label: "Comisionista", value: "COMISIONISTA" },
+];
+
+const STOCK_OPORTUNIDAD_OPTIONS = [
+  { label: "Sí", value: "SI" },
+  { label: "No", value: "NO" },
+  { label: "Parcial", value: "PARCIAL" },
+];
+
+const withLegacyOption = (
+  options: Array<{ label: string; value: string }>,
+  value?: string | null
+) => {
+  if (!value || options.some((option) => option.value === value)) return options;
+  return [...options, { label: value, value }];
+};
+
+const getOptionLabel = (
+  options: Array<{ label: string; value: string }>,
+  value?: string | null
+) => options.find((option) => option.value === value)?.label ?? value ?? "-";
 
 const ARCHIVO_FIREMAT_TIPO_OPTIONS: Array<{
   label: string;
@@ -639,7 +671,11 @@ const getCamposCriticosFaltantes = (payload: FirematFunnelPayload): string[] => 
   return missing;
 };
 
-const FirematFunnel: React.FC = () => {
+const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell }) => {
+  const location = useLocation();
+  const pendingOportunidadId = useRef<string | null>(null);
+  const lastOpenedAlertTs = useRef<number | null>(null);
+
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
   const etapaWatch = Form.useWatch("etapa", form);
@@ -679,7 +715,11 @@ const FirematFunnel: React.FC = () => {
   const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
   const [dropOverEtapa, setDropOverEtapa] =
     useState<FirematFunnelEtapa | null>(null);
+  const [viewMode, setViewMode] = useState<"funnel" | "dashboard">("funnel");
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
+  const [historialEtapas, setHistorialEtapas] = useState<HistorialEtapaFiremat[]>([]);
+  const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
+  const [historialEtapasError, setHistorialEtapasError] = useState<string | null>(null);
   const [showClienteSelector, setShowClienteSelector] = useState(false);
   const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
   const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
@@ -836,6 +876,37 @@ const FirematFunnel: React.FC = () => {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  // Reacciona a cada navegación desde una alerta
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    const state = location.state as {
+      oportunidadId?: string | number;
+      alertNavigationTs?: number;
+    } | null;
+    const ts = state?.alertNavigationTs;
+    const rawId = state?.oportunidadId;
+    if (!ts || rawId == null) return;
+    if (lastOpenedAlertTs.current === ts) return;
+    lastOpenedAlertTs.current = ts;
+    const id = String(rawId);
+    if (oportunidades.length > 0) {
+      const target = oportunidades.find((o) => String(o.id) === id);
+      if (target) void openOportunidad(target, "ver");
+    } else {
+      pendingOportunidadId.current = id;
+    }
+  }, [location.state]);
+
+  // Resuelve oportunidad pendiente una vez que oportunidades está cargado
+  useEffect(() => {
+    if (!pendingOportunidadId.current || oportunidades.length === 0) return;
+    const id = pendingOportunidadId.current;
+    pendingOportunidadId.current = null;
+    const target = oportunidades.find((o) => String(o.id) === id);
+    if (target) void openOportunidad(target, "ver");
+  }, [oportunidades]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const cargarClientesActivos = useCallback(async () => {
     setClientesLoading(true);
@@ -998,8 +1069,14 @@ const FirematFunnel: React.FC = () => {
       coordinacionDespacho: oportunidad.coordinacionDespacho ?? "",
       estadoComercialOrden: oportunidad.estadoComercialOrden ?? "",
       estadoDocumentacionVenta: oportunidad.estadoDocumentacionVenta ?? "",
+      lineaProducto: oportunidad.lineaProducto ?? "",
       productoId: oportunidad.productoId ?? undefined,
       cantidadEstimada: Number(oportunidad.cantidadEstimada || 0) || undefined,
+      descuento:
+        oportunidad.descuento !== null && oportunidad.descuento !== undefined
+          ? Number(oportunidad.descuento)
+          : undefined,
+      stockOportunidad: oportunidad.stockOportunidad ?? undefined,
       responsable: oportunidad.responsable ?? "",
       etapa: etapaOverride ?? oportunidad.etapa,
       montoEstimado: Number(oportunidad.montoEstimado || 0) || undefined,
@@ -1063,6 +1140,39 @@ const FirematFunnel: React.FC = () => {
     });
     setModalOpen(true);
     void cargarClientesActivos();
+  };
+
+  const ETAPA_HISTORIAL_LABELS_FIREMAT: Record<string, string> = {
+    PROSPECTO: "Prospecto",
+    PRIMER_CONTACTO: "Primer contacto",
+    DESARROLLO_COTIZACION: "Desarrollo cotización",
+    COTIZACION_ENVIADA: "Cotización enviada",
+    ORDEN_CONFIRMADA: "Orden confirmada",
+    GANADA: "Ganada",
+    PERDIDA: "Perdida",
+    POSTERGADA: "Postergada",
+    DESCARTADO: "Descartado",
+  };
+
+  const formatEtapaFirematHistorial = (etapa: string | null): string => {
+    if (!etapa) return "Sin etapa anterior";
+    const key = etapa.toUpperCase();
+    if (ETAPA_HISTORIAL_LABELS_FIREMAT[key]) return ETAPA_HISTORIAL_LABELS_FIREMAT[key];
+    return etapa.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const loadHistorialEtapas = async (id: string | number) => {
+    setHistorialEtapasLoading(true);
+    setHistorialEtapasError(null);
+    setHistorialEtapas([]);
+    try {
+      const data = await firematFunnelAPI.getHistorialEtapas(id);
+      setHistorialEtapas(data);
+    } catch {
+      setHistorialEtapasError("No se pudo cargar el historial de etapas");
+    } finally {
+      setHistorialEtapasLoading(false);
+    }
   };
 
   const openOportunidad = async (
@@ -1265,6 +1375,7 @@ const FirematFunnel: React.FC = () => {
       values.estadoDocumentacionVenta,
       selected?.estadoDocumentacionVenta
     ),
+    lineaProducto: keepString(values.lineaProducto, selected?.lineaProducto),
     productoId:
       values.productoId !== undefined && values.productoId !== null
         ? Number(values.productoId)
@@ -1274,6 +1385,11 @@ const FirematFunnel: React.FC = () => {
     cantidadEstimada: keepNumber(
       values.cantidadEstimada,
       selected?.cantidadEstimada
+    ),
+    descuento: keepNumber(values.descuento ?? undefined, selected?.descuento),
+    stockOportunidad: keepString(
+      values.stockOportunidad,
+      selected?.stockOportunidad
     ),
     responsable: keepString(values.responsable, selected?.responsable),
     etapa: targetEtapa ?? values.etapa ?? selected?.etapa,
@@ -1658,8 +1774,11 @@ const FirematFunnel: React.FC = () => {
     coordinacionDespacho: oportunidad.coordinacionDespacho ?? null,
     estadoComercialOrden: oportunidad.estadoComercialOrden ?? null,
     estadoDocumentacionVenta: oportunidad.estadoDocumentacionVenta ?? null,
+    lineaProducto: oportunidad.lineaProducto ?? null,
     productoId: oportunidad.productoId ?? null,
     cantidadEstimada: oportunidad.cantidadEstimada ?? null,
+    descuento: oportunidad.descuento ?? null,
+    stockOportunidad: oportunidad.stockOportunidad ?? null,
     responsable: oportunidad.responsable ?? null,
     etapa: oportunidad.etapa,
     montoEstimado: oportunidad.montoEstimado ?? null,
@@ -2238,6 +2357,9 @@ const FirematFunnel: React.FC = () => {
         <Form.Item name="nombreOportunidad" label={<>Nombre del proyecto u oportunidad <span className="text-red-500">*</span></>}>
           <Input placeholder="Nombre del proyecto o descripción de la oportunidad" />
         </Form.Item>
+        <Form.Item name="lineaProducto" label="Linea de producto">
+          <Input placeholder="Linea de producto" />
+        </Form.Item>
         <Form.Item name="productoId" label="Producto">
           <Select
             options={productoOptions}
@@ -2249,6 +2371,25 @@ const FirematFunnel: React.FC = () => {
         </Form.Item>
         <Form.Item name="cantidadEstimada" label="Cantidad estimada">
           <InputNumber min={0} className="w-full" />
+        </Form.Item>
+        <Form.Item name="descuento" label="Descuento aplicado">
+          <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+        </Form.Item>
+        <Form.Item name="stockOportunidad" label="Stock disponible">
+          <Select
+            allowClear
+            placeholder="Seleccionar stock"
+            options={STOCK_OPORTUNIDAD_OPTIONS}
+          />
+        </Form.Item>
+        <Form.Item name="tipoBroker" label="Tipo broker">
+          <Select
+            allowClear
+            showSearch
+            placeholder="Seleccionar tipo de broker"
+            options={TIPO_BROKER_OPTIONS}
+            optionFilterProp="label"
+          />
         </Form.Item>
         <Form.Item name="montoEstimado" label="Monto estimado">
           <InputNumber min={0} className="w-full" prefix="$" />
@@ -2354,6 +2495,9 @@ const FirematFunnel: React.FC = () => {
 
   const renderDesarrolloCotizacionFields = () => (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Form.Item name="lineaProducto" label="Linea de producto">
+        <Input placeholder="Linea de producto" />
+      </Form.Item>
       <Form.Item name="productoId" label="Producto">
         <Select
           options={productoOptions}
@@ -2365,6 +2509,16 @@ const FirematFunnel: React.FC = () => {
       </Form.Item>
       <Form.Item name="cantidadEstimada" label="Cantidad estimada">
         <InputNumber min={0} className="w-full" />
+      </Form.Item>
+      <Form.Item name="descuento" label="Descuento aplicado">
+        <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+      </Form.Item>
+      <Form.Item name="stockOportunidad" label="Stock disponible">
+        <Select
+          allowClear
+          placeholder="Seleccionar stock"
+          options={STOCK_OPORTUNIDAD_OPTIONS}
+        />
       </Form.Item>
       <Form.Item name="alternativaProducto" label="Alternativa de producto">
         <Input.TextArea
@@ -2628,7 +2782,16 @@ const FirematFunnel: React.FC = () => {
         </p>
       </div>
       <Form.Item name="tipoBroker" label="Tipo broker">
-        <Input placeholder="Broker, distribuidor, instalador, cliente final..." />
+        <Select
+          allowClear
+          showSearch
+          placeholder="Seleccionar tipo de broker"
+          options={withLegacyOption(
+            TIPO_BROKER_OPTIONS,
+            form.getFieldValue("tipoBroker")
+          )}
+          optionFilterProp="label"
+        />
       </Form.Item>
       <Form.Item name="fechaEstimadaDespacho" label="Fecha estimada despacho">
         <DatePicker format="DD-MM-YYYY" className="w-full" />
@@ -2677,17 +2840,49 @@ const FirematFunnel: React.FC = () => {
               Seguimiento de oportunidades comerciales desde prospecto hasta cierre.
             </p>
           </div>
-          <Space wrap>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="firemat-tab-group">
+              <button
+                type="button"
+                onClick={() => setViewMode("funnel")}
+                className={`firemat-tab-button${viewMode === "funnel" ? " firemat-tab-button-active" : ""}`}
+              >
+                Funnel
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("dashboard")}
+                className={`firemat-tab-button${viewMode === "dashboard" ? " firemat-tab-button-active" : ""}`}
+              >
+                Dashboard
+              </button>
+            </div>
             <Button className="firemat-action-button" icon={<ReloadOutlined />} onClick={() => void cargar()} loading={loading}>
               Actualizar
             </Button>
             <Button className="firemat-action-button" type="primary" icon={<PlusOutlined />} onClick={openCrear}>
               Crear oportunidad
             </Button>
-          </Space>
+            {alertaBell}
+          </div>
         </div>
       </section>
 
+      {viewMode === "dashboard" ? (
+        <section className="firemat-panel p-4">
+          <FunnelFirematDashboard
+            responsablesDisponibles={[...new Set(oportunidades.map((o) => o.responsable).filter((v): v is string => Boolean(v)))]}
+            unidadesNegocioDisponibles={[...new Set(oportunidades.map((o) => o.unidadNegocio).filter((v): v is string => Boolean(v)))]}
+            origenesDisponibles={[...new Set(oportunidades.map((o) => o.origen).filter((v): v is string => Boolean(v)))]}
+            tiposClienteDisponibles={[...new Set(oportunidades.map((o) => o.tipoCliente).filter((v): v is string => Boolean(v)))]}
+            tiposOportunidadDisponibles={[...new Set(oportunidades.map((o) => o.tipoOportunidad).filter((v): v is string => Boolean(v)))]}
+            clientesDisponibles={[...new Set(oportunidades.map((o) => o.cliente).filter((v): v is string => Boolean(v)))]}
+            proyectosDisponibles={[...new Set(oportunidades.map((o) => o.nombreOportunidad).filter((v): v is string => Boolean(v)))]}
+            productosDisponibles={productos.map((p) => ({ value: p.id, label: p.nombre }))}
+          />
+        </section>
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <ResumenCard label="Total oportunidades" value={resumen.totalOportunidades} />
         <ResumenCard label="Pipeline total" value={formatCLP(resumen.pipelineTotal)} highlight />
@@ -2775,6 +2970,8 @@ const FirematFunnel: React.FC = () => {
           )}
         </div>
       </section>
+        </>
+      )}
 
       <Modal
         title={
@@ -2863,6 +3060,20 @@ const FirematFunnel: React.FC = () => {
                       : null) ??
                     "—"}
                 </span>
+              </Descriptions.Item>
+              <Descriptions.Item label="Linea de producto">
+                {selected.lineaProducto || "â€”"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Descuento aplicado">
+                {selected.descuento !== null && selected.descuento !== undefined
+                  ? `${selected.descuento}%`
+                  : "â€”"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Stock disponible">
+                {getOptionLabel(STOCK_OPORTUNIDAD_OPTIONS, selected.stockOportunidad)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Tipo broker">
+                {getOptionLabel(TIPO_BROKER_OPTIONS, selected.tipoBroker)}
               </Descriptions.Item>
               <Descriptions.Item label="Monto estimado">
                 {formatCLP(selected.montoEstimado)}
@@ -2975,7 +3186,10 @@ const FirematFunnel: React.FC = () => {
               </Button>
               <Button
                 icon={<EyeOutlined />}
-                onClick={() => setDetalleModalOpen(true)}
+                onClick={() => {
+                  setDetalleModalOpen(true);
+                  if (selected) void loadHistorialEtapas(selected.id);
+                }}
               >
                 Ver detalle
               </Button>
@@ -3263,6 +3477,9 @@ const FirematFunnel: React.FC = () => {
                 ]}
               />
             </Form.Item>
+            <Form.Item name="lineaProducto" label="Linea de producto">
+              <Input placeholder="Linea de producto" />
+            </Form.Item>
             <Form.Item name="productoId" label="Producto">
               <Select
                 options={productoOptions}
@@ -3274,6 +3491,16 @@ const FirematFunnel: React.FC = () => {
             </Form.Item>
             <Form.Item name="cantidadEstimada" label="Cantidad estimada">
               <InputNumber min={0} className="w-full" />
+            </Form.Item>
+            <Form.Item name="descuento" label="Descuento aplicado">
+              <InputNumber min={0} max={100} className="w-full" addonAfter="%" />
+            </Form.Item>
+            <Form.Item name="stockOportunidad" label="Stock disponible">
+              <Select
+                allowClear
+                placeholder="Seleccionar stock"
+                options={STOCK_OPORTUNIDAD_OPTIONS}
+              />
             </Form.Item>
             <Form.Item name="montoEstimado" label="Monto estimado">
               <InputNumber min={0} className="w-full" prefix="$" />
@@ -3444,7 +3671,16 @@ const FirematFunnel: React.FC = () => {
               </p>
             </div>
             <Form.Item name="tipoBroker" label="Tipo broker">
-              <Input placeholder="Broker, distribuidor, instalador, cliente final..." />
+              <Select
+                allowClear
+                showSearch
+                placeholder="Seleccionar tipo de broker"
+                options={withLegacyOption(
+                  TIPO_BROKER_OPTIONS,
+                  form.getFieldValue("tipoBroker")
+                )}
+                optionFilterProp="label"
+              />
             </Form.Item>
             <Form.Item name="fechaEstimadaDespacho" label="Fecha estimada despacho">
               <DatePicker format="DD-MM-YYYY" className="w-full" />
@@ -3574,9 +3810,19 @@ const FirematFunnel: React.FC = () => {
       <Modal
         title={selected ? `Detalle: ${selected.nombreOportunidad ?? selected.cliente ?? "Oportunidad"}` : "Detalle"}
         open={detalleModalOpen}
-        onCancel={() => setDetalleModalOpen(false)}
+        onCancel={() => {
+          setDetalleModalOpen(false);
+          setHistorialEtapas([]);
+          setHistorialEtapasLoading(false);
+          setHistorialEtapasError(null);
+        }}
         footer={[
-          <Button key="close" onClick={() => setDetalleModalOpen(false)}>
+          <Button key="close" onClick={() => {
+            setDetalleModalOpen(false);
+            setHistorialEtapas([]);
+            setHistorialEtapasLoading(false);
+            setHistorialEtapasError(null);
+          }}>
             Cerrar
           </Button>,
         ]}
@@ -3585,6 +3831,7 @@ const FirematFunnel: React.FC = () => {
         destroyOnClose
       >
         {selected && (
+          <>
           <Descriptions
             bordered
             size="small"
@@ -3636,6 +3883,20 @@ const FirematFunnel: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="Unidad de negocio">
               {selected.unidadNegocio || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Linea de producto">
+              {selected.lineaProducto || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Descuento aplicado">
+              {selected.descuento !== null && selected.descuento !== undefined
+                ? `${selected.descuento}%`
+                : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Stock disponible">
+              {getOptionLabel(STOCK_OPORTUNIDAD_OPTIONS, selected.stockOportunidad)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tipo broker">
+              {getOptionLabel(TIPO_BROKER_OPTIONS, selected.tipoBroker)}
             </Descriptions.Item>
             <Descriptions.Item label="Origen del prospecto">
               {selected.origen || "—"}
@@ -3690,6 +3951,57 @@ const FirematFunnel: React.FC = () => {
               </Descriptions.Item>
             )}
           </Descriptions>
+
+          {/* ── Historial de etapas ── */}
+          <div className="mt-6">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">
+              Historial de etapas
+            </h3>
+            {historialEtapasLoading ? (
+              <div className="flex justify-center py-6">
+                <Spin size="small" />
+              </div>
+            ) : historialEtapasError ? (
+              <p className="text-xs text-red-500">{historialEtapasError}</p>
+            ) : historialEtapas.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+                Sin historial de etapas
+              </div>
+            ) : (
+              <Timeline
+                mode="left"
+                items={historialEtapas.map((h) => ({
+                  key: h.id,
+                  label: (
+                    <span className="text-xs text-slate-400">
+                      {new Date(h.createdAt).toLocaleString("es-CL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  ),
+                  children: (
+                    <div className="pb-1">
+                      <p className="text-sm font-medium text-slate-800">
+                        {h.etapaAnterior
+                          ? `${formatEtapaFirematHistorial(h.etapaAnterior)} → ${formatEtapaFirematHistorial(h.etapaNueva)}`
+                          : `Inicio: ${formatEtapaFirematHistorial(h.etapaNueva)}`}
+                      </p>
+                      {(h.usuarioNombre ?? h.usuarioEmail) && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          Por: {h.usuarioNombre ?? h.usuarioEmail}
+                        </p>
+                      )}
+                    </div>
+                  ),
+                }))}
+              />
+            )}
+          </div>
+          </>
         )}
       </Modal>
 

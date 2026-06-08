@@ -50,8 +50,20 @@ import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import type { RolUsuario } from "./types/usuario";
 import { EMPRESA_STORAGE_KEY } from "./services/api";
+import { AlertasBeckBell, AlertasFirematBell } from "./components/AlertasBell";
 
 const { Content } = Layout;
+
+const ALERTAS_BECK_ROLES: RolUsuario[] = [
+  "Administrador",
+  "Vendedor",
+  "Ingenieria",
+];
+
+const ALERTAS_FIREMAT_ROLES: RolUsuario[] = [
+  "Administrador",
+  "VendedorFiremat",
+];
 
 const ACCESS_DENIED_PATH = "/access-denied";
 
@@ -369,6 +381,40 @@ const AppShell: React.FC = () => {
   const firematRoute = (flag: boolean, element: React.ReactElement) =>
     flag ? element : <Navigate to={homeRoute} replace />;
 
+  const canSeeBeck = !!user && ALERTAS_BECK_ROLES.includes(user.rol);
+  const canSeeFiremat = !!user && ALERTAS_FIREMAT_ROLES.includes(user.rol);
+
+  const inFiremat = location.pathname.startsWith("/firemat");
+  const inBeck = location.pathname.startsWith("/beck");
+
+  const showBeckBell = canSeeBeck && !inFiremat;
+  const showFirematBell = canSeeFiremat && !inBeck;
+
+  // En los Funnels la campana va embebida en el header de la página (pasada como prop).
+  // En el resto de páginas del módulo se muestra en un strip no-fixed en el Content.
+  const bellBeck = showBeckBell ? <AlertasBeckBell /> : null;
+  const bellFiremat = showFirematBell ? <AlertasFirematBell /> : null;
+
+  const onFunnelRoute =
+    location.pathname === "/beck/funnel" ||
+    location.pathname === "/firemat/funnel";
+
+  const bellStrip =
+    !onFunnelRoute && (bellBeck || bellFiremat) ? (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
+        {bellBeck}
+        {bellFiremat}
+      </div>
+    ) : null;
+
   return (
     <>
       <SessionWatcher />
@@ -412,6 +458,7 @@ const AppShell: React.FC = () => {
               paddingTop: isMobile && collapsed ? 56 : 12,
             }}
           >
+            {bellStrip}
             <div className="w-full min-w-0">
               <Routes>
                 <Route path="/auth/callback" element={<AuthCallback />} />
@@ -445,7 +492,7 @@ const AppShell: React.FC = () => {
                   path="/beck/funnel"
                   element={
                     access.funnel ? (
-                      <BeckFunnel themeMode={themeMode} />
+                      <BeckFunnel themeMode={themeMode} alertaBell={bellBeck} />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )
@@ -553,7 +600,7 @@ const AppShell: React.FC = () => {
                 />
 
                 <Route path="/firemat/dashboard" element={firematRoute(access.firematDashboard, <FirematDashboard />)} />
-                <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel />)} />
+                <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel alertaBell={bellFiremat} />)} />
                 <Route path="/firemat/cotizaciones" element={firematRoute(access.firematCotizaciones, <FirematCotizaciones />)} />
                 <Route path="/firemat/productos" element={firematRoute(access.firematProductos, <FirematProductos />)} />
                 <Route path="/firemat/inventario" element={firematRoute(access.firematInventario, <FirematInventario />)} />

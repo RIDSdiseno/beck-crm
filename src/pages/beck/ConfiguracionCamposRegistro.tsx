@@ -315,7 +315,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
           ),
         };
       }
-      // Campo no existe aún en backend — se agrega para que buildPayload lo incluya al guardar
+
       return {
         ...current,
         [role]: [

@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
+  Descriptions,
   Drawer,
   Empty,
   Form,
@@ -22,6 +24,7 @@ import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined,
   EditOutlined,
+  FileExcelOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -31,15 +34,18 @@ import { useAuth } from "../../context/useAuth";
 import {
   configuracionCamposRegistroAPI,
   funnelBeckAPI,
+  itemizadoOpcionesAPI,
   obrasAPI,
   type CampoConfiguracionRegistro,
   type ColorConfiguracionCampoRegistro,
   type FunnelBeckGanadaSinObra,
+  type ItemizadoImportarResult,
   type Obra,
   type ObraEstado,
   type RolConfiguracionCamposRegistro,
 } from "../../services/api";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
+import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
 
 type EstadoForm = ObraEstado;
 
@@ -376,6 +382,10 @@ const getOportunidadObra = (obra: Obra) =>
 const Obras: React.FC = () => {
   const { user } = useAuth();
   const canManageObras = user?.rol !== "Visualizador";
+  const canManageItemizado =
+    user?.rol === "Administrador" ||
+    user?.rol === "Ingenieria" ||
+    user?.rol === "JefeObra";
 
   const [obras, setObras] = useState<Obra[]>([]);
   const [loading, setLoading] = useState(true);
@@ -390,6 +400,7 @@ const Obras: React.FC = () => {
   const [loadingOportunidades, setLoadingOportunidades] = useState(false);
   const [registroDrawerOpen, setRegistroDrawerOpen] = useState(false);
   const [obraRegistro, setObraRegistro] = useState<Obra | null>(null);
+  const [itemizadoDrawerOpen, setItemizadoDrawerOpen] = useState(false);
   const [registroConfig, setRegistroConfig] = useState<
     Record<RolConfiguracionCamposRegistro, CampoConfiguracionRegistro[]>
   >({ jefeobra: [], trabajador: [] });
@@ -401,6 +412,12 @@ const Obras: React.FC = () => {
   const comunasDisponibles =
     regionesComunasChile.find((region) => region.nombre === selectedRegion)
       ?.comunas ?? [];
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importReemplazar, setImportReemplazar] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const normalizedRegistroConfig = useMemo(
     () => ({
@@ -789,6 +806,68 @@ const Obras: React.FC = () => {
     );
   };
 
+  const showImportResult = (result: ItemizadoImportarResult) => {
+    Modal.info({
+      title: "Resultado de la importación",
+      width: 480,
+      content: (
+        <div className="mt-3 space-y-3">
+          <Descriptions bordered size="small" column={1}>
+            <Descriptions.Item label="Total de filas">{result.totalFilas}</Descriptions.Item>
+            <Descriptions.Item label="Importadas">
+              <span className="font-semibold text-green-600">{result.importadas}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Omitidas">{result.omitidas}</Descriptions.Item>
+            <Descriptions.Item label="Duplicadas">{result.duplicadas}</Descriptions.Item>
+          </Descriptions>
+          {result.errores.length > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`${result.errores.length} fila(s) con error`}
+              description={
+                <ul className="mt-1 list-disc pl-4 text-xs">
+                  {result.errores.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+              }
+            />
+          )}
+        </div>
+      ),
+      okText: "Cerrar",
+    });
+  };
+
+  const openImportModal = () => {
+    setImportFile(null);
+    setImportReemplazar(false);
+    setImportModalOpen(true);
+  };
+
+  const handleImportar = async () => {
+    if (!importFile) {
+      void message.warning("Selecciona un archivo Excel");
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await itemizadoOpcionesAPI.importarExcel(
+        importFile,
+        importReemplazar
+      );
+      setImportModalOpen(false);
+      setImportFile(null);
+      setImportReemplazar(false);
+      showImportResult(result);
+    } catch (err) {
+      message.error(getErrorMessage(err, "No se pudo importar el archivo"));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const columns: ColumnsType<Obra> = [
     {
       title: "Código",
@@ -858,13 +937,14 @@ const Obras: React.FC = () => {
           {
             title: "Acciones",
             key: "acciones",
-            width: 330,
+            width: 300,
             render: (_: unknown, record: Obra) => (
-              <Space size={6} wrap>
+              <div className="grid grid-cols-[1fr_auto] gap-1">
                 <Button
                   size="small"
                   icon={<SettingOutlined />}
                   onClick={() => openOpcionesRegistro(record)}
+                  className="w-full"
                 >
                   Opciones de registro
                 </Button>
@@ -875,15 +955,37 @@ const Obras: React.FC = () => {
                 >
                   Editar
                 </Button>
-                <Button
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => handleEliminar(record)}
-                >
-                  Eliminar
-                </Button>
-              </Space>
+                {canManageItemizado ? (
+                  <>
+                    <Button
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => setItemizadoDrawerOpen(true)}
+                      className="w-full"
+                    >
+                      Opciones de itemizado
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleEliminar(record)}
+                    >
+                      Eliminar
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleEliminar(record)}
+                    className="col-span-2 w-full"
+                  >
+                    Eliminar
+                  </Button>
+                )}
+              </div>
             ),
           },
         ]
@@ -901,11 +1003,18 @@ const Obras: React.FC = () => {
             Gestiona las obras del sistema
           </p>
         </div>
-        {canManageObras && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCrear}>
-            Crear obra
-          </Button>
-        )}
+        <Space wrap>
+          {canManageItemizado && (
+            <Button icon={<FileExcelOutlined />} onClick={openImportModal}>
+              Importar itemizado Excel
+            </Button>
+          )}
+          {canManageObras && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCrear}>
+              Crear obra
+            </Button>
+          )}
+        </Space>
       </div>
 
       <Card
@@ -997,6 +1106,80 @@ const Obras: React.FC = () => {
           )}
         </div>
       </Drawer>
+
+      <ItemizadoOpcionesDrawer
+        open={itemizadoDrawerOpen}
+        onClose={() => setItemizadoDrawerOpen(false)}
+      />
+
+      {/* Modal: Importar itemizado Excel */}
+      <Modal
+        title="Importar itemizado Excel"
+        open={importModalOpen}
+        onCancel={() => {
+          if (importing) return;
+          setImportModalOpen(false);
+          setImportFile(null);
+          setImportReemplazar(false);
+          if (importFileRef.current) importFileRef.current.value = "";
+        }}
+        onOk={() => void handleImportar()}
+        okText="Importar"
+        okButtonProps={{ disabled: !importFile, loading: importing }}
+        cancelText="Cancelar"
+        cancelButtonProps={{ disabled: importing }}
+        destroyOnClose
+      >
+        <div className="mt-4 space-y-4">
+          <div>
+            <Typography.Text className="mb-2 block text-sm font-medium">
+              Archivo Excel
+            </Typography.Text>
+            <div className="flex items-center gap-3">
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => importFileRef.current?.click()}
+                disabled={importing}
+              >
+                Seleccionar archivo
+              </Button>
+              {importFile ? (
+                <Typography.Text className="text-sm text-slate-700">
+                  {importFile.name}
+                </Typography.Text>
+              ) : (
+                <Typography.Text type="secondary" className="text-xs">
+                  .xlsm, .xlsx, .xls
+                </Typography.Text>
+              )}
+            </div>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".xlsm,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setImportFile(file);
+              }}
+            />
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <Checkbox
+              checked={importReemplazar}
+              onChange={(e) => setImportReemplazar(e.target.checked)}
+              disabled={importing}
+            >
+              <span className="font-medium">
+                Reemplazar catálogo existente
+              </span>
+            </Checkbox>
+            <Typography.Text type="secondary" className="mt-1 block text-xs">
+              Si activas esta opción, se eliminarán todas las opciones del catálogo global antes de importar el Excel.
+            </Typography.Text>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         title={modalMode === "editar" ? "Editar obra" : "Crear obra"}

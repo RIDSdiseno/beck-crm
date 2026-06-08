@@ -22,7 +22,7 @@ const BeckUsuariosParametros: React.FC<Props> = ({ themeMode }) => {
       rolesDisponibles={ROLES_BECK}
       defaultRol="terreno"
       titulo="Usuarios y roles"
-      subtitulo="Gestiona usuarios reales del CRM."
+      subtitulo="Gestion de usuarios."
       labelCrear="Crear usuario"
     />
   );
