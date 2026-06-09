@@ -108,6 +108,7 @@ const greenRegistroCampos = new Set(["itemizado beck", "observaciones"]);
 const blueRegistroCampos = new Set([
   "cantidad de sellos aislacion",
   "cielo modular",
+  "accesibilidad",
   "aislacion",
   "aislación",
   "reparacion de tabique",
@@ -128,7 +129,7 @@ const trabajadorForbiddenCampos = new Set([
 
 const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
   { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
-  { campo: "cielo_modular", label: "Cielo modular", color: "azul", visible: false },
+  { campo: "accesibilidad", label: "Accesibilidad", color: "azul", visible: false },
   { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
   { campo: "aislacion", label: "Aislación", color: "azul", visible: false },
   { campo: "cantidad_sellos_aislacion", label: "Cantidad sellos aislación", color: "azul", visible: false },
@@ -208,7 +209,7 @@ const normalizeRegistroCampoKey = (value: unknown): string => {
   if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
   if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
   if (normalized === "factor por holguras") return "factor_por_holguras";
-  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized === "cielo modular" || normalized === "accesibilidad") return "accesibilidad";
   if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
     return "cantidad_sellos_con_factores";
   }

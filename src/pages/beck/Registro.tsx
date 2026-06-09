@@ -275,7 +275,7 @@ const normalizeConfigCampoKey = (value: unknown): string => {
   if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
   if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
   if (normalized === "factor por holguras") return "factor_por_holguras";
-  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized === "cielo modular" || normalized === "accesibilidad") return "accesibilidad";
   if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
     return "cantidad_sellos_con_factores";
   }
@@ -804,7 +804,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       numero_sello: values.numeroSello,
       cantidad_sellos: values.cantidadSellos,
       factor_por_holguras: values.factorPorHolguras ?? null,
-      cielo_modular: values.cieloModular ?? values.accesibilidad ?? null,
+      accesibilidad: values.accesibilidad ?? values.cieloModular ?? null,
       cantidad_sellos_con_factores: values.cantidadSellosConFactores ?? null,
       aislacion: values.aislacion ?? null,
       cantidad_sellos_aislacion: values.cantidadSellosAislacion ?? null,
@@ -813,7 +813,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       metros_lineales: values.metrosLineales ?? 0,
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
-      accesibilidad: values.accesibilidad,
         observaciones: values.observaciones,
         estado: values.estado,
         itemizadoMandanteId: values.itemizadoMandanteId,
@@ -1074,11 +1073,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       },
     },
     {
-      title: "Cielo modular",
-      key: "cielo_modular",
+      title: "Accesibilidad",
+      key: "accesibilidad",
       width: 150,
       render: (_: unknown, record: RegistroSello) => {
-        const value = Number(record.cieloModular ?? 1);
+        const value = Number(record.accesibilidad ?? record.cieloModular ?? 1);
         const label =
           value === 1
             ? "F=1 Acceso normal"
@@ -1411,7 +1410,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "cantidad_sellos",
     "holgura",
     "factor_por_holguras",
-    "cielo_modular",
+    "accesibilidad",
     "cantidad_sellos_con_factores",
     "aislacion",
     "cantidad_sellos_aislacion",
@@ -1691,7 +1690,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         "Cantidad de Sellos",
         "Holgura (cm)",
         "Factor por Holguras",
-        "Cielo modular",
+        "Accesibilidad",
         "Cantidad de Sellos con Factores",
         "Aislación",
         "Cantidad de Sellos Aislación",
@@ -2029,12 +2028,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         ...(exportFieldVisible("holgura")
           ? [{ header: "Holgura (cm)", key: "holgura", width: 13 }]
           : []),
-        { header: "Accesibilidad",   key: "accesibilidad",  width: 14 },
+        ...(exportFieldVisible("accesibilidad")
+          ? [{ header: "Accesibilidad", key: "accesibilidad", width: 16 }]
+          : []),
         ...(exportFieldVisible("factor_por_holguras")
           ? [{ header: "Factor por holguras", key: "factorPorHolguras", width: 18 }]
-          : []),
-        ...(exportFieldVisible("cielo_modular")
-          ? [{ header: "Cielo modular", key: "cieloModular", width: 16 }]
           : []),
         ...(exportFieldVisible("cantidad_sellos_con_factores")
           ? [{ header: "Cantidad sellos con factores", key: "cantidadSellosConFactores", width: 24 }]
@@ -2083,7 +2081,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             holgura:        r.holguraCm,
             accesibilidad:  r.accesibilidad ?? null,
             factorPorHolguras: r.factorPorHolguras != null ? Number(r.factorPorHolguras) : null,
-            cieloModular: r.cieloModular ?? null,
             cantidadSellosConFactores:
               r.cantidadSellosConFactores != null ? Number(r.cantidadSellosConFactores) : null,
             aislacion: r.aislacion != null ? Number(r.aislacion) : null,
@@ -2105,7 +2102,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           "holgura",
           "accesibilidad",
           "factorPorHolguras",
-          "cieloModular",
           "cantidadSellosConFactores",
           "aislacion",
           "cantidadSellosAislacion",

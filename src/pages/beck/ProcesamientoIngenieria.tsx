@@ -916,11 +916,11 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       },
     },
     {
-      title: "Cielo modular",
-      key: "cielo_modular",
+      title: "Accesibilidad",
+      key: "accesibilidad",
       width: 150,
       render: (_, r) => {
-        const v = Number(r.cieloModular ?? 1);
+        const v = Number(r.accesibilidad ?? r.cieloModular ?? 1);
         const label =
           v === 1 ? "F=1 Acceso normal"
           : v === 2 ? "F=2 Americano / estructurado"

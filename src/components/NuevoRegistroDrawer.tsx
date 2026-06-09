@@ -96,7 +96,7 @@ const normalizeCampoConfigKey = (value: unknown): string => {
   if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
   if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
   if (normalized === "factor por holguras") return "factor_por_holguras";
-  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized === "cielo modular" || normalized === "accesibilidad") return "accesibilidad";
   if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
     return "cantidad_sellos_con_factores";
   }
@@ -497,11 +497,11 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Form.Item
                   name="cieloModular"
-                  label="Cielo modular"
-                  rules={[{ required: true, message: "Seleccione tipo de cielo" }]}
+                  label="Accesibilidad"
+                  rules={[{ required: true, message: "Seleccione accesibilidad" }]}
                 >
                   <Select
-                    placeholder="Seleccione F cielo"
+                    placeholder="Seleccione accesibilidad"
                     options={[
                       { value: 1, label: "F = 1 · Accesibilidad normal" },
                       {

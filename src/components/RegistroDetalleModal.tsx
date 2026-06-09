@@ -179,7 +179,7 @@ const normalizeCampoConfigKey = (value: unknown): string => {
   if (normalized === "modulo" || normalized === "modulo o edificio" || normalized === "edificio") return "modulo";
   if (normalized === "holgura" || normalized === "holgura cm") return "holgura";
   if (normalized === "factor por holguras") return "factor_por_holguras";
-  if (normalized === "cielo modular") return "cielo_modular";
+  if (normalized === "cielo modular" || normalized === "accesibilidad") return "accesibilidad";
   if (normalized.includes("cantidad") && normalized.includes("sellos") && normalized.includes("factores")) {
     return "cantidad_sellos_con_factores";
   }
@@ -258,7 +258,7 @@ const renderDetalleSelloCortafuego = (
       value={r.holguraCm != null ? String(r.holguraCm) : "-"}
     />}
     {showCampo("factor_por_holguras") && <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />}
-    {showCampo("cielo_modular") && <FieldView label="Cielo modular" value={r.cieloModular ?? "-"} />}
+    {showCampo("accesibilidad") && <FieldView label="Accesibilidad" value={r.accesibilidad ?? r.cieloModular ?? "-"} />}
     {showCampo("cantidad_sellos_con_factores") && <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />}
     {showCampo("aislacion") && <FieldView label="Aislación" value={r.aislacion ?? "-"} />}
     {showCampo("cantidad_sellos_aislacion") && <FieldView label="Cantidad sellos aislación" value={r.cantidadSellosAislacion ?? "-"} />}
@@ -659,16 +659,13 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               <InputNumber min={0} className="w-full" />
             </Form.Item>
             )}
+            {showCampo("accesibilidad") && (
             <Form.Item name="accesibilidad" label="Accesibilidad" className="mb-3">
               <InputNumber min={0} className="w-full" />
             </Form.Item>
+            )}
             {showCampo("factor_por_holguras") && (
               <Form.Item name="factorPorHolguras" label="Factor por holguras" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
-              </Form.Item>
-            )}
-            {showCampo("cielo_modular") && (
-              <Form.Item name="cieloModular" label="Cielo modular" className="mb-3">
                 <InputNumber min={0} step={0.01} className="w-full" />
               </Form.Item>
             )}
