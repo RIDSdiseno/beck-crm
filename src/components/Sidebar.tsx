@@ -19,6 +19,7 @@ import {
   SwapOutlined,
   CheckOutlined,
   TeamOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
@@ -336,6 +337,21 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <SettingOutlined />
                 {!collapsed && <span>Usuarios y parámetros</span>}
+              </NavLink>
+              )}
+              {access.configuracion && isBeck && user?.rol === "Administrador" && (
+              <NavLink
+                to="/beck/configuracion-validacion"
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed
+                      ? "justify-center gap-0 px-0"
+                      : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                <SafetyCertificateOutlined />
+                {!collapsed && <span>Reglas de Validación</span>}
               </NavLink>
               )}
             </nav>

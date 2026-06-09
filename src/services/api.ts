@@ -174,6 +174,14 @@ interface ApiResponseEnvelope<T> {
   error?: string;
 }
 
+interface ApiResponseWithTotal<T> {
+  success: boolean;
+  data: T;
+  total?: number;
+  message?: string;
+  error?: string;
+}
+
 export interface CotizacionApiRecord {
   id: string;
   [key: string]: unknown;
@@ -386,6 +394,7 @@ export interface FunnelBeckUpsertPayload {
   estadoRevisionTecnica?: string | null;
   garantiasRequeridas?: string | null;
   estadoDocumentacionVenta?: string | null;
+  esReactivacion?: boolean;
 }
 
 export type BeckCamposCriticosError = {
@@ -404,6 +413,7 @@ export interface FunnelBeckDashboardKpis {
   montoGanadoClp: number;
   montoPerdidoClp: number;
   tasaCierre: number;
+  clientesReactivados?: number;
 }
 
 export interface FunnelBeckDashboardVendedor {
@@ -1422,17 +1432,25 @@ export type ProductoFiremat = {
   nombre: string;
   sku?: string | null;
   descripcion?: string | null;
-  precio: number;
-  stock: number;
-  stockReservado: number;
-  stockDisponible: number;
-  minStock: number;
-  activo: boolean;
-  criticidad: string;
-  ubicacion?: string | null;
-  imagen?: string | null;
   categoria?: string | null;
   categoriaId: number;
+  precio: number;
+  precioClp?: number | null;
+  precioUsd?: number | null;
+  precioSugerido?: number | null;
+  disponibilidad?: string | null;
+  formato?: string | null;
+  cantidadCaja?: string | null;
+  stock: number;
+  stockActual?: number | null;
+  stockReservado: number;
+  stockDisponible: number;
+  stockMinimo?: number | null;
+  minStock: number;
+  ubicacion?: string | null;
+  criticidad: string;
+  activo: boolean;
+  imagen?: string | null;
   alertaStockBajo: boolean;
   createdAt: string;
 };
@@ -1448,8 +1466,12 @@ export type ProductoFirematPayload = {
   descripcion?: string | null;
   categoriaId: number;
   precio: number;
-  stockInicial?: number;
-  minStock: number;
+  precioUsd?: number | null;
+  precioSugerido?: number | null;
+  disponibilidad?: string | null;
+  formato?: string | null;
+  cantidadCaja?: string | null;
+  stockMinimo: number;
   ubicacion?: string | null;
   criticidad: string;
   activo: boolean;
@@ -1464,17 +1486,35 @@ export const firematCategoriasAPI = {
   },
 };
 
+export type ImportarPdfProductosResult = {
+  creados: number;
+  actualizados: number;
+  omitidos: number;
+  errores: string[];
+  advertencias?: string[];
+};
+
 export const firematProductosAPI = {
   listar: async (params?: {
     q?: string;
     activo?: boolean;
     categoriaId?: number;
-  }): Promise<ProductoFiremat[]> => {
-    const response = await api.get<ApiResponseEnvelope<ProductoFiremat[]>>(
+  }): Promise<{ data: ProductoFiremat[]; total: number }> => {
+    const response = await api.get<ApiResponseWithTotal<ProductoFiremat[]> | ProductoFiremat[]>(
       "/firemat/productos",
       { params }
     );
-    return unwrapApiResponse(response.data);
+    const raw = response.data;
+    // Legacy: backend returned array directly
+    if (Array.isArray(raw)) {
+      return { data: raw, total: raw.length };
+    }
+    if (!raw.success) {
+      throw new Error(raw.error || raw.message || "Error en la solicitud");
+    }
+    const productos = Array.isArray(raw.data) ? raw.data : (raw.data as unknown as ProductoFiremat[] | null) ?? [];
+    const total = typeof raw.total === "number" ? raw.total : productos.length;
+    return { data: productos, total };
   },
 
   crear: async (payload: ProductoFirematPayload): Promise<ProductoFiremat> => {
@@ -1497,6 +1537,20 @@ export const firematProductosAPI = {
     const response = await api.patch<ApiResponseEnvelope<ProductoFiremat>>(
       `/firemat/productos/${id}/estado`,
       { activo }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  importarListaPreciosPdf: async (file: File): Promise<ImportarPdfProductosResult> => {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    // Content-Type: false → Axios v1 borra el header del merge, evitando que
+    // transformRequest convierta el FormData a JSON (bug de Axios 1.x con defaults JSON).
+    // El browser setea multipart/form-data; boundary=... automáticamente.
+    const response = await api.post<ApiResponseEnvelope<ImportarPdfProductosResult>>(
+      "/firemat/productos/importar-lista-precios-pdf",
+      formData,
+      { headers: { "Content-Type": false } }
     );
     return unwrapApiResponse(response.data);
   },
@@ -1718,6 +1772,7 @@ export interface FirematDashboardKpis {
   montoPerdidoClp: number;
   tasaCierre: number;
   tasaRecompra: number;
+  clientesReactivados?: number;
 }
 
 export interface FirematDashboardResponsable {
@@ -1949,6 +2004,7 @@ export type FirematFunnelOportunidad = {
   observacionesTecnicas?: string | null;
   observacionCamposFaltantes?: string | null;
   clienteRegistrado?: boolean;
+  esReactivacion?: boolean | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -2017,6 +2073,7 @@ export type FirematFunnelPayload = {
   comentariosInternos?: string | null;
   observacionesTecnicas?: string | null;
   observacionCamposFaltantes?: string | null;
+  esReactivacion?: boolean | null;
 };
 
 export type FirematCamposCriticosError = {
@@ -2221,13 +2278,20 @@ export const firematFunnelAPI = {
 export type InventarioFirematItem = {
   id: number;
   nombre: string;
+  sku?: string | null;
   descripcion?: string | null;
   categoria?: string | null;
   categoriaId: number;
+  stockInicial?: number | null;
+  salidas?: number | null;
+  fechaUltimaSalida?: string | null;
+  entradas?: number | null;
+  fechaUltimaEntrada?: string | null;
   stock: number;
   stockReservado: number;
   stockDisponible: number;
   minStock: number;
+  stockMinimo?: number | null;
   estadoStock: "SIN_STOCK" | "BAJO_STOCK" | "OK";
   alertaStockBajo: boolean;
   criticidad: string;
@@ -2255,6 +2319,24 @@ type InventarioApiEnvelope = {
   resumen: InventarioFirematResumen;
   message?: string;
   error?: string;
+};
+
+export type ActualizarInventarioFirematPayload = {
+  stockNuevo: number;
+  stockInicial: number;
+  salidas: number;
+  fechaUltimaSalida: string | null;
+  entradas: number;
+  fechaUltimaEntrada: string | null;
+  ubicacion?: string;
+  activo?: boolean;
+  motivo?: string;
+};
+
+export type ActualizarInventarioFirematResponse = {
+  success: true;
+  data: InventarioFirematItem;
+  movimiento: MovimientoFiremat;
 };
 
 export type MovimientoFiremat = {
@@ -2341,6 +2423,14 @@ export const firematVentasAPI = {
   },
 };
 
+export type ImportarPdfInventarioResult = {
+  actualizados: number;
+  noEncontrados: number;
+  omitidos: number;
+  errores: string[];
+  advertencias?: string[];
+};
+
 export const firematInventarioAPI = {
   listar: async (params?: {
     q?: string;
@@ -2380,6 +2470,28 @@ export const firematInventarioAPI = {
       { params }
     );
     return res.data;
+  },
+
+  actualizar: async (
+    productoId: number,
+    payload: ActualizarInventarioFirematPayload
+  ): Promise<ActualizarInventarioFirematResponse> => {
+    const response = await api.patch<ActualizarInventarioFirematResponse>(
+      `/firemat/inventario/${productoId}`,
+      payload
+    );
+    return response.data;
+  },
+
+  importarInventarioPdf: async (file: File): Promise<ImportarPdfInventarioResult> => {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    const response = await api.post<ApiResponseEnvelope<ImportarPdfInventarioResult>>(
+      "/firemat/inventario/importar-pdf",
+      formData,
+      { headers: { "Content-Type": false } }
+    );
+    return unwrapApiResponse(response.data);
   },
 };
 

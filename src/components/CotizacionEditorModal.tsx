@@ -339,8 +339,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     const loadProductos = async () => {
       try {
         setProductosLoading(true);
-        const data = await firematProductosAPI.listar({ activo: true });
-        if (!ignore) setProductos(data);
+        const result = await firematProductosAPI.listar({ activo: true });
+        if (!ignore) setProductos(result.data);
       } catch {
         if (!ignore) setProductos([]);
       } finally {

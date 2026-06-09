@@ -107,6 +107,7 @@ type FunnelFormValues = {
   urgencia?: string;
   tipoUso?: string;
   necesidadSoporteTecnico?: boolean;
+  esReactivacion?: boolean;
   alternativaProducto?: string;
   comision?: number;
   margenEstimado?: number;
@@ -862,7 +863,7 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
 
       setOportunidades(funnelResponse.data);
       setResumen(funnelResponse.resumen);
-      setProductos(productosResponse);
+      setProductos(productosResponse.data);
       setCotizaciones(cotizacionesResponse.data);
     } catch {
       void message.error("No se pudo cargar el funnel Firemat");
@@ -1044,6 +1045,7 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       urgencia: oportunidad.urgencia ?? undefined,
       tipoUso: oportunidad.tipoUso ?? undefined,
       necesidadSoporteTecnico: oportunidad.necesidadSoporteTecnico ?? false,
+      esReactivacion: oportunidad.esReactivacion ?? false,
       alternativaProducto: oportunidad.alternativaProducto ?? "",
       comision:
         oportunidad.comision !== null && oportunidad.comision !== undefined
@@ -1322,6 +1324,7 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       values.necesidadSoporteTecnico,
       selected?.necesidadSoporteTecnico
     ),
+    esReactivacion: keepBool(values.esReactivacion, selected?.esReactivacion),
     alternativaProducto: keepString(
       values.alternativaProducto,
       selected?.alternativaProducto
@@ -1757,6 +1760,7 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
     urgencia: oportunidad.urgencia ?? null,
     tipoUso: oportunidad.tipoUso ?? null,
     necesidadSoporteTecnico: oportunidad.necesidadSoporteTecnico ?? null,
+    esReactivacion: oportunidad.esReactivacion ?? null,
     alternativaProducto: oportunidad.alternativaProducto ?? null,
     comision: oportunidad.comision ?? null,
     margenEstimado: oportunidad.margenEstimado ?? null,
@@ -2485,6 +2489,16 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
           ]}
         />
       </Form.Item>
+      <Form.Item name="esReactivacion" label="Cliente antiguo reactivado">
+        <Select
+          allowClear
+          placeholder="¿Es cliente reactivado?"
+          options={[
+            { label: "Sí", value: true },
+            { label: "No", value: false },
+          ]}
+        />
+      </Form.Item>
       {renderProximaAccionField()}
       {renderFechaProximaAccionField()}
       <Form.Item name="observaciones" label="Observaciones" className="md:col-span-2">
@@ -3094,6 +3108,13 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
                   selected.tipoCliente ??
                   "—"}
               </Descriptions.Item>
+              <Descriptions.Item label="Cliente antiguo reactivado">
+                {selected.esReactivacion === true
+                  ? "Sí"
+                  : selected.esReactivacion === false
+                    ? "No"
+                    : "—"}
+              </Descriptions.Item>
               <Descriptions.Item label="Última actividad">
                 {selected.updatedAt ? dayjs(selected.updatedAt).format("DD-MM-YYYY HH:mm") : "—"}
               </Descriptions.Item>
@@ -3471,6 +3492,16 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
               <Select
                 allowClear
                 placeholder="¿Requiere soporte técnico?"
+                options={[
+                  { label: "Sí", value: true },
+                  { label: "No", value: false },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="esReactivacion" label="Cliente antiguo reactivado">
+              <Select
+                allowClear
+                placeholder="¿Es cliente reactivado?"
                 options={[
                   { label: "Sí", value: true },
                   { label: "No", value: false },

@@ -183,6 +183,7 @@
     estadoRevisionTecnica: string;
     garantiasRequeridas: string;
     estadoDocumentacionVenta: string;
+    esReactivacion: string;
   };
 
   type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
@@ -498,6 +499,7 @@
     estadoRevisionTecnica: "",
     garantiasRequeridas: "",
     estadoDocumentacionVenta: "",
+    esReactivacion: "",
   });
 
   const REQUIRED_FIELDS_MESSAGE = "Rellene los campos obligatorios marcados con *";
@@ -2538,6 +2540,17 @@
                     Necesidad de levantamiento en terreno
                   </label>
                 </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="funnel-esReactivacion"
+                    checked={draft.esReactivacion === "true"}
+                    onChange={(checked) => onFieldChange("esReactivacion", String(checked))}
+                    disabled={submitting}
+                  />
+                  <label htmlFor="funnel-esReactivacion" className="text-xs font-medium text-slate-600 cursor-pointer">
+                    Cliente antiguo reactivado
+                  </label>
+                </div>
                 <div className="md:col-span-2">
                   <label htmlFor="funnel-garantiasRequeridas" className="mb-1.5 block text-xs font-medium text-slate-600">
                     Garantías requeridas
@@ -3005,6 +3018,35 @@
     return String(e?.response?.data?.message ?? "Faltan campos críticos para avanzar.");
   };
 
+  // ── Nuevo formato 409: bloqueos + puedeAvanzar: false ───────────────────────
+  type BeckBloqueoException = Error & {
+    bloqueos: string[];
+    advertencias: string[];
+    beckBloqueo: boolean;
+  };
+
+  const isBeckBloqueoException = (e: unknown): e is BeckBloqueoException =>
+    e instanceof Error && (e as BeckBloqueoException).beckBloqueo === true;
+
+  const isBeckBloqueoAxiosError = (err: unknown): boolean => {
+    const e = err as { response?: { status?: number; data?: Record<string, unknown> } };
+    return (
+      e?.response?.status === 409 &&
+      Array.isArray(e?.response?.data?.bloqueos) &&
+      e?.response?.data?.puedeAvanzar === false
+    );
+  };
+
+  const getBeckBloqueosFromAxiosError = (err: unknown): string[] => {
+    const e = err as { response?: { data?: Record<string, unknown> } };
+    return (e?.response?.data?.bloqueos as string[]) ?? [];
+  };
+
+  const getBeckAdvertenciasFromBloqueoAxiosError = (err: unknown): string[] => {
+    const e = err as { response?: { data?: Record<string, unknown> } };
+    return (e?.response?.data?.advertencias as string[]) ?? [];
+  };
+
   const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode, alertaBell }) => {
     void themeMode;
 
@@ -3102,7 +3144,7 @@
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
 
-    // Advertencia campos críticos
+    // Advertencia campos críticos (formato legacy)
     const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
     const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
     const [advertenciaMsg, setAdvertenciaMsg] = useState("");
@@ -3112,6 +3154,13 @@
     const [advertenciaMode, setAdvertenciaMode] = useState<"submit" | "cambiarEtapa" | null>(null);
     const [advertenciaStageDealId, setAdvertenciaStageDealId] = useState<string | null>(null);
     const [advertenciaStageBody, setAdvertenciaStageBody] = useState<Record<string, unknown> | null>(null);
+    // Modal bloqueante (nuevo formato 409 con bloqueos + puedeAvanzar: false)
+    const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
+    const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
+    const [bloqueoAdvertencias, setBloqueoAdvertencias] = useState<string[]>([]);
+    // Modal advertencias en guardado exitoso (200 con advertencias)
+    const [advertenciasGuardadoOpen, setAdvertenciasGuardadoOpen] = useState(false);
+    const [advertenciasGuardado, setAdvertenciasGuardado] = useState<string[]>([]);
 
     void ufFecha;
 
@@ -3429,6 +3478,7 @@
         tipoProyecto: toText(item.tipoProyecto, "") || undefined,
         empresaMandante: toText(item.empresaMandante, "") || undefined,
         necesidadLevantamiento: toOptionalBoolean(item.necesidadLevantamiento),
+        esReactivacion: toOptionalBoolean(item.esReactivacion),
         oficinaTecnicaAsignada: toText(item.oficinaTecnicaAsignada, "") || undefined,
         duracionEstimada: toText(item.duracionEstimada, "") || undefined,
         estadoRevisionTecnica: toText(item.estadoRevisionTecnica, "") || undefined,
@@ -3555,6 +3605,10 @@
       necesidadLevantamiento:
         typeof deal.necesidadLevantamiento === "boolean"
           ? String(deal.necesidadLevantamiento)
+          : "",
+      esReactivacion:
+        typeof deal.esReactivacion === "boolean"
+          ? String(deal.esReactivacion)
           : "",
       oficinaTecnicaAsignada: deal.oficinaTecnicaAsignada || "",
       duracionEstimada: deal.duracionEstimada || "",
@@ -4220,6 +4274,14 @@
 
       const result = (await response.json()) as Record<string, unknown>;
 
+      if (response.status === 409 && Array.isArray(result.bloqueos) && result.puedeAvanzar === false) {
+        const err = new Error(String(result.message ?? "No se puede avanzar")) as BeckBloqueoException;
+        err.beckBloqueo = true;
+        err.bloqueos = result.bloqueos as string[];
+        err.advertencias = Array.isArray(result.advertencias) ? (result.advertencias as string[]) : [];
+        throw err;
+      }
+
       if (response.status === 409 && Array.isArray(result.advertenciasCamposCriticos)) {
         const err = new Error(String(result.message ?? "Faltan campos críticos")) as BeckCamposCriticosException;
         err.beckCamposCriticos = true;
@@ -4231,6 +4293,11 @@
         throw new Error(
           String(result.error) || "El backend rechazo la actualizacion de etapa"
         );
+      }
+
+      if (Array.isArray(result.advertencias) && (result.advertencias as string[]).length > 0) {
+        setAdvertenciasGuardado(result.advertencias as string[]);
+        setAdvertenciasGuardadoOpen(true);
       }
     };
 
@@ -4267,7 +4334,11 @@
         void loadDeals();
       } catch (error) {
         setDeals(previousDeals);
-        if (isBeckCamposCriticosException(error)) {
+        if (isBeckBloqueoException(error)) {
+          setBloqueoBloqueos(error.bloqueos);
+          setBloqueoAdvertencias(error.advertencias);
+          setBloqueoModalOpen(true);
+        } else if (isBeckCamposCriticosException(error)) {
           setAdvertenciaCampos(error.campos);
           setAdvertenciaMsg(error.message);
           setAdvertenciaObs("");
@@ -4311,7 +4382,11 @@
         message.success("Etapa actualizada");
         void loadDeals();
       } catch (error) {
-        if (isBeckCamposCriticosException(error)) {
+        if (isBeckBloqueoException(error)) {
+          setBloqueoBloqueos(error.bloqueos);
+          setBloqueoAdvertencias(error.advertencias);
+          setBloqueoModalOpen(true);
+        } else if (isBeckCamposCriticosException(error)) {
           setAdvertenciaCampos(error.campos);
           setAdvertenciaMsg(error.message);
           setAdvertenciaObs("");
@@ -4442,7 +4517,11 @@
         handleCloseCierreModal();
         await loadDeals();
       } catch (error) {
-        if (isBeckCamposCriticosException(error)) {
+        if (isBeckBloqueoException(error)) {
+          setBloqueoBloqueos(error.bloqueos);
+          setBloqueoAdvertencias(error.advertencias);
+          setBloqueoModalOpen(true);
+        } else if (isBeckCamposCriticosException(error)) {
           setAdvertenciaCampos(error.campos);
           setAdvertenciaMsg(error.message);
           setAdvertenciaObs("");
@@ -4619,6 +4698,12 @@
             : draft.necesidadLevantamiento === "false"
               ? false
               : undefined,
+        esReactivacion:
+          draft.esReactivacion === "true"
+            ? true
+            : draft.esReactivacion === "false"
+              ? false
+              : undefined,
         oficinaTecnicaAsignada: draft.oficinaTecnicaAsignada.trim() || undefined,
         duracionEstimada: draft.duracionEstimada.trim() || undefined,
         estadoRevisionTecnica: draft.estadoRevisionTecnica.trim() || undefined,
@@ -4768,10 +4853,20 @@
 
         const payload = buildFunnelUpsertPayloadForDraft(draft);
 
-        const savedOpportunity =
+        const savedRaw =
           funnelModalMode === "create"
             ? await funnelBeckAPI.crear(payload)
             : await funnelBeckAPI.actualizar(editingDealId as string, payload);
+
+        // Detectar nuevo formato { oportunidad, advertencias } vs formato legacy
+        const savedRawRecord = savedRaw as Record<string, unknown>;
+        const savedOpportunity =
+          savedRawRecord.oportunidad && typeof savedRawRecord.oportunidad === "object"
+            ? (savedRawRecord.oportunidad as typeof savedRaw)
+            : savedRaw;
+
+        const savedAdvertencias =
+          Array.isArray(savedRawRecord.advertencias) ? (savedRawRecord.advertencias as string[]) : [];
 
         const mappedSavedOpportunity = mapOpportunityToDeal(
           savedOpportunity as Record<string, unknown>
@@ -4788,13 +4883,22 @@
         setDraft(createEmptyDraft());
         setFieldErrors({});
         setShowValidationSummary(false);
-        message.success(
-          funnelModalMode === "create"
-            ? "Oportunidad creada"
-            : "Oportunidad actualizada"
-        );
+        if (savedAdvertencias.length > 0) {
+          setAdvertenciasGuardado(savedAdvertencias);
+          setAdvertenciasGuardadoOpen(true);
+        } else {
+          message.success(
+            funnelModalMode === "create"
+              ? "Oportunidad creada"
+              : "Oportunidad actualizada"
+          );
+        }
       } catch (error) {
-        if (isBeckCamposCriticosAxiosError(error)) {
+        if (isBeckBloqueoAxiosError(error)) {
+          setBloqueoBloqueos(getBeckBloqueosFromAxiosError(error));
+          setBloqueoAdvertencias(getBeckAdvertenciasFromBloqueoAxiosError(error));
+          setBloqueoModalOpen(true);
+        } else if (isBeckCamposCriticosAxiosError(error)) {
           const payload = buildFunnelUpsertPayloadForDraft(draft);
           setAdvertenciaCampos(getBeckCamposCriticosFromAxiosError(error));
           setAdvertenciaMsg(getBeckMessageFromAxiosError(error));
@@ -5269,6 +5373,7 @@
           { label: "Tipo de proyecto", value: deal.tipoProyecto },
           { label: "Empresa mandante / contratista / subcontratista", value: deal.empresaMandante },
           { label: "Necesidad de levantamiento en terreno", value: formatBooleanDetail(deal.necesidadLevantamiento ?? undefined) },
+          { label: "Cliente antiguo reactivado", value: formatBooleanDetail(deal.esReactivacion ?? undefined) },
           { label: "Oficina técnica asignada", value: deal.oficinaTecnicaAsignada },
           { label: "Duración estimada", value: deal.duracionEstimada },
           { label: "Estado de revisión técnica", value: deal.estadoRevisionTecnica },
@@ -6043,6 +6148,79 @@
             }}
           />
         )}
+
+        {/* Modal bloqueante: No se puede avanzar (nuevo formato 409) */}
+        <AntdModal
+          title="No se puede avanzar"
+          open={bloqueoModalOpen}
+          onCancel={() => setBloqueoModalOpen(false)}
+          destroyOnClose
+          footer={[
+            <Button
+              key="entendido"
+              type="primary"
+              danger
+              onClick={() => setBloqueoModalOpen(false)}
+            >
+              Entendido
+            </Button>,
+          ]}
+        >
+          <div className="space-y-4">
+            {bloqueoBloqueos.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold" style={{ color: "#cf1322" }}>
+                  Reglas bloqueantes:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                  {bloqueoBloqueos.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {bloqueoAdvertencias.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold" style={{ color: "#d48806" }}>
+                  Advertencias:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                  {bloqueoAdvertencias.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </AntdModal>
+
+        {/* Modal guardado con advertencias (200 con advertencias) */}
+        <AntdModal
+          title="Guardado con advertencias"
+          open={advertenciasGuardadoOpen}
+          onCancel={() => setAdvertenciasGuardadoOpen(false)}
+          destroyOnClose
+          footer={[
+            <Button
+              key="ok"
+              type="primary"
+              onClick={() => setAdvertenciasGuardadoOpen(false)}
+            >
+              Entendido
+            </Button>,
+          ]}
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-beck-ink">
+              La oportunidad fue guardada, pero con las siguientes advertencias:
+            </p>
+            <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+              {advertenciasGuardado.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        </AntdModal>
 
         {/* Modal advertencia campos críticos */}
         <AntdModal

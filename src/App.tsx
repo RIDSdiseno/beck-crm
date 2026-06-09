@@ -30,6 +30,7 @@ import {
   BeckOficinaTecnica,
   BeckUsuariosParametros,
   BeckClientes,
+  BeckConfiguracionValidacion,
 } from "./pages/beck";
 
 // Firemat pages
@@ -222,6 +223,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
   if (pathname === "/beck/configuracion-campos-registro") return true;
   if (pathname === "/beck/itemizados-mandante") return true;
+  if (pathname === "/beck/configuracion-validacion") return access.configuracion;
 
   if (pathname === "/firemat/dashboard") return access.firematDashboard;
   if (pathname === "/firemat/funnel") return access.firematFunnel;
@@ -583,6 +585,16 @@ const AppShell: React.FC = () => {
                   element={
                     access.configuracion ? (
                       <BeckUsuariosParametros themeMode={themeMode} />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/beck/configuracion-validacion"
+                  element={
+                    access.configuracion ? (
+                      <BeckConfiguracionValidacion />
                     ) : (
                       <Navigate to={homeRoute} replace />
                     )

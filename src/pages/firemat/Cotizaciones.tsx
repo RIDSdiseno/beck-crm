@@ -337,7 +337,7 @@ const FirematCotizaciones: React.FC = () => {
 
       setCotizaciones(cotizacionesResponse.data);
       setResumen(cotizacionesResponse.resumen);
-      setProductos(productosResponse);
+      setProductos(productosResponse.data);
     } catch {
       void message.error("No se pudieron cargar las cotizaciones Firemat");
       setCotizaciones([]);

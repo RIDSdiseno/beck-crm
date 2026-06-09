@@ -18,37 +18,41 @@ import {
   AppstoreOutlined,
   ClearOutlined,
   EyeOutlined,
+  FilePdfOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
 import {
   firematCategoriasAPI,
   firematProductosAPI,
   type CategoriaFiremat,
+  type ImportarPdfProductosResult,
   type ProductoFiremat,
   type ProductoFirematPayload,
 } from "../../services/api";
+import ImportarPdfModal from "./ImportarPdfModal";
 
-const formatCLP = (value: number) =>
-  new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(value);
-
-const formatDate = (value: string) => {
-  const d = dayjs(value);
-  return d.isValid() ? d.format("DD-MM-YYYY") : "-";
+const formatCLP = (value: number | null | undefined): string => {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(value);
 };
 
-const criticidadColor: Record<string, string> = {
-  alta: "red",
-  media: "orange",
-  baja: "green",
+const formatUSD = (value: number | null | undefined): string => {
+  if (value == null) return "-";
+  return `USD ${value.toFixed(2)}`;
 };
 
 const CRITICIDAD_OPTIONS = [
   { label: "Baja", value: "baja" },
   { label: "Media", value: "media" },
   { label: "Alta", value: "alta" },
+];
+
+const DISPONIBILIDAD_OPTIONS = [
+  { label: "En stock", value: "En stock" },
+  { label: "A pedido", value: "A pedido" },
+  { label: "Sin stock", value: "Sin stock" },
 ];
 
 const ESTADO_FILTER_OPTIONS = [
@@ -64,9 +68,13 @@ type FormValues = {
   sku?: string;
   descripcion?: string;
   categoriaId?: number;
+  disponibilidad: string;
+  formato?: string;
+  cantidadCaja?: string;
+  precioUsd?: number;
   precio: number;
-  stockInicial?: number;
-  minStock: number;
+  precioSugerido?: number;
+  stockMinimo: number;
   ubicacion?: string;
   criticidad: string;
   activo: boolean;
@@ -111,15 +119,26 @@ const ModalProducto: React.FC<{
         sku: producto.sku ?? undefined,
         descripcion: producto.descripcion ?? undefined,
         categoriaId: producto.categoriaId ?? undefined,
-        precio: producto.precio,
-        minStock: producto.minStock,
+        disponibilidad: producto.disponibilidad ?? undefined,
+        formato: producto.formato ?? undefined,
+        cantidadCaja: producto.cantidadCaja ?? undefined,
+        precioUsd: producto.precioUsd ?? undefined,
+        precio: producto.precioClp ?? producto.precio,
+        precioSugerido: producto.precioSugerido ?? undefined,
+        stockMinimo: producto.stockMinimo ?? producto.minStock,
         ubicacion: producto.ubicacion ?? undefined,
         criticidad: producto.criticidad,
         activo: producto.activo,
       });
     } else {
       form.resetFields();
-      form.setFieldsValue({ activo: true, criticidad: "baja", stockInicial: 0, minStock: 0, precio: 0 });
+      form.setFieldsValue({
+        activo: true,
+        criticidad: "baja",
+        disponibilidad: "En stock",
+        stockMinimo: 0,
+        precio: 0,
+      });
     }
   }, [open, producto, mode, form, isEdit, isView]);
 
@@ -137,13 +156,17 @@ const ModalProducto: React.FC<{
         descripcion: values.descripcion || null,
         categoriaId: values.categoriaId!,
         precio: values.precio,
-        minStock: values.minStock,
+        precioUsd: values.precioUsd ?? null,
+        precioSugerido: values.precioSugerido ?? null,
+        disponibilidad: values.disponibilidad,
+        formato: values.formato || null,
+        cantidadCaja: values.cantidadCaja?.trim() || null,
+        stockMinimo: values.stockMinimo,
         ubicacion: values.ubicacion || null,
         criticidad: values.criticidad,
         activo: values.activo,
       };
       if (isCreate) {
-        payload.stockInicial = values.stockInicial ?? 0;
         await firematProductosAPI.crear(payload);
         void message.success("Producto creado");
       } else if (isEdit && producto) {
@@ -172,7 +195,7 @@ const ModalProducto: React.FC<{
       okButtonProps={{ className: "firemat-action-button" }}
       cancelButtonProps={isView ? { style: { display: "none" } } : undefined}
       confirmLoading={saving}
-      width={600}
+      width={760}
       destroyOnClose
     >
       <Form
@@ -221,37 +244,72 @@ const ModalProducto: React.FC<{
           </Form.Item>
 
           <Form.Item
+            name="disponibilidad"
+            label="Disponibilidad"
+            rules={[{ required: true, message: "Disponibilidad obligatoria" }]}
+          >
+            <Select options={DISPONIBILIDAD_OPTIONS} />
+          </Form.Item>
+
+          <Form.Item name="formato" label="Formato">
+            <Input placeholder="Ej: Caja, unidad, rollo" />
+          </Form.Item>
+
+          <Form.Item
+            name="cantidadCaja"
+            label="Cantidad caja"
+          >
+            <Input placeholder="Ej: 12/CS, 24 UND, Caja 20" />
+          </Form.Item>
+
+          <Form.Item
+            name="precioUsd"
+            label="Precio USD"
+            rules={[{ type: "number", min: 0, message: "Precio USD debe ser >= 0" }]}
+          >
+            <InputNumber min={0} precision={2} prefix="USD" style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item
             name="precio"
-            label="Precio"
+            label="Precio CLP"
             rules={[
-              { required: true, message: "Precio requerido" },
-              { type: "number", min: 0, message: "Precio debe ser >= 0" },
+              { required: true, message: "Precio CLP requerido" },
+              { type: "number", min: 0, message: "Precio CLP debe ser >= 0" },
             ]}
           >
             <InputNumber
               min={0}
+              precision={0}
               style={{ width: "100%" }}
               formatter={(v) => `$ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
               parser={(v) => (Number(v?.replace(/\$\s?|\./g, "") ?? 0) as 0)}
             />
           </Form.Item>
 
-          {isCreate && (
-            <Form.Item
-              name="stockInicial"
-              label="Stock inicial"
-              rules={[{ type: "number", min: 0, message: "Stock inicial debe ser >= 0" }]}
-            >
-              <InputNumber min={0} style={{ width: "100%" }} />
-            </Form.Item>
-          )}
+          <Form.Item
+            name="precioSugerido"
+            label="Precio sugerido"
+            rules={[{ type: "number", min: 0, message: "Precio sugerido debe ser >= 0" }]}
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              formatter={(v) => `$ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+              parser={(v) => (Number(v?.replace(/\$\s?|\./g, "") ?? 0) as 0)}
+            />
+          </Form.Item>
 
           <Form.Item
-            name="minStock"
+            name="stockMinimo"
             label="Stock mínimo"
-            rules={[{ type: "number", min: 0, message: "Stock mínimo debe ser >= 0" }]}
+            rules={[
+              { required: true, message: "Stock mínimo requerido" },
+              { type: "number", min: 0, message: "Stock mínimo debe ser >= 0" },
+            ]}
           >
-            <InputNumber min={0} style={{ width: "100%" }} />
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
 
           <Form.Item name="ubicacion" label="Ubicación / Bodega">
@@ -284,15 +342,52 @@ const ModalProducto: React.FC<{
   );
 };
 
+/* ────────────── Resultado importación PDF productos ────────────── */
+const ResultadoImportProductos: React.FC<{ result: ImportarPdfProductosResult }> = ({ result }) => (
+  <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-3">
+      {[
+        { label: "Creados", value: result.creados, color: "text-green-600" },
+        { label: "Actualizados", value: result.actualizados, color: "text-blue-600" },
+        { label: "Omitidos", value: result.omitidos, color: "text-gray-500" },
+        { label: "Errores", value: result.errores.length, color: result.errores.length > 0 ? "text-red-500" : "text-gray-500" },
+      ].map(({ label, value, color }) => (
+        <div key={label} className="firemat-kpi-card rounded-xl p-3 flex flex-col gap-0.5">
+          <span className="text-xs text-beck-muted">{label}</span>
+          <span className={`text-2xl font-bold tabular-nums ${color}`}>{value}</span>
+        </div>
+      ))}
+    </div>
+    {result.errores.length > 0 && (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 space-y-1">
+        <p className="font-semibold">Errores:</p>
+        <ul className="list-disc list-inside space-y-0.5">
+          {result.errores.map((e, i) => <li key={i}>{e}</li>)}
+        </ul>
+      </div>
+    )}
+    {result.advertencias && result.advertencias.length > 0 && (
+      <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700 space-y-1">
+        <p className="font-semibold">Advertencias:</p>
+        <ul className="list-disc list-inside space-y-0.5">
+          {result.advertencias.map((a, i) => <li key={i}>{a}</li>)}
+        </ul>
+      </div>
+    )}
+  </div>
+);
+
 /* ────────────── Componente principal ────────────── */
 const FirematProductos: React.FC = () => {
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [activo, setActivo] = useState<"" | "true" | "false">("");
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [seleccionado, setSeleccionado] = useState<ProductoFiremat | null>(null);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -300,8 +395,9 @@ const FirematProductos: React.FC = () => {
       const params: { q?: string; activo?: boolean } = {};
       if (q.trim()) params.q = q.trim();
       if (activo !== "") params.activo = activo === "true";
-      const data = await firematProductosAPI.listar(params);
-      setProductos(data);
+      const result = await firematProductosAPI.listar(params);
+      setProductos(result.data);
+      setTotal(result.total);
     } catch {
       void message.error("No se pudieron cargar los productos Firemat");
       setProductos([]);
@@ -353,27 +449,6 @@ const FirematProductos: React.FC = () => {
 
   const columns: ColumnsType<ProductoFiremat> = [
     {
-      title: "Producto",
-      key: "producto",
-      width: 220,
-      render: (_, row) => {
-        const bajo = isBajoStock(row);
-        return (
-          <div className={bajo ? "border-l-2 border-red-400 pl-2" : ""}>
-            <p className="font-medium text-beck-ink leading-tight">{row.nombre}</p>
-            {row.sku && (
-              <p className="text-xs text-beck-muted mt-0.5">{row.sku}</p>
-            )}
-            {row.descripcion && (
-              <p className="text-xs text-beck-muted mt-0.5 leading-snug line-clamp-2">
-                {row.descripcion}
-              </p>
-            )}
-          </div>
-        );
-      },
-    },
-    {
       title: "SKU",
       dataIndex: "sku",
       key: "sku",
@@ -382,35 +457,93 @@ const FirematProductos: React.FC = () => {
         v ? <span className="font-mono text-xs">{v}</span> : <span className="text-beck-muted">—</span>,
     },
     {
-      title: "Categoría",
-      dataIndex: "categoria",
-      key: "categoria",
-      width: 120,
-      render: (v: string | null | undefined) => v ?? <span className="text-beck-muted">—</span>,
+      title: "Producto",
+      key: "producto",
+      width: 240,
+      render: (_, row) => {
+        const bajo = isBajoStock(row);
+        return (
+          <div className={bajo ? "border-l-2 border-red-400 pl-2" : ""}>
+            <p className="font-medium text-beck-ink leading-tight">{row.nombre}</p>
+            {row.descripcion && (
+              <p className="text-xs text-beck-muted mt-0.5 leading-snug">
+                {row.descripcion}
+              </p>
+            )}
+          </div>
+        );
+      },
     },
     {
-      title: "Precio",
-      dataIndex: "precio",
-      key: "precio",
+      title: "Disponibilidad",
+      dataIndex: "disponibilidad",
+      key: "disponibilidad",
+      width: 120,
+      render: (v: string | null | undefined) =>
+        v ?? <span className="text-beck-muted">—</span>,
+    },
+    {
+      title: "Formato",
+      dataIndex: "formato",
+      key: "formato",
+      width: 100,
+      render: (v: string | null | undefined) =>
+        v ?? <span className="text-beck-muted">—</span>,
+    },
+    {
+      title: "Cant. caja",
+      dataIndex: "cantidadCaja",
+      key: "cantidadCaja",
+      width: 90,
+      align: "center",
+      render: (v: string | null | undefined) =>
+        v?.trim() ? <span>{v}</span> : <span className="text-beck-muted">—</span>,
+    },
+    {
+      title: "Precio USD",
+      dataIndex: "precioUsd",
+      key: "precioUsd",
+      width: 110,
+      align: "right",
+      render: (v: number | null | undefined) => (
+        <span className="tabular-nums">{formatUSD(v)}</span>
+      ),
+    },
+    {
+      title: "Precio CLP",
+      key: "precioClp",
       width: 120,
       align: "right",
-      render: (v: number) => (
-        <span className="font-medium tabular-nums">{formatCLP(v)}</span>
+      render: (_, row) => (
+        <span className="font-medium tabular-nums">
+          {formatCLP(row.precioClp ?? row.precio)}
+        </span>
+      ),
+    },
+    {
+      title: "Precio sugerido",
+      dataIndex: "precioSugerido",
+      key: "precioSugerido",
+      width: 130,
+      align: "right",
+      render: (v: number | null | undefined) => (
+        <span className="tabular-nums">{formatCLP(v)}</span>
       ),
     },
     {
       title: "Stock",
-      dataIndex: "stock",
-      key: "stock",
+      key: "stockActual",
       width: 75,
       align: "center",
-      render: (v: number) => <span className="tabular-nums">{v ?? 0}</span>,
+      render: (_, row) => (
+        <span className="tabular-nums">{row.stockActual ?? row.stock ?? 0}</span>
+      ),
     },
     {
       title: "Reservado",
       dataIndex: "stockReservado",
       key: "stockReservado",
-      width: 85,
+      width: 90,
       align: "center",
       render: (v: number) => <span className="tabular-nums">{v ?? 0}</span>,
     },
@@ -420,8 +553,8 @@ const FirematProductos: React.FC = () => {
       width: 90,
       align: "center",
       render: (_, row) => {
-        const disp = calcDisponible(row);
-        const bajo = disp <= (row.minStock ?? 0);
+        const disp = row.stockDisponible ?? calcDisponible(row);
+        const bajo = disp <= (row.stockMinimo ?? row.minStock ?? 0);
         return bajo ? (
           <Tag color="red" className="tabular-nums font-semibold">
             {disp}
@@ -432,50 +565,12 @@ const FirematProductos: React.FC = () => {
       },
     },
     {
-      title: "Stock mín.",
-      dataIndex: "minStock",
-      key: "minStock",
-      width: 85,
-      align: "center",
-      render: (v: number) => <span className="tabular-nums">{v ?? 0}</span>,
-    },
-    {
-      title: "Criticidad",
-      dataIndex: "criticidad",
-      key: "criticidad",
-      width: 95,
-      render: (v: string) => {
-        const lower = (v ?? "").toLowerCase();
-        return (
-          <Tag color={criticidadColor[lower] ?? "default"}>
-            {v ? v.charAt(0).toUpperCase() + v.slice(1) : "—"}
-          </Tag>
-        );
-      },
-    },
-    {
-      title: "Ubicación",
-      dataIndex: "ubicacion",
-      key: "ubicacion",
-      width: 120,
-      render: (v: string | null | undefined) => v ?? <span className="text-beck-muted">—</span>,
-    },
-    {
       title: "Estado",
       dataIndex: "activo",
       key: "activo",
       width: 85,
       render: (v: boolean) =>
         v ? <Tag color="green">Activo</Tag> : <Tag color="default">Inactivo</Tag>,
-    },
-    {
-      title: "Creado",
-      dataIndex: "createdAt",
-      key: "createdAt",
-      width: 100,
-      render: (v: string) => (
-        <span className="tabular-nums text-xs text-beck-muted">{formatDate(v)}</span>
-      ),
     },
     {
       title: "Acciones",
@@ -526,13 +621,19 @@ const FirematProductos: React.FC = () => {
               Maestro de productos Firemat
             </h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={abrirCrear}
             >
               Nuevo producto
+            </Button>
+            <Button
+              icon={<FilePdfOutlined />}
+              onClick={() => setPdfModalOpen(true)}
+            >
+              Importar lista de precios PDF
             </Button>
             <Button
               className="firemat-action-button"
@@ -591,8 +692,9 @@ const FirematProductos: React.FC = () => {
             scroll={{ x: 1400 }}
             pagination={{
               pageSize: 25,
+              total,
               showSizeChanger: false,
-              showTotal: (total) => `${total} productos`,
+              showTotal: () => `${total} productos`,
             }}
           />
         )}
@@ -604,6 +706,15 @@ const FirematProductos: React.FC = () => {
         open={modalMode !== null}
         onClose={cerrarModal}
         onSaved={() => void cargar()}
+      />
+
+      <ImportarPdfModal<ImportarPdfProductosResult>
+        open={pdfModalOpen}
+        titulo="Importar lista de precios PDF"
+        onClose={() => setPdfModalOpen(false)}
+        onImportado={() => void cargar()}
+        importar={firematProductosAPI.importarListaPreciosPdf}
+        renderResultado={(result) => <ResultadoImportProductos result={result} />}
       />
     </div>
   );

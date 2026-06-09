@@ -861,6 +861,7 @@ const FunnelBeckDashboard: React.FC<Props> = ({
             <KpiCard label="Monto perdido" value={formatClp(data.kpis.montoPerdidoClp)} color="#ef4444" />
             <KpiCard label="Tasa de cierre" value={`${data.kpis.tasaCierre.toFixed(1)}%`}
               sub="ganadas / (ganadas + perdidas)" color="#6366f1" />
+            <KpiCard label="Clientes reactivados" value={formatNum(data.kpis.clientesReactivados ?? 0)} color="#8b5cf6" />
             <KpiCard label="Sin seguimiento" value={formatNum(data.sinSeguimiento.totalSinSeguimiento)}
               sub={`+${diasSinSeg} días sin movimiento`} danger={data.sinSeguimiento.totalSinSeguimiento > 0} />
             <KpiCard label="Acciones vencidas" value={formatNum(data.proximasAcciones.accionesVencidas)}

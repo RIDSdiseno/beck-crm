@@ -145,6 +145,7 @@ export type FunnelDeal = {
   tipoProyecto?: string | null;
   empresaMandante?: string | null;
   necesidadLevantamiento?: boolean | null;
+  esReactivacion?: boolean | null;
   oficinaTecnicaAsignada?: string | null;
   duracionEstimada?: string | null;
   estadoRevisionTecnica?: string | null;

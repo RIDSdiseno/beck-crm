@@ -959,6 +959,7 @@ const FunnelFirematDashboard: React.FC<Props> = ({
         montoPerdidoClp: Number(rawData.kpis?.montoPerdidoClp ?? 0),
         tasaCierre: Number(rawData.kpis?.tasaCierre ?? 0),
         tasaRecompra: Number(rawData.kpis?.tasaRecompra ?? 0),
+        clientesReactivados: Number(rawData.kpis?.clientesReactivados ?? 0),
       },
       distribucionEstado: {
         activas: Number(rawData.distribucionEstado?.activas ?? 0),
@@ -1507,6 +1508,11 @@ const FunnelFirematDashboard: React.FC<Props> = ({
                 label="Tasa recompra"
                 value={`${safeFixed(data.kpis.tasaRecompra)}%`}
                 color="#8b5cf6"
+              />
+              <KpiCard
+                label="Clientes reactivados"
+                value={formatNum(data.kpis.clientesReactivados)}
+                color="#7c3aed"
               />
               <KpiCard
                 label="Sin seguimiento"
