@@ -182,6 +182,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
     { key: "clientes", to: "/firemat/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
     { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
+    {key: "categorias", to: "/firemat/categorias", icon: <ProfileOutlined/>, label: "Categorias", access: access.firematCategorias } ,
     { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firematInventario },
     { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firematVentas },
     { key: "movimientos", to: "/firemat/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.firematMovimientos || access.firematKardex },
@@ -342,6 +343,21 @@ const Sidebar: React.FC<SidebarProps> = ({
               {access.configuracion && isBeck && user?.rol === "Administrador" && (
               <NavLink
                 to="/beck/configuracion-validacion"
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed
+                      ? "justify-center gap-0 px-0"
+                      : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                <SafetyCertificateOutlined />
+                {!collapsed && <span>Reglas de Validación</span>}
+              </NavLink>
+              )}
+              {access.configuracion && !isBeck && user?.rol === "Administrador" && (
+              <NavLink
+                to="/firemat/configuracion-validacion"
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed

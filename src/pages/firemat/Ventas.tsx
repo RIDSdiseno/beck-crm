@@ -1,9 +1,12 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   DatePicker,
+  Divider,
   Empty,
   Input,
+  InputNumber,
+  Modal,
   Select,
   Spin,
   Table,
@@ -13,13 +16,18 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import {
   ClearOutlined,
+  DeleteOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   ShoppingCartOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import {
+  firematProductosAPI,
   firematVentasAPI,
+  type FirematVentaCrearPayload,
+  type ProductoFiremat,
   type VentaFiremat,
   type VentasFirematResumen,
 } from "../../services/api";
@@ -159,6 +167,13 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
   </div>
 );
 
+type LineaDetalle = {
+  _key: number;
+  productoId: number | null;
+  cantidad: number;
+  precio: number;
+};
+
 const FirematVentas: React.FC = () => {
   const [ventas, setVentas] = useState<VentaFiremat[]>([]);
   const [resumen, setResumen] = useState<VentasFirematResumen>(RESUMEN_VACIO);
@@ -166,6 +181,25 @@ const FirematVentas: React.FC = () => {
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState("");
   const [rango, setRango] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
+
+  // Modal state
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [productos, setProductos] = useState<ProductoFiremat[]>([]);
+  const [loadingProductos, setLoadingProductos] = useState(false);
+  const [cliente, setCliente] = useState("");
+  const [contacto, setContacto] = useState("");
+  const [responsable, setResponsable] = useState("");
+  const [lineas, setLineas] = useState<LineaDetalle[]>([{ _key: 0, productoId: null, cantidad: 1, precio: 0 }]);
+  const [erroresForm, setErroresForm] = useState<string[]>([]);
+  const keyRef = useRef(1);
+
+  const nuevaLinea = (): LineaDetalle => ({
+    _key: keyRef.current++,
+    productoId: null,
+    cantidad: 1,
+    precio: 0,
+  });
 
   const cargar = useCallback(async () => {
     try {
@@ -200,6 +234,122 @@ const FirematVentas: React.FC = () => {
 
   const hayFiltros = q !== "" || estado !== "" || rango[0] !== null || rango[1] !== null;
 
+  const abrirModal = async () => {
+    setModalAbierto(true);
+    if (productos.length === 0) {
+      try {
+        setLoadingProductos(true);
+        const res = await firematProductosAPI.listar({ activo: true });
+        setProductos(res.data);
+      } catch {
+        void message.error("No se pudieron cargar los productos");
+      } finally {
+        setLoadingProductos(false);
+      }
+    }
+  };
+
+  const cerrarModal = () => {
+    if (guardando) return;
+    setModalAbierto(false);
+    setCliente("");
+    setContacto("");
+    setResponsable("");
+    setLineas([nuevaLinea()]);
+    setErroresForm([]);
+  };
+
+  const agregarLinea = () => {
+    setLineas((prev) => [...prev, nuevaLinea()]);
+  };
+
+  const quitarLinea = (key: number) => {
+    setLineas((prev) => prev.filter((l) => l._key !== key));
+  };
+
+  const actualizarLinea = (key: number, campo: Partial<Omit<LineaDetalle, "_key">>) => {
+    setLineas((prev) =>
+      prev.map((l) => {
+        if (l._key !== key) return l;
+        const updated = { ...l, ...campo };
+        if (campo.productoId !== undefined && campo.precio === undefined) {
+          const prod = productos.find((p) => p.id === campo.productoId);
+          if (prod) updated.precio = prod.precio ?? 0;
+        }
+        return updated;
+      })
+    );
+  };
+
+  const total = useMemo(
+    () => lineas.reduce((acc, l) => acc + l.cantidad * l.precio, 0),
+    [lineas]
+  );
+
+  const validar = (): string[] => {
+    const errs: string[] = [];
+    if (!cliente.trim()) errs.push("El cliente es obligatorio.");
+    if (lineas.length === 0) errs.push("Debe agregar al menos un producto.");
+    lineas.forEach((l, i) => {
+      const n = i + 1;
+      if (l.productoId === null) {
+        errs.push(`Línea ${n}: debe seleccionar un producto.`);
+      } else {
+        const prod = productos.find((p) => p.id === l.productoId);
+        const stockDisp = prod ? (prod.stockDisponible ?? prod.stock) : Infinity;
+        if (l.cantidad <= 0) {
+          errs.push(`Línea ${n}: la cantidad debe ser mayor a 0.`);
+        } else if (l.cantidad > stockDisp) {
+          errs.push(`Línea ${n}: cantidad (${l.cantidad}) supera el stock disponible (${stockDisp}).`);
+        }
+        if (l.precio < 0) {
+          errs.push(`Línea ${n}: el precio no puede ser negativo.`);
+        }
+      }
+    });
+    return errs;
+  };
+
+  const guardar = async () => {
+    const errs = validar();
+    if (errs.length > 0) {
+      setErroresForm(errs);
+      return;
+    }
+    setErroresForm([]);
+    try {
+      setGuardando(true);
+      const payload: FirematVentaCrearPayload = {
+        cliente: cliente.trim(),
+        contacto: contacto.trim() || null,
+        responsable: responsable.trim() || null,
+        estado: "CERRADO",
+        detalle: lineas.map((l) => ({
+          productoId: l.productoId as number,
+          cantidad: l.cantidad,
+          precio: l.precio,
+        })),
+      };
+      await firematVentasAPI.crear(payload);
+      void message.success("Venta creada exitosamente");
+      cerrarModal();
+      void cargar();
+    } catch (err: unknown) {
+      const errData = (err as { response?: { data?: { error?: string; message?: string } } })
+        ?.response?.data;
+      const msg = errData?.error ?? errData?.message ?? "No se pudo crear la venta";
+      void message.error(msg);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const productoOptions = productos.map((p) => {
+    const stock = p.stockDisponible ?? p.stock;
+    const label = `${p.nombre}${p.sku ? ` [${p.sku}]` : ""} — Stock: ${stock}`;
+    return { label, value: p.id };
+  });
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -217,14 +367,23 @@ const FirematVentas: React.FC = () => {
               Seguimiento comercial de ventas registradas en Firemat.
             </p>
           </div>
-          <Button
-            className="firemat-action-button"
-            icon={<ReloadOutlined />}
-            onClick={() => void cargar()}
-            loading={loading}
-          >
-            Actualizar
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => void abrirModal()}
+            >
+              Nueva venta
+            </Button>
+            <Button
+              className="firemat-action-button"
+              icon={<ReloadOutlined />}
+              onClick={() => void cargar()}
+              loading={loading}
+            >
+              Actualizar
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -334,11 +493,215 @@ const FirematVentas: React.FC = () => {
             pagination={{
               pageSize: 25,
               showSizeChanger: false,
-              showTotal: (total) => `${total} ventas`,
+              showTotal: (t) => `${t} ventas`,
             }}
           />
         )}
       </section>
+
+      {/* Modal nueva venta */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <ShoppingCartOutlined />
+            <span>Nueva venta</span>
+          </div>
+        }
+        open={modalAbierto}
+        onCancel={cerrarModal}
+        width={800}
+        footer={[
+          <Button key="cancel" onClick={cerrarModal} disabled={guardando}>
+            Cancelar
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            onClick={() => void guardar()}
+            loading={guardando}
+          >
+            Guardar venta
+          </Button>,
+        ]}
+        destroyOnClose
+      >
+        <div className="space-y-4 pt-2">
+          {/* Errores de validación */}
+          {erroresForm.length > 0 && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+              <ul className="list-disc list-inside space-y-1">
+                {erroresForm.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Campos básicos */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-beck-ink mb-1">
+                Cliente <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={cliente}
+                onChange={(e) => setCliente(e.target.value)}
+                placeholder="Nombre del cliente"
+                status={erroresForm.some((e) => e.includes("cliente")) ? "error" : undefined}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-beck-ink mb-1">
+                Contacto
+              </label>
+              <Input
+                value={contacto}
+                onChange={(e) => setContacto(e.target.value)}
+                placeholder="Nombre del contacto"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-beck-ink mb-1">
+                Responsable
+              </label>
+              <Input
+                value={responsable}
+                onChange={(e) => setResponsable(e.target.value)}
+                placeholder="Responsable de la venta"
+              />
+            </div>
+          </div>
+
+          <Divider className="my-2" />
+
+          {/* Detalle de productos */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-beck-ink">Detalle de productos</h3>
+              <Button size="small" icon={<PlusOutlined />} onClick={agregarLinea} type="dashed">
+                Agregar producto
+              </Button>
+            </div>
+
+            {loadingProductos ? (
+              <div className="flex justify-center py-6">
+                <Spin size="small" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {lineas.length === 0 && (
+                  <p className="text-xs text-beck-muted text-center py-4">
+                    No hay productos. Haz clic en "Agregar producto".
+                  </p>
+                )}
+                {lineas.map((linea, idx) => {
+                  const prod = productos.find((p) => p.id === linea.productoId);
+                  const stockDisp = prod ? (prod.stockDisponible ?? prod.stock) : null;
+                  const subtotal = linea.cantidad * linea.precio;
+                  const tieneErrorProducto = erroresForm.some(
+                    (e) => e.includes(`Línea ${idx + 1}`) && e.includes("producto")
+                  );
+                  const tieneErrorCantidad = erroresForm.some(
+                    (e) => e.includes(`Línea ${idx + 1}`) && e.includes("cantidad")
+                  );
+                  const tieneErrorPrecio = erroresForm.some(
+                    (e) => e.includes(`Línea ${idx + 1}`) && e.includes("precio")
+                  );
+
+                  return (
+                    <div
+                      key={linea._key}
+                      className="rounded-lg border border-gray-100 bg-gray-50 p-3"
+                    >
+                      <div
+                        className="grid gap-2 items-end"
+                        style={{ gridTemplateColumns: "1fr 90px 120px 120px 36px" }}
+                      >
+                        <div>
+                          <label className="block text-xs text-beck-muted mb-1">
+                            Producto {idx + 1}
+                          </label>
+                          <Select
+                            showSearch
+                            value={linea.productoId ?? undefined}
+                            onChange={(v) => actualizarLinea(linea._key, { productoId: v })}
+                            options={productoOptions}
+                            placeholder="Seleccionar producto"
+                            className="w-full"
+                            filterOption={(input, opt) =>
+                              (opt?.label as string ?? "")
+                                .toLowerCase()
+                                .includes(input.toLowerCase())
+                            }
+                            status={tieneErrorProducto ? "error" : undefined}
+                            notFoundContent="Sin productos activos"
+                          />
+                          {stockDisp !== null && (
+                            <p className="text-xs text-beck-muted mt-0.5">
+                              Stock disponible: {stockDisp}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs text-beck-muted mb-1">Cantidad</label>
+                          <InputNumber
+                            min={1}
+                            max={stockDisp ?? undefined}
+                            value={linea.cantidad}
+                            onChange={(v) =>
+                              actualizarLinea(linea._key, { cantidad: typeof v === "number" ? v : 1 })
+                            }
+                            className="w-full"
+                            status={tieneErrorCantidad ? "error" : undefined}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-beck-muted mb-1">Precio</label>
+                          <InputNumber
+                            min={0}
+                            value={linea.precio}
+                            onChange={(v) =>
+                              actualizarLinea(linea._key, { precio: typeof v === "number" ? v : 0 })
+                            }
+                            className="w-full"
+                            status={tieneErrorPrecio ? "error" : undefined}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-beck-muted mb-1">Subtotal</label>
+                          <div className="flex h-8 items-center rounded border border-gray-200 bg-white px-2 text-sm font-semibold tabular-nums text-beck-ink">
+                            {formatCLP(subtotal)}
+                          </div>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            type="text"
+                            danger
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            onClick={() => quitarLinea(linea._key)}
+                            disabled={lineas.length === 1}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Total general */}
+          <div className="flex justify-end pt-1">
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2">
+              <span className="text-sm font-medium text-beck-ink">Total general</span>
+              <span className="text-xl font-bold tabular-nums text-firemat-primary">
+                {formatCLP(total)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

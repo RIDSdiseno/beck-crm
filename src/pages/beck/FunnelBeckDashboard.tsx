@@ -107,6 +107,97 @@ const PIE_COLORS = ["#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6", "#06b
 const BAR_COLOR_CANTIDAD = "#6366f1";
 const BAR_COLOR_MONTO = "#f59e0b";
 
+const UNIDAD_NEGOCIO_COLORS: Record<string, string> = {
+  Beck: "#3b82f6",
+  Firemat: "#f97316",
+  Mixto: "#8b5cf6",
+};
+
+type UnidadNegocioItem = { unidadNegocio: string; cantidad: number; montoClp: number };
+
+const SeccionUnidadNegocio: React.FC<{ items: UnidadNegocioItem[] }> = ({ items }) => {
+  if (!items.length) return <EmptyMsg text="Sin datos por unidad de negocio" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {items.map((item) => {
+          const color = UNIDAD_NEGOCIO_COLORS[item.unidadNegocio] ?? "#94a3b8";
+          return (
+            <div
+              key={item.unidadNegocio}
+              className="rounded-xl border p-4 shadow-sm"
+              style={{ borderColor: `${color}50`, backgroundColor: `${color}10` }}
+            >
+              <p
+                className="text-xs font-semibold uppercase tracking-wide"
+                style={{ color }}
+              >
+                {item.unidadNegocio}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-slate-800">
+                {formatNum(item.cantidad)}
+              </p>
+              <p className="text-xs text-slate-500">{formatClp(item.montoClp)}</p>
+            </div>
+          );
+        })}
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={items} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="unidadNegocio" tick={{ fontSize: 12 }} />
+          <YAxis
+            yAxisId="left"
+            tick={{ fontSize: 10 }}
+            allowDecimals={false}
+            width={28}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={{ fontSize: 10 }}
+            width={64}
+            tickFormatter={(v: number) =>
+              v >= 1_000_000
+                ? `$${(v / 1_000_000).toFixed(1)}M`
+                : `$${(v / 1_000).toFixed(0)}K`
+            }
+          />
+          <Tooltip
+            formatter={(v, name) =>
+              name === "montoClp"
+                ? [formatClp(v as number), "Monto CLP"]
+                : [formatNum(v as number), "Cantidad"]
+            }
+          />
+          <Legend iconSize={10} />
+          <Bar
+            yAxisId="left"
+            dataKey="cantidad"
+            name="Cantidad"
+            radius={[3, 3, 0, 0]}
+          >
+            {items.map((item) => (
+              <Cell
+                key={item.unidadNegocio}
+                fill={UNIDAD_NEGOCIO_COLORS[item.unidadNegocio] ?? "#94a3b8"}
+              />
+            ))}
+          </Bar>
+          <Bar
+            yAxisId="right"
+            dataKey="montoClp"
+            name="Monto CLP"
+            fill={BAR_COLOR_MONTO}
+            radius={[3, 3, 0, 0]}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
 // ── Small reusable components ─────────────────────────────────────────────────
 
 type KpiCardProps = {
@@ -213,10 +304,16 @@ const SeccionPipeline: React.FC<{ d: NonNullable<FunnelBeckDashboardData["pipeli
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <Card
+        size="small"
+        title={<span className="font-semibold text-slate-700">Por unidad de negocio</span>}
+        className="rounded-xl border-slate-200 shadow-sm"
+      >
+        <SeccionUnidadNegocio items={d.porUnidadNegocio} />
+      </Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-2">
         {[
           { title: "Por responsable", data: d.porResponsable, key: "vendedor" },
-          { title: "Por unidad de negocio", data: d.porUnidadNegocio, key: "unidadNegocio" },
           { title: "Por origen", data: d.porOrigen, key: "origen" },
           { title: "Por tipo de cliente", data: d.porTipoCliente, key: "tipoCliente" },
           { title: "Top clientes", data: d.porCliente, key: "cliente" },

@@ -172,6 +172,7 @@ interface ApiResponseEnvelope<T> {
   data: T;
   message?: string;
   error?: string;
+  advertencias?: string[];
 }
 
 interface ApiResponseWithTotal<T> {
@@ -690,6 +691,14 @@ export const funnelBeckAPI = {
       `/funnel-beck/${id}/historial-etapas`
     );
     return unwrapApiResponse(response.data);
+  },
+
+  exportar: async (params?: Record<string, string | undefined>): Promise<Blob> => {
+    const response = await api.get<Blob>("/funnel-beck/exportar", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
   },
 };
 
@@ -1477,12 +1486,39 @@ export type ProductoFirematPayload = {
   activo: boolean;
 };
 
+export type CategoriaFirematPayload = {
+  nombre: string;
+};
+
 export const firematCategoriasAPI = {
   listar: async (): Promise<CategoriaFiremat[]> => {
     const response = await api.get<ApiResponseEnvelope<CategoriaFiremat[]>>(
       "/firemat/categorias"
     );
     return unwrapApiResponse(response.data);
+  },
+
+  crear: async (nombre: string): Promise<CategoriaFiremat> => {
+    const response = await api.post<ApiResponseEnvelope<CategoriaFiremat>>(
+      "/firemat/categorias",
+      { nombre }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  editar: async (
+    id: number,
+    nombre: string
+  ): Promise<CategoriaFiremat> => {
+    const response = await api.put<ApiResponseEnvelope<CategoriaFiremat>>(
+      `/firemat/categorias/${id}`,
+      { nombre }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  eliminar: async (id: number): Promise<void> => {
+    await api.delete(`/firemat/categorias/${id}`);
   },
 };
 
@@ -1544,14 +1580,21 @@ export const firematProductosAPI = {
   importarListaPreciosPdf: async (file: File): Promise<ImportarPdfProductosResult> => {
     const formData = new FormData();
     formData.append("file", file, file.name);
-    // Content-Type: false → Axios v1 borra el header del merge, evitando que
-    // transformRequest convierta el FormData a JSON (bug de Axios 1.x con defaults JSON).
-    // El browser setea multipart/form-data; boundary=... automáticamente.
     const response = await api.post<ApiResponseEnvelope<ImportarPdfProductosResult>>(
       "/firemat/productos/importar-lista-precios-pdf",
       formData,
       { headers: { "Content-Type": false } }
     );
+    return unwrapApiResponse(response.data);
+  },
+
+  asignarCategoria: async (
+    productoIds: number[],
+    categoriaId: number
+  ): Promise<{ categoriaId: number; productosActualizados: number }> => {
+    const response = await api.patch<
+      ApiResponseEnvelope<{ categoriaId: number; productosActualizados: number }>
+    >("/firemat/productos/asignar-categoria", { productoIds, categoriaId });
     return unwrapApiResponse(response.data);
   },
 };
@@ -2007,6 +2050,7 @@ export type FirematFunnelOportunidad = {
   esReactivacion?: boolean | null;
   createdAt?: string;
   updatedAt?: string;
+  advertencias?: string[];
 };
 
 export type FirematFunnelPayload = {
@@ -2180,9 +2224,12 @@ export const firematFunnelAPI = {
     const response = await api.post<
       ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
     >("/firemat/funnel", payload);
-    return "success" in response.data
-      ? unwrapApiResponse(response.data)
-      : response.data;
+    if ("success" in response.data) {
+      const result = unwrapApiResponse(response.data);
+      if (response.data.advertencias?.length) result.advertencias = response.data.advertencias;
+      return result;
+    }
+    return response.data;
   },
 
   actualizar: async (
@@ -2192,9 +2239,12 @@ export const firematFunnelAPI = {
     const response = await api.put<
       ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
     >(`/firemat/funnel/${id}`, payload);
-    return "success" in response.data
-      ? unwrapApiResponse(response.data)
-      : response.data;
+    if ("success" in response.data) {
+      const result = unwrapApiResponse(response.data);
+      if (response.data.advertencias?.length) result.advertencias = response.data.advertencias;
+      return result;
+    }
+    return response.data;
   },
 
   cambiarEtapa: async (
@@ -2207,9 +2257,12 @@ export const firematFunnelAPI = {
     const response = await api.patch<
       ApiResponseEnvelope<FirematFunnelOportunidad> | FirematFunnelOportunidad
     >(`/firemat/funnel/${id}/etapa`, body);
-    return "success" in response.data
-      ? unwrapApiResponse(response.data)
-      : response.data;
+    if ("success" in response.data) {
+      const result = unwrapApiResponse(response.data);
+      if (response.data.advertencias?.length) result.advertencias = response.data.advertencias;
+      return result;
+    }
+    return response.data;
   },
 
   listarArchivos: async (
@@ -2398,6 +2451,20 @@ type VentasApiEnvelope = {
   error?: string;
 };
 
+export type FirematVentaDetallePayload = {
+  productoId: number;
+  cantidad: number;
+  precio: number;
+};
+
+export type FirematVentaCrearPayload = {
+  cliente: string;
+  contacto?: string | null;
+  responsable?: string | null;
+  estado?: string;
+  detalle: FirematVentaDetallePayload[];
+};
+
 export const firematVentasAPI = {
   listar: async (params?: {
     q?: string;
@@ -2420,6 +2487,21 @@ export const firematVentasAPI = {
         montoCerrado: 0,
       },
     };
+  },
+
+  crear: async (payload: FirematVentaCrearPayload): Promise<VentaFiremat> => {
+    const res = await api.post<
+      VentasApiEnvelope | { success: boolean; data: VentaFiremat; message?: string; error?: string } | VentaFiremat
+    >("/firemat/ventas", payload);
+    const raw = res.data;
+    if (raw && typeof raw === "object" && "success" in raw) {
+      const envelope = raw as { success: boolean; data: VentaFiremat; message?: string; error?: string };
+      if (!envelope.success) {
+        throw new Error(envelope.message ?? envelope.error ?? "Error al crear venta");
+      }
+      return envelope.data;
+    }
+    return raw as VentaFiremat;
   },
 };
 

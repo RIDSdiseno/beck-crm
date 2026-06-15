@@ -1,4 +1,4 @@
-﻿  import React, { type FormEvent, useEffect, useRef, useState } from "react";
+﻿  import React, { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
   import {
     Button,
     Descriptions,
@@ -1045,6 +1045,18 @@
     values.map((item) => item.trim()).filter(Boolean).join(", ");
 
 
+  const UNIDAD_NEGOCIO_BADGE: Record<string, string> = {
+    Beck: "border-blue-200 bg-blue-50 text-blue-700",
+    Firemat: "border-orange-200 bg-orange-50 text-orange-700",
+    Mixto: "border-purple-200 bg-purple-50 text-purple-700",
+  };
+
+  const getUnidadNegocioBadgeClass = (unidad?: string | null): string =>
+    UNIDAD_NEGOCIO_BADGE[unidad ?? ""] ?? "border-gray-200 bg-gray-100 text-gray-500";
+
+  const getUnidadNegocioLabel = (unidad?: string | null): string =>
+    unidad || "Sin unidad";
+
   const FunnelCard: React.FC<FunnelCardProps> = ({
     deal,
     canEditFunnel,
@@ -1078,6 +1090,12 @@
         <h4 className="font-semibold leading-tight text-beck-ink">
           {deal.nombreProyecto}
         </h4>
+
+        <span
+          className={`mt-0.5 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${getUnidadNegocioBadgeClass(deal.unidadNegocio)}`}
+        >
+          {getUnidadNegocioLabel(deal.unidadNegocio)}
+        </span>
 
         {deal.clienteBeck && (
           <p
@@ -2289,7 +2307,7 @@
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {renderTextInput("direccionProyecto", "Dirección / ubicación del proyecto")}
-                {renderTextInput("unidadNegocio", "Unidad de negocio", { required: true })}
+                {renderSimpleSelect("unidadNegocio", "Unidad de negocio *", ["Beck", "Firemat", "Mixto"])}
                 {renderTextarea("observaciones", "Observaciones generales", "Comentarios u observaciones sobre la oportunidad")}
               </div>
             </div>
@@ -2983,41 +3001,6 @@
     );
   };
 
-  const getCamposCriticosBeck = (draft: FunnelDraft): string[] => {
-    const missing: string[] = [];
-    if (!draft.empresa.trim()) missing.push("Empresa / cliente");
-    if (!draft.rutEmpresa.trim()) missing.push("RUT empresa");
-    if (!draft.nombreProyecto.trim()) missing.push("Nombre del proyecto u oportunidad");
-    if (!draft.nombreContacto.trim()) missing.push("Nombre del contacto");
-    if (!draft.telefonoContacto.trim() && !draft.correoContacto.trim()) missing.push("Teléfono y/o correo");
-    if (!draft.vendedor.trim()) missing.push("Responsable comercial");
-    if (!draft.unidadNegocio.trim()) missing.push("Unidad de negocio");
-    if (!draft.etapa.trim()) missing.push("Etapa del pipeline");
-    if (draft.etapa !== "cerrada" && !draft.proximaAccion.trim()) missing.push("Próxima acción");
-    if (draft.etapa !== "cerrada" && !draft.fechaProximaAccion.trim()) missing.push("Fecha de próxima acción");
-    return missing;
-  };
-
-  type BeckCamposCriticosException = Error & { campos: string[]; beckCamposCriticos: boolean };
-
-  const isBeckCamposCriticosException = (e: unknown): e is BeckCamposCriticosException =>
-    e instanceof Error && (e as BeckCamposCriticosException).beckCamposCriticos === true;
-
-  const isBeckCamposCriticosAxiosError = (err: unknown): boolean => {
-    const e = err as { response?: { status?: number; data?: Record<string, unknown> } };
-    return e?.response?.status === 409 && Array.isArray(e?.response?.data?.advertenciasCamposCriticos);
-  };
-
-  const getBeckCamposCriticosFromAxiosError = (err: unknown): string[] => {
-    const e = err as { response?: { data?: Record<string, unknown> } };
-    return (e?.response?.data?.advertenciasCamposCriticos as string[]) ?? [];
-  };
-
-  const getBeckMessageFromAxiosError = (err: unknown): string => {
-    const e = err as { response?: { data?: Record<string, unknown> } };
-    return String(e?.response?.data?.message ?? "Faltan campos críticos para avanzar.");
-  };
-
   // ── Nuevo formato 409: bloqueos + puedeAvanzar: false ───────────────────────
   type BeckBloqueoException = Error & {
     bloqueos: string[];
@@ -3143,17 +3126,16 @@
     const [asignarJefeModalOpen, setAsignarJefeModalOpen] = useState(false);
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
+    const [exportandoExcel, setExportandoExcel] = useState(false);
+    const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<string>("");
 
-    // Advertencia campos críticos (formato legacy)
-    const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
-    const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
-    const [advertenciaMsg, setAdvertenciaMsg] = useState("");
-    const [advertenciaObs, setAdvertenciaObs] = useState("");
-    const [advertenciaPendingPayload, setAdvertenciaPendingPayload] = useState<FunnelBeckUpsertPayload | null>(null);
-    const [advertenciaPendingId, setAdvertenciaPendingId] = useState<string | null>(null);
-    const [advertenciaMode, setAdvertenciaMode] = useState<"submit" | "cambiarEtapa" | null>(null);
-    const [advertenciaStageDealId, setAdvertenciaStageDealId] = useState<string | null>(null);
-    const [advertenciaStageBody, setAdvertenciaStageBody] = useState<Record<string, unknown> | null>(null);
+    const visibleDeals = useMemo(() => {
+      if (!filterUnidadNegocio) return deals;
+      if (filterUnidadNegocio === "__sin_unidad__")
+        return deals.filter((d) => !d.unidadNegocio);
+      return deals.filter((d) => d.unidadNegocio === filterUnidadNegocio);
+    }, [deals, filterUnidadNegocio]);
+
     // Modal bloqueante (nuevo formato 409 con bloqueos + puedeAvanzar: false)
     const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
     const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
@@ -4127,6 +4109,26 @@
       }));
     };
 
+    const handleExportarExcel = async () => {
+      try {
+        setExportandoExcel(true);
+        const blob = await funnelBeckAPI.exportar();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "pipeline-beck.xlsx";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        message.success("Excel descargado correctamente");
+      } catch {
+        message.error("No se pudo exportar el Excel. Intenta nuevamente.");
+      } finally {
+        setExportandoExcel(false);
+      }
+    };
+
     const handleOpenModal = () => {
       if (!canEditFunnel || dealSaving) return;
 
@@ -4282,13 +4284,6 @@
         throw err;
       }
 
-      if (response.status === 409 && Array.isArray(result.advertenciasCamposCriticos)) {
-        const err = new Error(String(result.message ?? "Faltan campos críticos")) as BeckCamposCriticosException;
-        err.beckCamposCriticos = true;
-        err.campos = result.advertenciasCamposCriticos as string[];
-        throw err;
-      }
-
       if (!response.ok || !result.success) {
         throw new Error(
           String(result.error) || "El backend rechazo la actualizacion de etapa"
@@ -4338,14 +4333,6 @@
           setBloqueoBloqueos(error.bloqueos);
           setBloqueoAdvertencias(error.advertencias);
           setBloqueoModalOpen(true);
-        } else if (isBeckCamposCriticosException(error)) {
-          setAdvertenciaCampos(error.campos);
-          setAdvertenciaMsg(error.message);
-          setAdvertenciaObs("");
-          setAdvertenciaMode("cambiarEtapa");
-          setAdvertenciaStageDealId(dealId);
-          setAdvertenciaStageBody({ etapa: etapaFrontendToBackendMap[etapa] });
-          setAdvertenciaModalOpen(true);
         } else {
           message.error("No se pudo actualizar la etapa");
           console.error("Error al actualizar etapa:", error);
@@ -4386,14 +4373,6 @@
           setBloqueoBloqueos(error.bloqueos);
           setBloqueoAdvertencias(error.advertencias);
           setBloqueoModalOpen(true);
-        } else if (isBeckCamposCriticosException(error)) {
-          setAdvertenciaCampos(error.campos);
-          setAdvertenciaMsg(error.message);
-          setAdvertenciaObs("");
-          setAdvertenciaMode("cambiarEtapa");
-          setAdvertenciaStageDealId(selectedDeal.id);
-          setAdvertenciaStageBody({ etapa: etapaFrontendToBackendMap[nuevaEtapa] });
-          setAdvertenciaModalOpen(true);
         } else {
           message.error(getErrorMessage(error, "No se pudo actualizar la etapa"));
         }
@@ -4521,17 +4500,15 @@
           setBloqueoBloqueos(error.bloqueos);
           setBloqueoAdvertencias(error.advertencias);
           setBloqueoModalOpen(true);
-        } else if (isBeckCamposCriticosException(error)) {
-          setAdvertenciaCampos(error.campos);
-          setAdvertenciaMsg(error.message);
-          setAdvertenciaObs("");
-          setAdvertenciaMode("cambiarEtapa");
-          setAdvertenciaStageDealId(dealEnCierre);
-          setAdvertenciaStageBody(payload as unknown as Record<string, unknown>);
-          setAdvertenciaModalOpen(true);
         } else {
-          console.error("Error al actualizar etapa:", error);
-          message.error(getErrorMessage(error, "No se pudo actualizar el cierre"));
+          const e400 = error as { response?: { status?: number; data?: { error?: string; detalles?: string[] } } };
+          if (e400?.response?.status === 400 && e400?.response?.data?.error === "Motivo inválido") {
+            const detalles = e400.response.data?.detalles?.join(", ") ?? "";
+            message.error(`Motivo inválido: ${detalles}`);
+          } else {
+            console.error("Error al actualizar etapa:", error);
+            message.error(getErrorMessage(error, "No se pudo actualizar el cierre"));
+          }
         }
       }
     };
@@ -4823,28 +4800,6 @@
 
       if (!canEditFunnel || dealSaving || submitLockRef.current) return;
 
-      // Validación client-side de campos críticos (primero, como en Firemat)
-      const camposCriticos = getCamposCriticosBeck(draft);
-      if (camposCriticos.length > 0) {
-        const payload = buildFunnelUpsertPayloadForDraft(draft);
-        setAdvertenciaCampos(camposCriticos);
-        setAdvertenciaMsg("La oportunidad tiene campos críticos sin completar. Puedes corregirlos ahora o justificar el avance.");
-        setAdvertenciaObs("");
-        setAdvertenciaPendingPayload(payload);
-        setAdvertenciaPendingId(funnelModalMode === "edit" ? editingDealId : null);
-        setAdvertenciaMode("submit");
-        setAdvertenciaModalOpen(true);
-        return;
-      }
-
-      const validationErrors = validateFunnelDraft(draft);
-      setShowValidationSummary(true);
-
-      if (Object.keys(validationErrors).length > 0) {
-        setFieldErrors(validationErrors);
-        return;
-      }
-
       submitLockRef.current = true;
       setFieldErrors({});
 
@@ -4852,11 +4807,15 @@
         setDealSaving(true);
 
         const payload = buildFunnelUpsertPayloadForDraft(draft);
+        console.log("[BECK CREATE] submit payload", payload);
+        console.log("[BECK CREATE] calling backend");
 
         const savedRaw =
           funnelModalMode === "create"
             ? await funnelBeckAPI.crear(payload)
             : await funnelBeckAPI.actualizar(editingDealId as string, payload);
+
+        console.log("[BECK CREATE] response", savedRaw);
 
         // Detectar nuevo formato { oportunidad, advertencias } vs formato legacy
         const savedRawRecord = savedRaw as Record<string, unknown>;
@@ -4894,77 +4853,17 @@
           );
         }
       } catch (error) {
+        console.error("[BECK CREATE] error", error);
         if (isBeckBloqueoAxiosError(error)) {
           setBloqueoBloqueos(getBeckBloqueosFromAxiosError(error));
           setBloqueoAdvertencias(getBeckAdvertenciasFromBloqueoAxiosError(error));
           setBloqueoModalOpen(true);
-        } else if (isBeckCamposCriticosAxiosError(error)) {
-          const payload = buildFunnelUpsertPayloadForDraft(draft);
-          setAdvertenciaCampos(getBeckCamposCriticosFromAxiosError(error));
-          setAdvertenciaMsg(getBeckMessageFromAxiosError(error));
-          setAdvertenciaObs("");
-          setAdvertenciaPendingPayload(payload);
-          setAdvertenciaPendingId(funnelModalMode === "edit" ? editingDealId : null);
-          setAdvertenciaMode("submit");
-          setAdvertenciaModalOpen(true);
         } else {
           message.error(getErrorMessage(error, "Error al guardar la oportunidad"));
-          console.error("Error al guardar la oportunidad:", error);
         }
       } finally {
         setDealSaving(false);
         submitLockRef.current = false;
-      }
-    };
-
-    const handleAdvertenciaGuardarBeck = async () => {
-      if (!advertenciaObs.trim()) {
-        void message.error("Debes ingresar una observación para continuar.");
-        return;
-      }
-      setDealSaving(true);
-      try {
-        if (advertenciaMode === "submit" && advertenciaPendingPayload) {
-          const payload: FunnelBeckUpsertPayload = {
-            ...advertenciaPendingPayload,
-            observacionCamposFaltantes: advertenciaObs.trim(),
-          };
-          if (advertenciaPendingId) {
-            await funnelBeckAPI.actualizar(advertenciaPendingId, payload);
-          } else {
-            await funnelBeckAPI.crear(payload);
-          }
-          void message.success("Oportunidad guardada con observación");
-          setAdvertenciaModalOpen(false);
-          setIsModalOpen(false);
-          setFunnelModalMode("create");
-          setEditingDealId(null);
-          setDraft(createEmptyDraft());
-          setFieldErrors({});
-          setShowValidationSummary(false);
-          await loadDeals();
-        } else if (advertenciaMode === "cambiarEtapa" && advertenciaStageDealId && advertenciaStageBody) {
-          const response = await fetchWithAuth(
-            `/funnel-beck/${advertenciaStageDealId}/etapa`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ...advertenciaStageBody, observacionCamposFaltantes: advertenciaObs.trim() }),
-            }
-          );
-          const result = (await response.json()) as { success: boolean; error?: string };
-          if (!response.ok || !result.success) {
-            throw new Error(result.error || "No se pudo actualizar la etapa");
-          }
-          void message.success("Etapa actualizada con observación");
-          setAdvertenciaModalOpen(false);
-          handleCloseCierreModal();
-          await loadDeals();
-        }
-      } catch (error) {
-        void message.error(getErrorMessage(error, "No se pudo guardar"));
-      } finally {
-        setDealSaving(false);
       }
     };
 
@@ -5359,14 +5258,23 @@
         ])}
 
         {renderDetailSection("CIERRE", [
-          { label: "Estado cierre", value: deal.estadoCierre },
+          {
+            label: "Estado cierre",
+            value: deal.estadoCierre
+              ? deal.estadoCierre.charAt(0).toUpperCase() + deal.estadoCierre.slice(1)
+              : deal.etapa === "cerrada"
+              ? "Cerrada"
+              : undefined,
+          },
           { label: "Monto final ganado", value: formatMoneyDetail(deal.montoFinalGanado, deal.moneda) },
           { label: "Fecha cierre", value: formatDateDetail(deal.fechaCierre) },
           { label: "Documento respaldo", value: deal.documentoRespaldo },
           { label: "Archivo documento respaldo", value: renderArchivosDetail("DOCUMENTO_RESPALDO") },
           { label: "Flujo posterior", value: renderFlujoPosteriorDetail(deal.flujoPosterior) },
           { label: "Motivo pérdida", value: deal.motivoPerdida },
+          { label: "Etapa en que se perdió", value: deal.etapaPerdida },
           { label: "Motivo postergación", value: deal.motivoPostergacion },
+          { label: "Fecha tentativa de reactivación", value: formatDateDetail(deal.fechaReactivacion) },
         ])}
 
         {renderDetailSection("CAMPOS ESPECÍFICOS BECK", [
@@ -5442,6 +5350,14 @@
                 </button>
               </div>
 
+              <Button
+                icon={<DownloadOutlined />}
+                loading={exportandoExcel}
+                onClick={() => { void handleExportarExcel(); }}
+              >
+                Exportar Excel
+              </Button>
+
               {canEditFunnel && (
                 <button
                   type="button"
@@ -5458,6 +5374,34 @@
               )}
             </div>
           </div>
+
+          {viewMode === "kanban" && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-beck-border-light px-5 py-2.5">
+              <span className="text-xs font-medium text-slate-500">
+                Unidad de negocio:
+              </span>
+              <Select
+                size="small"
+                style={{ minWidth: 160 }}
+                value={filterUnidadNegocio || undefined}
+                onChange={(v) => setFilterUnidadNegocio(v ?? "")}
+                allowClear
+                placeholder="Todas"
+                options={[
+                  { value: "Beck", label: "Beck" },
+                  { value: "Firemat", label: "Firemat" },
+                  { value: "Mixto", label: "Mixto" },
+                  { value: "__sin_unidad__", label: "Sin unidad" },
+                ]}
+              />
+              {filterUnidadNegocio && (
+                <span className="text-xs text-slate-400">
+                  {visibleDeals.length} oportunidad
+                  {visibleDeals.length !== 1 ? "es" : ""}
+                </span>
+              )}
+            </div>
+          )}
         </section>
 
         {viewMode === "dashboard" ? (
@@ -5491,29 +5435,24 @@
                     .map((e) => ({
                       key: e as string,
                       label: etapasLabel[e],
-                      colDeals: deals.filter((d) => d.etapa === e),
+                      colDeals: visibleDeals.filter((d) => d.etapa === e),
                     }));
 
                   const closedColumns = [
                     {
                       key: "cerrada_ganada",
                       label: "Ganada",
-                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "ganada"),
+                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "ganada"),
                     },
                     {
                       key: "cerrada_perdida",
                       label: "Perdida",
-                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "perdida"),
+                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "perdida"),
                     },
                     {
                       key: "cerrada_postergada",
                       label: "Postergada",
-                      colDeals: deals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "postergada"),
-                    },
-                    {
-                      key: "cerrada",
-                      label: etapasLabel.cerrada,
-                      colDeals: deals.filter((d) => d.etapa === "cerrada" && !d.estadoCierre),
+                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "postergada"),
                     },
                   ];
 
@@ -5661,6 +5600,43 @@
                     {selectedDeal.contactoBeck.nombre}
                     {selectedDeal.contactoBeck.cargo ? ` — ${selectedDeal.contactoBeck.cargo}` : ""}
                     {selectedDeal.contactoBeck.telefono ? ` · ${selectedDeal.contactoBeck.telefono}` : ""}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.etapa === "cerrada" && (
+                  <Descriptions.Item label="Estado de cierre" span={2}>
+                    {selectedDeal.estadoCierre
+                      ? selectedDeal.estadoCierre.charAt(0).toUpperCase() + selectedDeal.estadoCierre.slice(1)
+                      : "Cerrada"}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.motivoPerdida && (
+                  <Descriptions.Item label="Motivo de pérdida" span={2}>
+                    {selectedDeal.motivoPerdida}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.etapaPerdida && (
+                  <Descriptions.Item label="Etapa en que se perdió" span={2}>
+                    {selectedDeal.etapaPerdida}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.motivoPostergacion && (
+                  <Descriptions.Item label="Motivo de postergación" span={2}>
+                    {selectedDeal.motivoPostergacion}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.fechaReactivacion && (
+                  <Descriptions.Item label="Fecha tentativa de reactivación" span={2}>
+                    {formatDisplayDate(selectedDeal.fechaReactivacion)}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.documentoRespaldo && (
+                  <Descriptions.Item label="Documento de respaldo" span={2}>
+                    {selectedDeal.documentoRespaldo}
+                  </Descriptions.Item>
+                )}
+                {selectedDeal.flujoPosterior && (
+                  <Descriptions.Item label="Flujo posterior" span={2}>
+                    {renderFlujoPosteriorDetail(selectedDeal.flujoPosterior) ?? selectedDeal.flujoPosterior}
                   </Descriptions.Item>
                 )}
               </Descriptions>
@@ -6219,58 +6195,6 @@
                 <li key={a}>{a}</li>
               ))}
             </ul>
-          </div>
-        </AntdModal>
-
-        {/* Modal advertencia campos críticos */}
-        <AntdModal
-          title="Faltan campos críticos"
-          open={advertenciaModalOpen}
-          onCancel={() => setAdvertenciaModalOpen(false)}
-          destroyOnClose
-          footer={[
-            <Button
-              key="corregir"
-              onClick={() => setAdvertenciaModalOpen(false)}
-            >
-              Corregir ahora
-            </Button>,
-            <Button
-              key="guardar"
-              loading={dealSaving}
-              style={{ backgroundColor: "#F2C230", borderColor: "#cfad21", color: "#1a1a1a" }}
-              onClick={() => { void handleAdvertenciaGuardarBeck(); }}
-            >
-              Guardar igualmente con observación
-            </Button>,
-          ]}
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-beck-ink">{advertenciaMsg}</p>
-            {advertenciaCampos.length > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-semibold text-beck-muted">Campos con advertencia:</p>
-                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
-                  {advertenciaCampos.map((campo) => (
-                    <li key={campo}>{campo}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div>
-              <p className="mb-1 text-xs font-semibold text-beck-muted">
-                Observación de justificación <span className="text-red-500">*</span>
-              </p>
-              <Input.TextArea
-                rows={4}
-                value={advertenciaObs}
-                onChange={(e) => setAdvertenciaObs(e.target.value)}
-                placeholder="Explica por qué se avanza sin completar los campos críticos..."
-              />
-              {advertenciaObs.trim() === "" && (
-                <p className="mt-1 text-xs text-red-500">Debes ingresar una observación para continuar.</p>
-              )}
-            </div>
           </div>
         </AntdModal>
 

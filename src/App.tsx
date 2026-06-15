@@ -38,6 +38,7 @@ import {
   FirematDashboard,
   FirematFunnel,
   FirematCotizaciones,
+  FirematCategorias,
   FirematProductos,
   FirematInventario,
   FirematVentas,
@@ -615,6 +616,7 @@ const AppShell: React.FC = () => {
                 <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel alertaBell={bellFiremat} />)} />
                 <Route path="/firemat/cotizaciones" element={firematRoute(access.firematCotizaciones, <FirematCotizaciones />)} />
                 <Route path="/firemat/productos" element={firematRoute(access.firematProductos, <FirematProductos />)} />
+                <Route path="/firemat/categorias" element={firematRoute(access.firematCategorias, <FirematCategorias/>)}/>
                 <Route path="/firemat/inventario" element={firematRoute(access.firematInventario, <FirematInventario />)} />
                 <Route path="/firemat/ventas" element={firematRoute(access.firematVentas, <FirematVentas />)} />
                 <Route path="/firemat/clientes" element={firematRoute(access.firematClientes, <FirematClientes />)} />
@@ -623,6 +625,10 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/firemat/usuarios-parametros"
                   element={firematRoute(access.firemat && access.configuracion, <FirematUsuariosParametros />)}
+                />
+                <Route
+                  path="/firemat/configuracion-validacion"
+                  element={firematRoute(access.firemat && access.configuracion, <BeckConfiguracionValidacion />)}
                 />
 
                 <Route path="*" element={<Navigate to={homeRoute} replace />} />

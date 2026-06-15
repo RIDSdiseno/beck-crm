@@ -33,6 +33,13 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
+import {
+  MOTIVOS_DESCARTE,
+  MOTIVOS_PERDIDA,
+  MOTIVOS_POSTERGACION,
+  normalizarMotivoSubmit,
+  parseMotivoSelect,
+} from "../../constants/motivosCierre";
 import FunnelFirematDashboard from "./FunnelFirematDashboard";
 import {
   clientesFirematAPI,
@@ -47,7 +54,6 @@ import {
   type FirematCotizacionTipoCliente,
   type FunnelFirematArchivo,
   type FunnelFirematArchivoTipo,
-  type FirematCamposCriticosError,
   type FirematFunnelEtapa,
   type FirematFunnelOportunidad,
   type FirematFunnelPayload,
@@ -140,11 +146,14 @@ type FunnelFormValues = {
   origen?: string;
   cotizacionId?: string | number;
   motivoPerdida?: string;
+  motivoPerdidaDetalle?: string;
   motivoPostergacion?: string;
+  motivoPostergacionDetalle?: string;
   fechaReactivacion?: Dayjs | null;
   documentoRespaldo?: string;
   flujoPosterior?: string;
   motivoDescarte?: string;
+  motivoDescarteDetalle?: string;
   tipoBroker?: string;
   fechaEstimadaDespacho?: Dayjs | null;
   fechaSeguimientoPostventa?: Dayjs | null;
@@ -156,7 +165,6 @@ type FunnelFormValues = {
   riesgoTecnico?: string;
   comentariosInternos?: string;
   observacionesTecnicas?: string;
-  observacionCamposFaltantes?: string;
 };
 
 const ETAPAS: Array<{
@@ -660,18 +668,6 @@ const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
   );
 };
 
-const getCamposCriticosFaltantes = (payload: FirematFunnelPayload): string[] => {
-  const missing: string[] = [];
-  if (!payload.cliente?.trim()) missing.push("Cliente / Empresa");
-  if (!payload.rutEmpresa?.trim()) missing.push("RUT empresa");
-  if (!payload.nombreOportunidad?.trim()) missing.push("Nombre del proyecto u oportunidad");
-  if (!payload.contacto?.trim()) missing.push("Nombre del contacto");
-  if (!payload.telefono?.trim() && !payload.correo?.trim()) missing.push("Teléfono y/o correo");
-  if (!payload.responsable?.trim()) missing.push("Responsable comercial");
-  if (!payload.unidadNegocio?.trim()) missing.push("Unidad de negocio");
-  return missing;
-};
-
 const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell }) => {
   const location = useLocation();
   const pendingOportunidadId = useRef<string | null>(null);
@@ -681,6 +677,9 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
   const etapaWatch = Form.useWatch("etapa", form);
   const regionWatch = Form.useWatch("region", form);
+  const motivoPerdidaWatch = Form.useWatch("motivoPerdida", form);
+  const motivoPostergacionWatch = Form.useWatch("motivoPostergacion", form);
+  const motivoDescarteWatch = Form.useWatch("motivoDescarte", form);
   const lineasCotizacionRaw = Form.useWatch("lineas", cotizacionForm);
   const lineasCotizacionWatch = useMemo(() => lineasCotizacionRaw ?? [], [lineasCotizacionRaw]);
 
@@ -722,14 +721,11 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
   const [historialEtapasError, setHistorialEtapasError] = useState<string | null>(null);
   const [showClienteSelector, setShowClienteSelector] = useState(false);
-  const [advertenciaModalOpen, setAdvertenciaModalOpen] = useState(false);
-  const [advertenciaCampos, setAdvertenciaCampos] = useState<string[]>([]);
-  const [advertenciaMsg, setAdvertenciaMsg] = useState("");
-  const [advertenciaObs, setAdvertenciaObs] = useState("");
-  const [advertenciaPendingPayload, setAdvertenciaPendingPayload] = useState<FirematFunnelPayload | null>(null);
-  const [advertenciaPendingId, setAdvertenciaPendingId] = useState<string | null>(null);
-  const [advertenciaEtapa, setAdvertenciaEtapa] = useState<FirematFunnelEtapa | null>(null);
-  const [advertenciaMode, setAdvertenciaMode] = useState<"submit" | "cambiarEtapa" | null>(null);
+  const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
+  const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
+  const [bloqueoAdvertencias, setBloqueoAdvertencias] = useState<string[]>([]);
+  const [advertenciaSuccessOpen, setAdvertenciaSuccessOpen] = useState(false);
+  const [advertenciaSuccessItems, setAdvertenciaSuccessItems] = useState<string[]>([]);
 
   const [q, setQ] = useState("");
   const [etapa, setEtapa] = useState<FirematFunnelEtapa | "">("");
@@ -1091,14 +1087,24 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       observaciones: oportunidad.observaciones ?? "",
       origen: oportunidad.origen ?? "CRM",
       cotizacionId: oportunidad.cotizacionId ?? undefined,
-      motivoPerdida: oportunidad.motivoPerdida ?? "",
-      motivoPostergacion: oportunidad.motivoPostergacion ?? "",
+      ...(() => {
+        const p = parseMotivoSelect(oportunidad.motivoPerdida);
+        const post = parseMotivoSelect(oportunidad.motivoPostergacion);
+        const desc = parseMotivoSelect(oportunidad.motivoDescarte);
+        return {
+          motivoPerdida: p.select,
+          motivoPerdidaDetalle: p.detalle,
+          motivoPostergacion: post.select,
+          motivoPostergacionDetalle: post.detalle,
+          motivoDescarte: desc.select,
+          motivoDescarteDetalle: desc.detalle,
+        };
+      })(),
       fechaReactivacion: oportunidad.fechaReactivacion
         ? dayjs(oportunidad.fechaReactivacion)
         : null,
       documentoRespaldo: oportunidad.documentoRespaldo ?? "",
       flujoPosterior: oportunidad.flujoPosterior ?? undefined,
-      motivoDescarte: oportunidad.motivoDescarte ?? "",
       tipoBroker: oportunidad.tipoBroker ?? "",
       fechaEstimadaDespacho: oportunidad.fechaEstimadaDespacho
         ? dayjs(oportunidad.fechaEstimadaDespacho)
@@ -1414,9 +1420,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         : initialEditSection
           ? selected?.cotizacionId ?? null
           : null,
-    motivoPerdida: keepString(values.motivoPerdida, selected?.motivoPerdida),
+    motivoPerdida: keepString(
+      normalizarMotivoSubmit(values.motivoPerdida, values.motivoPerdidaDetalle) || undefined,
+      selected?.motivoPerdida
+    ),
     motivoPostergacion: keepString(
-      values.motivoPostergacion,
+      normalizarMotivoSubmit(values.motivoPostergacion, values.motivoPostergacionDetalle) || undefined,
       selected?.motivoPostergacion
     ),
     fechaReactivacion: keepDate(
@@ -1428,7 +1437,10 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       selected?.documentoRespaldo
     ),
     flujoPosterior: keepString(values.flujoPosterior, selected?.flujoPosterior),
-    motivoDescarte: keepString(values.motivoDescarte, selected?.motivoDescarte),
+    motivoDescarte: keepString(
+      normalizarMotivoSubmit(values.motivoDescarte, values.motivoDescarteDetalle) || undefined,
+      selected?.motivoDescarte
+    ),
     tipoBroker: keepString(values.tipoBroker, selected?.tipoBroker),
     fechaEstimadaDespacho: keepDate(
       values.fechaEstimadaDespacho,
@@ -1446,81 +1458,60 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
     riesgoTecnico: keepString(values.riesgoTecnico, selected?.riesgoTecnico),
     comentariosInternos: keepString(values.comentariosInternos, selected?.comentariosInternos),
     observacionesTecnicas: keepString(values.observacionesTecnicas, selected?.observacionesTecnicas),
-    observacionCamposFaltantes: keepString(values.observacionCamposFaltantes, selected?.observacionCamposFaltantes),
+    observacionCamposFaltantes: selected?.observacionCamposFaltantes ?? null,
   });
 
-  const isCamposCriticosError = (err: unknown): err is { response: { status: 409; data: FirematCamposCriticosError } } => {
-    const e = err as { response?: { status?: number; data?: { advertenciasCamposCriticos?: unknown } } };
-    return e?.response?.status === 409 && Array.isArray(e?.response?.data?.advertenciasCamposCriticos);
+  type FirematBloqueoError = { message: string; bloqueos: string[]; advertencias: string[]; puedeAvanzar: false };
+
+  const isBloqueoError = (err: unknown): err is { response: { status: 409; data: FirematBloqueoError } } => {
+    const e = err as { response?: { status?: number; data?: { bloqueos?: unknown; puedeAvanzar?: unknown } } };
+    return (
+      e?.response?.status === 409 &&
+      (Array.isArray(e?.response?.data?.bloqueos) || e?.response?.data?.puedeAvanzar === false)
+    );
   };
 
-  const openAdvertenciaModal = (err: { response: { status: 409; data: FirematCamposCriticosError } }, mode: "submit" | "cambiarEtapa", pendingPayload: FirematFunnelPayload | null, pendingId: string | null, pendingEtapa: FirematFunnelEtapa | null) => {
-    const { advertenciasCamposCriticos, message: msg } = err.response.data;
-    setAdvertenciaCampos(advertenciasCamposCriticos);
-    setAdvertenciaMsg(msg);
-    setAdvertenciaObs("");
-    setAdvertenciaPendingPayload(pendingPayload);
-    setAdvertenciaPendingId(pendingId);
-    setAdvertenciaEtapa(pendingEtapa);
-    setAdvertenciaMode(mode);
-    setAdvertenciaModalOpen(true);
+  const is409 = (err: unknown): boolean => {
+    const e = err as { response?: { status?: number } };
+    return e?.response?.status === 409;
   };
 
-  const handleAdvertenciaGuardar = async () => {
-    if (!advertenciaObs.trim()) {
-      void message.error("Debes ingresar una observación para continuar.");
-      return;
-    }
-    setSaving(true);
-    try {
-      if (advertenciaMode === "submit" && advertenciaPendingPayload) {
-        const payload: FirematFunnelPayload = { ...advertenciaPendingPayload, observacionCamposFaltantes: advertenciaObs.trim() };
-        if (advertenciaPendingId) {
-          await firematFunnelAPI.actualizar(advertenciaPendingId, payload);
-        } else {
-          await firematFunnelAPI.crear(payload);
-        }
-        void message.success("Oportunidad guardada con observación");
-        setAdvertenciaModalOpen(false);
-        setModalOpen(false);
-        setSelected(null);
-        setInitialEditSection(null);
-        setTargetEtapa(null);
-        setArchivosFiremat([]);
-        limpiarClienteFirematSeleccionado();
-        form.resetFields();
-        await cargar();
-      } else if (advertenciaMode === "cambiarEtapa" && advertenciaPendingId && advertenciaEtapa) {
-        const updated = await firematFunnelAPI.cambiarEtapa(advertenciaPendingId, advertenciaEtapa, advertenciaObs.trim());
-        setOportunidades((current) =>
-          current.map((item) => (item.id === advertenciaPendingId ? { ...item, ...updated } : item))
-        );
-        setSelected((current) => (current?.id === advertenciaPendingId ? updated : current));
-        void message.success("Etapa actualizada con observación");
-        setAdvertenciaModalOpen(false);
-      }
-    } catch {
-      void message.error("No se pudo guardar");
-    } finally {
-      setSaving(false);
-    }
+  const openBloqueoModal = (data: FirematBloqueoError) => {
+    setBloqueoBloqueos(data.bloqueos ?? []);
+    setBloqueoAdvertencias(data.advertencias ?? []);
+    setBloqueoModalOpen(true);
   };
 
   const validateStageRequirements = (values: FunnelFormValues) => {
-    if (values.etapa === "PERDIDA" && !values.motivoPerdida?.trim()) {
-      void message.error("Ingresa el motivo de pérdida");
-      return false;
+    if (values.etapa === "PERDIDA") {
+      if (!values.motivoPerdida?.trim()) {
+        void message.error("Ingresa el motivo de pérdida");
+        return false;
+      }
+      if (values.motivoPerdida === "Otro" && !values.motivoPerdidaDetalle?.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return false;
+      }
     }
-    if (
-      values.etapa === "POSTERGADA" &&
-      (!values.motivoPostergacion?.trim() || !values.fechaReactivacion)
-    ) {
-      void message.error("Ingresa motivo de postergación y fecha de reactivación");
-      return false;
+    if (values.etapa === "POSTERGADA") {
+      if (!values.motivoPostergacion?.trim() || !values.fechaReactivacion) {
+        void message.error("Ingresa motivo de postergación y fecha de reactivación");
+        return false;
+      }
+      if (values.motivoPostergacion === "Otro" && !values.motivoPostergacionDetalle?.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return false;
+      }
     }
-    if (values.etapa === "DESCARTADO" && !values.motivoDescarte?.trim()) {
-      void message.error("Ingresa el motivo de descarte");
-      return false;
+    if (values.etapa === "DESCARTADO") {
+      if (!values.motivoDescarte?.trim()) {
+        void message.error("Ingresa el motivo de descarte");
+        return false;
+      }
+      if (values.motivoDescarte === "Otro" && !values.motivoDescarteDetalle?.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return false;
+      }
     }
     if (values.etapa === "GANADA") {
       if (!values.documentoRespaldo?.trim()) {
@@ -1549,30 +1540,13 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
 
     const payload = buildPayload(values);
 
-    // Validación client-side de campos críticos (crear, edición completa y edición focalizada por etapa)
-    if (modalMode === "crear" || modalMode === "editar") {
-      const camposFaltantes = getCamposCriticosFaltantes(payload);
-      if (camposFaltantes.length > 0) {
-        setAdvertenciaCampos(camposFaltantes);
-        setAdvertenciaMsg("La oportunidad tiene campos críticos sin completar. Puedes corregirlos ahora o justificar el avance.");
-        setAdvertenciaObs("");
-        setAdvertenciaPendingPayload(payload);
-        setAdvertenciaPendingId(selected?.id ?? null);
-        setAdvertenciaEtapa(null);
-        setAdvertenciaMode("submit");
-        setAdvertenciaModalOpen(true);
-        return;
-      }
-    }
-
     setSaving(true);
     try {
+      let result;
       if (modalMode === "editar" && selected) {
-        await firematFunnelAPI.actualizar(selected.id, payload);
-        void message.success("Oportunidad actualizada");
+        result = await firematFunnelAPI.actualizar(selected.id, payload);
       } else {
-        await firematFunnelAPI.crear(payload);
-        void message.success("Oportunidad creada");
+        result = await firematFunnelAPI.crear(payload);
       }
       setModalOpen(false);
       setSelected(null);
@@ -1582,11 +1556,27 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       limpiarClienteFirematSeleccionado();
       form.resetFields();
       await cargar();
-    } catch (error) {
-      if (isCamposCriticosError(error)) {
-        openAdvertenciaModal(error, "submit", payload, selected?.id ?? null, null);
+      if (result?.advertencias?.length) {
+        setAdvertenciaSuccessItems(result.advertencias);
+        setAdvertenciaSuccessOpen(true);
       } else {
-        void message.error("No se pudo guardar la oportunidad");
+        void message.success(modalMode === "editar" ? "Oportunidad actualizada" : "Oportunidad creada");
+      }
+    } catch (error) {
+      if (isBloqueoError(error)) {
+        openBloqueoModal(error.response.data);
+      } else if (is409(error)) {
+        setBloqueoBloqueos(["No se puede completar la operación. Verifica los campos requeridos."]);
+        setBloqueoAdvertencias([]);
+        setBloqueoModalOpen(true);
+      } else {
+        const e400 = error as { response?: { status?: number; data?: { error?: string; detalles?: string[] } } };
+        if (e400?.response?.status === 400 && e400?.response?.data?.error === "Motivo inválido") {
+          const detalles = e400.response.data?.detalles?.join(", ") ?? "";
+          void message.error(`Motivo inválido: ${detalles}`);
+        } else {
+          void message.error("No se pudo guardar la oportunidad");
+        }
       }
     } finally {
       setSaving(false);
@@ -1627,7 +1617,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         current.map((item) => (item.id === record.id ? { ...item, ...updated } : item))
       );
       setSelected((current) => (current?.id === record.id ? updated : current));
-      void message.success("Etapa actualizada");
+      if (updated?.advertencias?.length) {
+        setAdvertenciaSuccessItems(updated.advertencias);
+        setAdvertenciaSuccessOpen(true);
+      } else {
+        void message.success("Etapa actualizada");
+      }
     } catch (error) {
       setOportunidades((current) =>
         current.map((item) =>
@@ -1637,8 +1632,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       setSelected((current) =>
         current?.id === record.id ? { ...current, etapa: etapaOrigen } : current
       );
-      if (isCamposCriticosError(error)) {
-        openAdvertenciaModal(error, "cambiarEtapa", null, record.id, nextEtapa);
+      if (isBloqueoError(error)) {
+        openBloqueoModal(error.response.data);
+      } else if (is409(error)) {
+        setBloqueoBloqueos(["No se puede cambiar la etapa. Verifica los campos requeridos."]);
+        setBloqueoAdvertencias([]);
+        setBloqueoModalOpen(true);
       } else {
         void message.error("No se pudo cambiar la etapa");
       }
@@ -1809,7 +1808,6 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
     riesgoTecnico: oportunidad.riesgoTecnico ?? null,
     comentariosInternos: oportunidad.comentariosInternos ?? null,
     observacionesTecnicas: oportunidad.observacionesTecnicas ?? null,
-    observacionCamposFaltantes: oportunidad.observacionCamposFaltantes ?? null,
   });
 
   const buildCotizacionPayload = (
@@ -2731,31 +2729,63 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   );
 
   const renderPerdidaFields = () => (
-    <Form.Item
-      name="motivoPerdida"
-      label="Motivo perdida"
-      rules={[
-        { required: etapaWatch === "PERDIDA", message: "Ingresa el motivo de perdida" },
-      ]}
-    >
-      <Input.TextArea rows={3} placeholder="Motivo de perdida" />
-    </Form.Item>
+    <>
+      <Form.Item
+        name="motivoPerdida"
+        label="Motivo perdida"
+        rules={[
+          { required: etapaWatch === "PERDIDA", message: "Ingresa el motivo de perdida" },
+        ]}
+      >
+        <Select
+          placeholder="Selecciona motivo de pérdida"
+          options={MOTIVOS_PERDIDA}
+          allowClear
+          showSearch
+          optionFilterProp="label"
+        />
+      </Form.Item>
+      {motivoPerdidaWatch === "Otro" && (
+        <Form.Item
+          name="motivoPerdidaDetalle"
+          rules={[{ required: true, message: "Debe especificar el motivo." }]}
+        >
+          <Input placeholder="Especifique otro motivo" />
+        </Form.Item>
+      )}
+    </>
   );
 
   const renderPostergadaFields = () => (
     <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
-      <Form.Item
-        name="motivoPostergacion"
-        label="Motivo postergacion"
-        rules={[
-          {
-            required: etapaWatch === "POSTERGADA",
-            message: "Ingresa el motivo de postergacion",
-          },
-        ]}
-      >
-        <Input.TextArea rows={3} placeholder="Motivo de postergacion" />
-      </Form.Item>
+      <div>
+        <Form.Item
+          name="motivoPostergacion"
+          label="Motivo postergacion"
+          rules={[
+            {
+              required: etapaWatch === "POSTERGADA",
+              message: "Ingresa el motivo de postergacion",
+            },
+          ]}
+        >
+          <Select
+            placeholder="Selecciona motivo de postergación"
+            options={MOTIVOS_POSTERGACION}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+          />
+        </Form.Item>
+        {motivoPostergacionWatch === "Otro" && (
+          <Form.Item
+            name="motivoPostergacionDetalle"
+            rules={[{ required: true, message: "Debe especificar el motivo." }]}
+          >
+            <Input placeholder="Especifique otro motivo" />
+          </Form.Item>
+        )}
+      </div>
       <Form.Item
         name="fechaReactivacion"
         label="Fecha reactivacion"
@@ -2774,18 +2804,31 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   );
 
   const renderDescartadoFields = () => (
-    <Form.Item
-      name="motivoDescarte"
-      label="Motivo descarte"
-      rules={[
-        { required: etapaWatch === "DESCARTADO", message: "Ingresa el motivo de descarte" },
-      ]}
-    >
-      <Input.TextArea
-        rows={3}
-        placeholder="Motivo por el cual se descarta la oportunidad"
-      />
-    </Form.Item>
+    <>
+      <Form.Item
+        name="motivoDescarte"
+        label="Motivo descarte"
+        rules={[
+          { required: etapaWatch === "DESCARTADO", message: "Ingresa el motivo de descarte" },
+        ]}
+      >
+        <Select
+          placeholder="Selecciona motivo de descarte"
+          options={MOTIVOS_DESCARTE}
+          allowClear
+          showSearch
+          optionFilterProp="label"
+        />
+      </Form.Item>
+      {motivoDescarteWatch === "Otro" && (
+        <Form.Item
+          name="motivoDescarteDetalle"
+          rules={[{ required: true, message: "Debe especificar el motivo." }]}
+        >
+          <Input placeholder="Especifique otro motivo" />
+        </Form.Item>
+      )}
+    </>
   );
 
   const renderReporteriaFields = () => (
@@ -3758,26 +3801,58 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
           </div>
 
           {etapaWatch === "PERDIDA" && (
-            <Form.Item
-              name="motivoPerdida"
-              label="Motivo pérdida"
-              rules={[{ required: true, message: "Ingresa el motivo de pérdida" }]}
-            >
-              <Input.TextArea rows={3} placeholder="Motivo de pérdida" />
-            </Form.Item>
+            <>
+              <Form.Item
+                name="motivoPerdida"
+                label="Motivo pérdida"
+                rules={[{ required: true, message: "Ingresa el motivo de pérdida" }]}
+              >
+                <Select
+                  placeholder="Selecciona motivo de pérdida"
+                  options={MOTIVOS_PERDIDA}
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+              {motivoPerdidaWatch === "Otro" && (
+                <Form.Item
+                  name="motivoPerdidaDetalle"
+                  rules={[{ required: true, message: "Debe especificar el motivo." }]}
+                >
+                  <Input placeholder="Especifique otro motivo" />
+                </Form.Item>
+              )}
+            </>
           )}
 
           {etapaWatch === "POSTERGADA" && (
             <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
-              <Form.Item
-                name="motivoPostergacion"
-                label="Motivo postergación"
-                rules={[
-                  { required: true, message: "Ingresa el motivo de postergación" },
-                ]}
-              >
-                <Input.TextArea rows={3} placeholder="Motivo de postergación" />
-              </Form.Item>
+              <div>
+                <Form.Item
+                  name="motivoPostergacion"
+                  label="Motivo postergación"
+                  rules={[
+                    { required: true, message: "Ingresa el motivo de postergación" },
+                  ]}
+                >
+                  <Select
+                    placeholder="Selecciona motivo de postergación"
+                    options={MOTIVOS_POSTERGACION}
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                  />
+                </Form.Item>
+                {motivoPostergacionWatch === "Otro" && (
+                  <Form.Item
+                    name="motivoPostergacionDetalle"
+                    rules={[{ required: true, message: "Debe especificar el motivo." }]}
+                  >
+                    <Input placeholder="Especifique otro motivo" />
+                  </Form.Item>
+                )}
+              </div>
               <Form.Item
                 name="fechaReactivacion"
                 label="Fecha reactivación"
@@ -3814,16 +3889,29 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
           )}
 
           {etapaWatch === "DESCARTADO" && (
-            <Form.Item
-              name="motivoDescarte"
-              label="Motivo descarte"
-              rules={[{ required: true, message: "Ingresa el motivo de descarte" }]}
-            >
-              <Input.TextArea
-                rows={3}
-                placeholder="Motivo por el cual se descarta la oportunidad"
-              />
-            </Form.Item>
+            <>
+              <Form.Item
+                name="motivoDescarte"
+                label="Motivo descarte"
+                rules={[{ required: true, message: "Ingresa el motivo de descarte" }]}
+              >
+                <Select
+                  placeholder="Selecciona motivo de descarte"
+                  options={MOTIVOS_DESCARTE}
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+              {motivoDescarteWatch === "Otro" && (
+                <Form.Item
+                  name="motivoDescarteDetalle"
+                  rules={[{ required: true, message: "Debe especificar el motivo." }]}
+                >
+                  <Input placeholder="Especifique otro motivo" />
+                </Form.Item>
+              )}
+            </>
           )}
 
           {modalMode === "editar" && selected && renderArchivosEdicionFields()}
@@ -3974,11 +4062,6 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
             {selected.observacionesTecnicas && (
               <Descriptions.Item label="Observaciones técnicas" span={2}>
                 {selected.observacionesTecnicas}
-              </Descriptions.Item>
-            )}
-            {selected.observacionCamposFaltantes && (
-              <Descriptions.Item label="Observación campos faltantes" span={2}>
-                {selected.observacionCamposFaltantes}
               </Descriptions.Item>
             )}
           </Descriptions>
@@ -4315,57 +4398,74 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         </Form>
       </Modal>
 
-      {/* Modal advertencia campos críticos (respuesta 409) */}
+      {/* Modal bloqueo — 409 con bloqueos y puedeAvanzar: false */}
       <Modal
-        title="Faltan campos críticos"
-        open={advertenciaModalOpen}
-        onCancel={() => setAdvertenciaModalOpen(false)}
+        title="No se puede avanzar"
+        open={bloqueoModalOpen}
+        onCancel={() => setBloqueoModalOpen(false)}
         destroyOnClose
         footer={[
           <Button
-            key="corregir"
-            onClick={() => setAdvertenciaModalOpen(false)}
+            key="entendido"
+            className="firemat-action-button"
+            onClick={() => setBloqueoModalOpen(false)}
           >
-            Corregir ahora
-          </Button>,
-          <Button
-            key="guardar"
-            loading={saving}
-            style={{ backgroundColor: "#e63c1e", borderColor: "#e63c1e", color: "#fff" }}
-            onClick={() => void handleAdvertenciaGuardar()}
-          >
-            Guardar igualmente con observación
+            Entendido
           </Button>,
         ]}
       >
         <div className="space-y-4">
-          <p className="text-sm text-beck-ink">{advertenciaMsg}</p>
-          {advertenciaCampos.length > 0 && (
+          {bloqueoBloqueos.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-semibold text-beck-muted">Campos con advertencia:</p>
+              <p className="mb-1 text-xs font-semibold text-red-600">Reglas bloqueantes:</p>
               <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
-                {advertenciaCampos.map((campo) => (
-                  <li key={campo}>{campo}</li>
+                {bloqueoBloqueos.map((b, i) => (
+                  <li key={i}>{b}</li>
                 ))}
               </ul>
             </div>
           )}
-          <div>
-            <p className="mb-1 text-xs font-semibold text-beck-muted">
-              Observación de justificación <span className="text-red-500">*</span>
-            </p>
-            <Input.TextArea
-              rows={4}
-              value={advertenciaObs}
-              onChange={(e) => setAdvertenciaObs(e.target.value)}
-              placeholder="Explica por qué se avanza sin completar los campos críticos..."
-            />
-            {advertenciaObs.trim() === "" && (
-              <p className="mt-1 text-xs text-red-500">Debes ingresar una observación para continuar.</p>
-            )}
-          </div>
+          {bloqueoAdvertencias.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-amber-600">Advertencias:</p>
+              <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                {bloqueoAdvertencias.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </Modal>
+
+      {/* Modal advertencias de éxito — 200/201 con advertencias */}
+      <Modal
+        title="Guardado con advertencias"
+        open={advertenciaSuccessOpen}
+        onCancel={() => setAdvertenciaSuccessOpen(false)}
+        destroyOnClose
+        footer={[
+          <Button
+            key="ok"
+            className="firemat-action-button"
+            onClick={() => setAdvertenciaSuccessOpen(false)}
+          >
+            Entendido
+          </Button>,
+        ]}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-beck-ink">La operación fue exitosa pero se detectaron las siguientes advertencias:</p>
+          {advertenciaSuccessItems.length > 0 && (
+            <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+              {advertenciaSuccessItems.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+
     </div>
   );
 };

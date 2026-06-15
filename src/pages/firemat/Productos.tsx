@@ -22,6 +22,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  TagsOutlined,
 } from "@ant-design/icons";
 import {
   firematCategoriasAPI,
@@ -377,6 +378,189 @@ const ResultadoImportProductos: React.FC<{ result: ImportarPdfProductosResult }>
   </div>
 );
 
+/* ────────────── Modal asignación masiva de categoría ────────────── */
+const ModalAsignarCategorias: React.FC<{
+  open: boolean;
+  productos: ProductoFiremat[];
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ open, productos, onClose, onSaved }) => {
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
+  const [loadingCats, setLoadingCats] = useState(false);
+  const [categoriaId, setCategoriaId] = useState<number | undefined>();
+  const [asignando, setAsignando] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedRowKeys([]);
+    setCategoriaId(undefined);
+    setSearchQ("");
+    setLoadingCats(true);
+    firematCategoriasAPI
+      .listar()
+      .then((data) => setCategorias(data))
+      .catch(() => setCategorias([]))
+      .finally(() => setLoadingCats(false));
+  }, [open]);
+
+  const productosFiltrados = productos.filter((p) => {
+    if (!searchQ.trim()) return true;
+    const q = searchQ.toLowerCase();
+    return (
+      p.nombre.toLowerCase().includes(q) ||
+      (p.sku ?? "").toLowerCase().includes(q) ||
+      (p.descripcion ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const handleAsignar = async () => {
+    if (!categoriaId || selectedRowKeys.length === 0) return;
+    try {
+      setAsignando(true);
+      const productoIds = selectedRowKeys.map((k) => Number(k));
+      const result = await firematProductosAPI.asignarCategoria(productoIds, categoriaId);
+      void message.success(
+        `Categoría asignada correctamente a ${result.productosActualizados} producto${result.productosActualizados !== 1 ? "s" : ""}`
+      );
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string; message?: string } } };
+      void message.error(
+        apiErr.response?.data?.error ||
+          apiErr.response?.data?.message ||
+          "No se pudo asignar la categoría"
+      );
+    } finally {
+      setAsignando(false);
+    }
+  };
+
+  const columnasModal: ColumnsType<ProductoFiremat> = [
+    {
+      title: "SKU",
+      dataIndex: "sku",
+      key: "sku",
+      width: 120,
+      render: (v: string | null | undefined) =>
+        v ? <span className="font-mono text-xs">{v}</span> : <span className="text-beck-muted">—</span>,
+    },
+    {
+      title: "Producto",
+      key: "producto",
+      render: (_, row) => (
+        <div>
+          <p className="font-medium text-beck-ink leading-tight">{row.nombre}</p>
+          {row.descripcion && (
+            <p className="text-xs text-beck-muted mt-0.5 leading-snug">{row.descripcion}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "Categoría actual",
+      dataIndex: "categoria",
+      key: "categoria",
+      width: 150,
+      render: (v: string | null | undefined) =>
+        v ? <Tag>{v}</Tag> : <span className="text-beck-muted text-xs">Sin categoría</span>,
+    },
+  ];
+
+  return (
+    <Modal
+      title={
+        <div className="flex items-center gap-2">
+          <TagsOutlined />
+          <span>Asignar categoría masiva</span>
+        </div>
+      }
+      open={open}
+      onCancel={() => {
+        if (asignando) return;
+        onClose();
+      }}
+      width={860}
+      footer={null}
+      destroyOnClose
+    >
+      <div className="space-y-4 pt-2">
+        <Input
+          prefix={<SearchOutlined className="text-beck-muted" />}
+          placeholder="Buscar por nombre, SKU o descripción"
+          value={searchQ}
+          onChange={(e) => setSearchQ(e.target.value)}
+          allowClear
+        />
+
+        <div className="text-xs text-beck-muted mb-1">
+          {selectedRowKeys.length > 0
+            ? <span className="font-semibold text-beck-ink">{selectedRowKeys.length} producto{selectedRowKeys.length !== 1 ? "s" : ""} seleccionado{selectedRowKeys.length !== 1 ? "s" : ""}</span>
+            : "Selecciona uno o más productos con los checkboxes"}
+        </div>
+        <Table<ProductoFiremat>
+          dataSource={productosFiltrados}
+          columns={columnasModal}
+          rowKey="id"
+          size="small"
+          scroll={{ y: 280 }}
+          rowSelection={{
+            type: "checkbox",
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+            preserveSelectedRowKeys: true,
+          }}
+          pagination={{ pageSize: 50, hideOnSinglePage: true, showTotal: (t) => `${t} productos` }}
+        />
+
+        <div className="flex flex-col gap-2 pt-3 border-t border-slate-200">
+          <Select
+            style={{ width: "100%" }}
+            placeholder="Seleccionar categoría a asignar"
+            loading={loadingCats}
+            value={categoriaId}
+            onChange={(v) => setCategoriaId(v)}
+            showSearch
+            filterOption={(input, opt) =>
+              String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
+            }
+            options={categorias.map((c) => ({ label: c.nombre, value: c.id }))}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-beck-muted">
+              {selectedRowKeys.length === 0
+                ? "Ningún producto seleccionado"
+                : <span className="font-semibold text-beck-ink">{selectedRowKeys.length} producto{selectedRowKeys.length !== 1 ? "s" : ""} seleccionado{selectedRowKeys.length !== 1 ? "s" : ""}</span>}
+            </span>
+            <Button
+              className="firemat-action-button"
+              type="primary"
+              icon={<TagsOutlined />}
+              loading={asignando}
+              disabled={selectedRowKeys.length === 0 || !categoriaId}
+              onClick={() => {
+                if (selectedRowKeys.length === 0) {
+                  void message.warning("Selecciona al menos un producto");
+                  return;
+                }
+                if (!categoriaId) {
+                  void message.warning("Selecciona una categoría");
+                  return;
+                }
+                void handleAsignar();
+              }}
+            >
+              Asignar a {selectedRowKeys.length > 0 ? `${selectedRowKeys.length} producto${selectedRowKeys.length !== 1 ? "s" : ""}` : "productos"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 /* ────────────── Componente principal ────────────── */
 const FirematProductos: React.FC = () => {
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
@@ -384,17 +568,22 @@ const FirematProductos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [activo, setActivo] = useState<"" | "true" | "false">("");
+  const [categoriaFiltroId, setCategoriaFiltroId] = useState<number | undefined>();
+  const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
+  const [loadingCats, setLoadingCats] = useState(false);
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [seleccionado, setSeleccionado] = useState<ProductoFiremat | null>(null);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [modalAsignarOpen, setModalAsignarOpen] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
       setLoading(true);
-      const params: { q?: string; activo?: boolean } = {};
+      const params: { q?: string; activo?: boolean; categoriaId?: number } = {};
       if (q.trim()) params.q = q.trim();
       if (activo !== "") params.activo = activo === "true";
+      if (categoriaFiltroId !== undefined) params.categoriaId = categoriaFiltroId;
       const result = await firematProductosAPI.listar(params);
       setProductos(result.data);
       setTotal(result.total);
@@ -404,15 +593,24 @@ const FirematProductos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [q, activo]);
+  }, [q, activo, categoriaFiltroId]);
 
   useEffect(() => {
     void cargar();
   }, [cargar]);
 
+  useEffect(() => {
+    setLoadingCats(true);
+    firematCategoriasAPI.listar()
+      .then((data) => setCategorias(data))
+      .catch(() => setCategorias([]))
+      .finally(() => setLoadingCats(false));
+  }, []);
+
   const limpiar = () => {
     setQ("");
     setActivo("");
+    setCategoriaFiltroId(undefined);
   };
 
   const abrirCrear = () => {
@@ -445,7 +643,7 @@ const FirematProductos: React.FC = () => {
     }
   };
 
-  const hayFiltros = q !== "" || activo !== "";
+  const hayFiltros = q !== "" || activo !== "" || categoriaFiltroId !== undefined;
 
   const columns: ColumnsType<ProductoFiremat> = [
     {
@@ -637,6 +835,13 @@ const FirematProductos: React.FC = () => {
             </Button>
             <Button
               className="firemat-action-button"
+              icon={<TagsOutlined />}
+              onClick={() => setModalAsignarOpen(true)}
+            >
+              Asignar categoría
+            </Button>
+            <Button
+              className="firemat-action-button"
               icon={<ReloadOutlined />}
               onClick={() => void cargar()}
               loading={loading}
@@ -664,6 +869,20 @@ const FirematProductos: React.FC = () => {
             options={ESTADO_FILTER_OPTIONS}
             style={{ width: 140 }}
             className="!w-full sm:!w-[140px]"
+          />
+          <Select
+            value={categoriaFiltroId ?? null}
+            onChange={(v: number | null) => setCategoriaFiltroId(v ?? undefined)}
+            loading={loadingCats}
+            placeholder="Todas las categorías"
+            allowClear
+            showSearch
+            filterOption={(input, opt) =>
+              String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
+            }
+            style={{ width: 180 }}
+            className="!w-full sm:!w-[180px]"
+            options={categorias.map((c) => ({ label: c.nombre, value: c.id }))}
           />
           {hayFiltros && (
             <Button icon={<ClearOutlined />} onClick={limpiar} size="middle">
@@ -715,6 +934,13 @@ const FirematProductos: React.FC = () => {
         onImportado={() => void cargar()}
         importar={firematProductosAPI.importarListaPreciosPdf}
         renderResultado={(result) => <ResultadoImportProductos result={result} />}
+      />
+
+      <ModalAsignarCategorias
+        open={modalAsignarOpen}
+        productos={productos}
+        onClose={() => setModalAsignarOpen(false)}
+        onSaved={() => void cargar()}
       />
     </div>
   );

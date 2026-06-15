@@ -158,6 +158,22 @@ body {
   color: var(--beck-ink) !important;
 }
 
+/* Danger primary buttons always render red regardless of theme wrapper
+   (Ant Design modals/popovers render outside .theme-firemat) */
+.ant-btn-primary.ant-btn-dangerous,
+.ant-btn-primary.ant-btn-dangerous:focus {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.ant-btn-primary.ant-btn-dangerous:hover,
+.ant-btn-primary.ant-btn-dangerous:active {
+  background-color: #b91c1c !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
 .beck-obra-filter-select.ant-select {
   width: 320px !important;
   min-width: 280px !important;

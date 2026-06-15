@@ -3,17 +3,18 @@ import { api } from "../services/api";
 export interface ConfiguracionValidacion {
   id: number;
   modulo: string;
+  etapa?: string | null;
   regla: string;
   campo: string;
   etiqueta: string;
-  nivel: "BLOQUEANTE" | "ADVERTENCIA";
+  nivel: "BLOQUEANTE" | "ADVERTENCIA" | "IGNORAR";
   activo: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface UpdateConfiguracionValidacionPayload {
-  nivel?: "BLOQUEANTE" | "ADVERTENCIA";
+  nivel?: "BLOQUEANTE" | "ADVERTENCIA" | "IGNORAR";
   activo?: boolean;
 }
 

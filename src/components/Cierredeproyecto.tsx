@@ -1,5 +1,11 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Select, Typography } from "antd";
+import {
+  MOTIVOS_PERDIDA,
+  MOTIVOS_POSTERGACION,
+  normalizarMotivoSubmit,
+  parseMotivoSelect,
+} from "../constants/motivosCierre";
 
 type CierreDeProyectoProps = {
   open: boolean;
@@ -75,7 +81,66 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const [selectPerdida, setSelectPerdida] = useState("");
+  const [detallePerdida, setDetallePerdida] = useState("");
+  const [selectPostergacion, setSelectPostergacion] = useState("");
+  const [detallePostergacion, setDetallePostergacion] = useState("");
+
+  // Cuando se abre el modal, sincronizar desde los valores actuales del padre
+  useEffect(() => {
+    if (open) {
+      const p = parseMotivoSelect(motivoPerdida);
+      setSelectPerdida(p.select);
+      setDetallePerdida(p.detalle);
+      const post = parseMotivoSelect(motivoPostergacion);
+      setSelectPostergacion(post.select);
+      setDetallePostergacion(post.detalle);
+    }
+    // Solo sincronizar al abrir el modal (no mientras el usuario está editando)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   if (!open) return null;
+
+  const handleSelectPerdida = (value: string) => {
+    setSelectPerdida(value);
+    if (value !== "Otro") {
+      setDetallePerdida("");
+      onChangeMotivo(value);
+    } else {
+      onChangeMotivo("");
+    }
+  };
+
+  const handleDetallePerdida = (value: string) => {
+    setDetallePerdida(value);
+    onChangeMotivo(normalizarMotivoSubmit("Otro", value));
+  };
+
+  const handleSelectPostergacion = (value: string) => {
+    setSelectPostergacion(value);
+    if (value !== "Otro") {
+      setDetallePostergacion("");
+      onChangeMotivoPostergacion(value);
+    } else {
+      onChangeMotivoPostergacion("");
+    }
+  };
+
+  const handleDetallePostergacion = (value: string) => {
+    setDetallePostergacion(value);
+    onChangeMotivoPostergacion(normalizarMotivoSubmit("Otro", value));
+  };
+
+  const handleConfirm = () => {
+    if (estadoCierre === "perdida" && selectPerdida === "Otro" && !detallePerdida.trim()) {
+      return;
+    }
+    if (estadoCierre === "postergada" && selectPostergacion === "Otro" && !detallePostergacion.trim()) {
+      return;
+    }
+    onConfirm();
+  };
 
   const flujoPosteriorValues = parseFlujoPosterior(flujoPosterior);
   const optionValues = new Set<string>(flujoPosteriorOptions);
@@ -85,6 +150,9 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
       .filter((value) => !optionValues.has(value))
       .map((value) => ({ value, label: value })),
   ];
+
+  const showErrorPerdida = estadoCierre === "perdida" && selectPerdida === "Otro" && !detallePerdida.trim();
+  const showErrorPostergacion = estadoCierre === "postergada" && selectPostergacion === "Otro" && !detallePostergacion.trim();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -137,14 +205,30 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
         </div>
 
         {estadoCierre === "perdida" && (
-          <div className="space-y-3">
-            <textarea
-              placeholder="Motivo de la perdida"
-              value={motivoPerdida}
-              onChange={(e) => onChangeMotivo(e.target.value)}
-              className={inputCls}
-              rows={3}
+          <div className="space-y-2">
+            <Select
+              value={selectPerdida || undefined}
+              onChange={handleSelectPerdida}
+              placeholder="Selecciona motivo de pérdida"
+              options={MOTIVOS_PERDIDA}
+              className="w-full"
+              allowClear
+              showSearch
+              optionFilterProp="label"
             />
+            {selectPerdida === "Otro" && (
+              <div>
+                <input
+                  value={detallePerdida}
+                  onChange={(e) => handleDetallePerdida(e.target.value)}
+                  placeholder="Especifique otro motivo"
+                  className={inputCls}
+                />
+                {showErrorPerdida && (
+                  <p className="mt-1 text-xs text-red-500">Debe especificar el motivo.</p>
+                )}
+              </div>
+            )}
             <input
               type="text"
               placeholder="Etapa en que se perdio"
@@ -156,14 +240,30 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
         )}
 
         {estadoCierre === "postergada" && (
-          <div className="space-y-3">
-            <textarea
-              placeholder="Motivo de la postergacion"
-              value={motivoPostergacion}
-              onChange={(e) => onChangeMotivoPostergacion(e.target.value)}
-              className={inputCls}
-              rows={3}
+          <div className="space-y-2">
+            <Select
+              value={selectPostergacion || undefined}
+              onChange={handleSelectPostergacion}
+              placeholder="Selecciona motivo de postergación"
+              options={MOTIVOS_POSTERGACION}
+              className="w-full"
+              allowClear
+              showSearch
+              optionFilterProp="label"
             />
+            {selectPostergacion === "Otro" && (
+              <div>
+                <input
+                  value={detallePostergacion}
+                  onChange={(e) => handleDetallePostergacion(e.target.value)}
+                  placeholder="Especifique otro motivo"
+                  className={inputCls}
+                />
+                {showErrorPostergacion && (
+                  <p className="mt-1 text-xs text-red-500">Debe especificar el motivo.</p>
+                )}
+              </div>
+            )}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-600">
                 Fecha de reactivacion
@@ -238,7 +338,7 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
           <button type="button" onClick={onCancel} className="beck-btn-secondary">
             Cancelar
           </button>
-          <button type="button" onClick={onConfirm} className="beck-btn-primary">
+          <button type="button" onClick={handleConfirm} className="beck-btn-primary">
             Confirmar cierre
           </button>
         </div>
