@@ -8,7 +8,7 @@ import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
 } from "../../components/RegistroDetalleModal";
 import type { RegistroSello } from "../../types/registroSello";
-import { api, obrasAPI, type Obra } from "../../services/api";
+import { api, obrasAPI, registrosAPI, type Obra } from "../../services/api";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -425,6 +425,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [motivoRechazoInput, setMotivoRechazoInput] = useState("");
   const [motivoRechazoError, setMotivoRechazoError] = useState(false);
   const [savingRechazo, setSavingRechazo] = useState(false);
+  const [resumenKpis, setResumenKpis] = useState<{ pendientes: number; enRevision: number; validados: number; rechazados: number; total: number } | null>(null);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
@@ -465,6 +466,19 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     void cargarObras();
   }, [cargarObras]);
 
+  const cargarResumen = useCallback(async () => {
+    try {
+      const data = await registrosAPI.resumen();
+      setResumenKpis(data);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarResumen();
+  }, [cargarResumen]);
+
   const obraOptions = useMemo(
     () =>
       obras
@@ -504,12 +518,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   };
 
   const resumen = useMemo(() => ({
-    pendientes: registros.filter((r) => normalizeEstado(r.estado) === "pendiente").length,
-    enRevision: registros.filter((r) => normalizeEstado(r.estado) === "en_revision").length,
-    validadosHoy: registros.filter((r) => normalizeEstado(r.estado) === "validado").length,
-    rechazados: registros.filter((r) => normalizeEstado(r.estado) === "rechazado").length,
-    total: registros.length,
-  }), [registros]);
+    pendientes: resumenKpis?.pendientes ?? 0,
+    enRevision: resumenKpis?.enRevision ?? 0,
+    validadosHoy: resumenKpis?.validados ?? 0,
+    rechazados: resumenKpis?.rechazados ?? 0,
+    total: resumenKpis?.total ?? 0,
+  }), [resumenKpis]);
 
   const handleCambiarEstado = async (
     record: RegistroSello,
@@ -522,7 +536,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       setRegistros((prev) =>
         prev.map((r) => String(r.id) === id ? { ...r, estado } : r)
       );
-      await cargarRegistros();
+      await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success(`Registro ${getEstadoLabel(estado).toLowerCase()}`);
     } catch (error) {
       console.error(error);
@@ -537,7 +551,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     setChangingEstadoId(id);
     try {
       await api.patch(`/registros/${id}/iniciar-revision`);
-      await cargarRegistros();
+      await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success("Revisión iniciada");
     } catch (error) {
       const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
@@ -572,7 +586,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       });
       setRechazandoRegistro(null);
       setMotivoRechazoInput("");
-      await cargarRegistros();
+      await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success("Registro rechazado. Se creó una copia para corrección.");
     } catch (error) {
       console.error(error);
@@ -643,7 +657,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       );
       setRegistroDetalle(actualizado);
       setDetalleMode("view");
-      await cargarRegistros();
+      await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success("Registro actualizado correctamente");
     } catch (error) {
       console.error(error);

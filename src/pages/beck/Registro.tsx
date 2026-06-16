@@ -1493,8 +1493,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const handleSubmit = (values: NuevoRegistroValues) => {
     const obra = loadObras().find((o) => o.id === values.obraId);
-    const factor = Number(values.factorHolgura) as 1 | 1.2 | 1.4 | 1.8;
+    const holgura = Number(values.holguraCm) || 0;
+    const factor: 1 | 1.2 | 1.4 | 1.8 =
+      holgura <= 2 ? 1 : holgura <= 4 ? 1.2 : holgura <= 6 ? 1.4 : 1.8;
     const cantidad = Number(values.cantidadSellos || 0);
+    const accesibilidad = Number(values.cieloModular || 1);
+    const factorAislacion = Number(values.aislacion || 1);
+    const cantidadConFactores = cantidad * factor * accesibilidad;
+    const cantidadAislacion = cantidadConFactores * factorAislacion;
+    const repTabique = Number(values.reparacionTabique || 0);
+    const cantidadFinalCalc = cantidadAislacion + repTabique;
 
     const nuevo: RegistroSello = {
       id: data.length + 1,
@@ -1521,13 +1529,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       holguraCm: values.holguraCm,
       factorHolgura: factor,
       cieloModular: values.cieloModular,
-      factorPorHolguras: values.factorHolgura,
-      cantidadSellosConFactores: values.cantidadSellosConFactores ?? cantidad * factor,
-      aislacion: values.aislacion ?? null,
-      cantidadSellosAislacion: values.cantidadSellosAislacion ?? null,
-      reparacionTabique: values.reparacionTabique ?? null,
-      cantidadFinal: values.cantidadFinal ?? null,
-      cantidadSellosConFactor: values.cantidadSellosConFactores ?? cantidad * factor,
+      factorPorHolguras: factor,
+      cantidadSellosConFactores: cantidadConFactores,
+      aislacion: factorAislacion,
+      cantidadSellosAislacion: cantidadAislacion,
+      reparacionTabique: repTabique,
+      cantidadFinal: cantidadFinalCalc,
+      cantidadSellosConFactor: cantidadConFactores,
       observaciones: values.observaciones,
     };
 

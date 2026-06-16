@@ -32,11 +32,13 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "../../context/useAuth";
 import {
+  clientesBeckAPI,
   configuracionCamposRegistroAPI,
   funnelBeckAPI,
   itemizadoOpcionesAPI,
   obrasAPI,
   type CampoConfiguracionRegistro,
+  type ClienteBeck,
   type ColorConfiguracionCampoRegistro,
   type FunnelBeckGanadaSinObra,
   type ItemizadoImportarResult,
@@ -59,6 +61,7 @@ type ObraFormValues = {
   cliente: string;
   estado: EstadoForm;
   funnelBeckId?: string;
+  clienteBeckId?: string | null;
 };
 
 type RegistroRoleBlock = {
@@ -394,14 +397,18 @@ const Obras: React.FC = () => {
   const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
   const [obraSeleccionada, setObraSeleccionada] = useState<Obra | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadingEdicion, setLoadingEdicion] = useState(false);
   const [updatingEstadoId, setUpdatingEstadoId] = useState<string | null>(null);
   const [oportunidadesGanadas, setOportunidadesGanadas] = useState<
     FunnelBeckGanadaSinObra[]
   >([]);
   const [loadingOportunidades, setLoadingOportunidades] = useState(false);
+  const [clientesBeck, setClientesBeck] = useState<ClienteBeck[]>([]);
+  const [loadingClientesBeck, setLoadingClientesBeck] = useState(false);
   const [registroDrawerOpen, setRegistroDrawerOpen] = useState(false);
   const [obraRegistro, setObraRegistro] = useState<Obra | null>(null);
   const [itemizadoDrawerOpen, setItemizadoDrawerOpen] = useState(false);
+  const [obraItemizado, setObraItemizado] = useState<Obra | null>(null);
   const [registroConfig, setRegistroConfig] = useState<
     Record<RolConfiguracionCamposRegistro, CampoConfiguracionRegistro[]>
   >({ jefeobra: [], trabajador: [] });
@@ -455,6 +462,18 @@ const Obras: React.FC = () => {
       );
     } finally {
       setLoadingOportunidades(false);
+    }
+  };
+
+  const cargarClientesBeck = async () => {
+    setLoadingClientesBeck(true);
+    try {
+      const data = await clientesBeckAPI.listar({ activo: true });
+      setClientesBeck(data);
+    } catch {
+      // non-critical, form still usable without the list
+    } finally {
+      setLoadingClientesBeck(false);
     }
   };
 
@@ -512,6 +531,7 @@ const Obras: React.FC = () => {
         descripcion: values.descripcion?.trim() || null,
         estado: values.estado ?? "activa",
         funnelBeckId: values.funnelBeckId || undefined,
+        clienteBeckId: values.clienteBeckId || undefined,
       });
       message.success("Obra creada correctamente");
       setModalOpen(false);
@@ -542,6 +562,8 @@ const Obras: React.FC = () => {
       if (values.funnelBeckId) {
         payload.funnelBeckId = values.funnelBeckId;
       }
+
+      payload.clienteBeckId = values.clienteBeckId ?? null;
 
       const obraActualizada = await obrasAPI.actualizar(obraSeleccionada.id, payload);
       setObras((prev) =>
@@ -575,15 +597,23 @@ const Obras: React.FC = () => {
     form.setFieldsValue({ estado: "activa" });
     setModalOpen(true);
     void cargarOportunidadesGanadas();
+    void cargarClientesBeck();
   };
 
   const openEditar = async (obra: Obra) => {
     if (!canManageObras) return;
     setModalMode("editar");
     setModalOpen(true);
+    setLoadingEdicion(true);
     try {
-      const obraDetalle = await obrasAPI.obtenerPorId(obra.id);
+      const [obraDetalle, oportunidades, clientes] = await Promise.all([
+        obrasAPI.obtenerPorId(obra.id),
+        funnelBeckAPI.ganadasSinObra(),
+        clientesBeckAPI.listar({ activo: true }),
+      ]);
       setObraSeleccionada(obraDetalle);
+      setOportunidadesGanadas(oportunidades);
+      setClientesBeck(clientes);
       form.setFieldsValue({
         codigo: obraDetalle.codigo ?? "",
         nombre: obraDetalle.nombre,
@@ -593,11 +623,13 @@ const Obras: React.FC = () => {
         comuna: obraDetalle.comuna ?? "",
         cliente: obraDetalle.cliente ?? "",
         estado: getObraEstado(obraDetalle),
+        clienteBeckId: obraDetalle.clienteBeckId ?? undefined,
       });
-      void cargarOportunidadesGanadas();
     } catch (error) {
       setModalOpen(false);
       message.error(getErrorMessage(error, "No se pudo cargar la obra"));
+    } finally {
+      setLoadingEdicion(false);
     }
   };
 
@@ -905,6 +937,22 @@ const Obras: React.FC = () => {
       },
     },
     {
+      title: "Cliente asociado",
+      key: "clienteAsociado",
+      width: 200,
+      render: (_: unknown, record: Obra) => {
+        const nombre =
+          record.clienteBeck?.razonSocial ||
+          record.clienteBeck?.nombreEmpresa ||
+          record.cliente;
+        return nombre ? (
+          <span className="text-xs text-slate-700">{nombre}</span>
+        ) : (
+          <span className="text-xs text-slate-400">Sin cliente asociado</span>
+        );
+      },
+    },
+    {
       title: "Estado",
       key: "estado",
       width: 150,
@@ -961,7 +1009,10 @@ const Obras: React.FC = () => {
                     <Button
                       size="small"
                       icon={<SettingOutlined />}
-                      onClick={() => setItemizadoDrawerOpen(true)}
+                      onClick={() => {
+                        setObraItemizado(record);
+                        setItemizadoDrawerOpen(true);
+                      }}
                       className="w-full"
                     >
                       Opciones de itemizado
@@ -1110,7 +1161,12 @@ const Obras: React.FC = () => {
 
       <ItemizadoOpcionesDrawer
         open={itemizadoDrawerOpen}
-        onClose={() => setItemizadoDrawerOpen(false)}
+        obraId={obraItemizado?.id}
+        obraNombre={obraItemizado?.nombre}
+        onClose={() => {
+          setItemizadoDrawerOpen(false);
+          setObraItemizado(null);
+        }}
       />
 
       {/* Modal: Importar itemizado Excel */}
@@ -1194,8 +1250,14 @@ const Obras: React.FC = () => {
         okText={modalMode === "editar" ? "Guardar" : "Crear"}
         cancelText="Cancelar"
         confirmLoading={saving}
+        okButtonProps={{ disabled: loadingEdicion }}
         destroyOnClose
       >
+        {loadingEdicion ? (
+          <div className="mt-4">
+            <Skeleton active paragraph={{ rows: 10 }} />
+          </div>
+        ) : (
         <Form
           form={form}
           layout="vertical"
@@ -1223,6 +1285,20 @@ const Obras: React.FC = () => {
                   </Tag>
                 </div>
               )}
+            />
+          </Form.Item>
+
+          <Form.Item name="clienteBeckId" label="Cliente asociado">
+            <Select
+              allowClear
+              showSearch
+              loading={loadingClientesBeck}
+              placeholder="Seleccionar cliente asociado"
+              optionFilterProp="label"
+              options={clientesBeck.map((c) => ({
+                value: c.id,
+                label: `${c.razonSocial}${c.nombreEmpresa ? ` / ${c.nombreEmpresa}` : ""} — ${c.rut}`,
+              }))}
             />
           </Form.Item>
 
@@ -1286,6 +1362,7 @@ const Obras: React.FC = () => {
             <Select options={estadoOptions} />
           </Form.Item>
         </Form>
+        )}
       </Modal>
     </div>
   );

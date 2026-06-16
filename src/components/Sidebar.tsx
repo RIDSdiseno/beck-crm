@@ -20,6 +20,7 @@ import {
   CheckOutlined,
   TeamOutlined,
   SafetyCertificateOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
@@ -51,6 +52,8 @@ export type RoleAccess = {
   firematReportes: boolean;
   firematMovimientos: boolean;
   firematClientes: boolean;
+  // Cliente externo
+  clienteRegistros: boolean;
 };
 
 type Company = "beck" | "firemat";
@@ -174,6 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "obras", to: "/beck/obras", icon: <BuildOutlined />, label: "Obras", access: access.obras },
     { key: "funnel", to: "/beck/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.funnel },
     { key: "clientes", to: "/beck/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.clientes },
+    { key: "clienteRegistros", to: "/cliente/registros-mi-empresa", icon: <FileSearchOutlined />, label: "Vista Cliente", access: access.clienteRegistros },
   ];
 
   const firematNav = [
@@ -189,7 +193,19 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "reportes", to: "/firemat/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.firematReportes },
   ];
 
-  const navItems = isBeck ? beckNav : firematNav;
+  const isCliente = user?.rol === "Cliente";
+
+  const clienteNav = [
+    {
+      key: "registros-mi-empresa",
+      to: "/cliente/registros-mi-empresa",
+      icon: <FileSearchOutlined />,
+      label: "Registros de mi empresa",
+      access: access.clienteRegistros,
+    },
+  ];
+
+  const navItems = isCliente ? clienteNav : isBeck ? beckNav : firematNav;
   const companyOptions: Company[] = access.firemat ? ["beck", "firemat"] : ["beck"];
 
   return (

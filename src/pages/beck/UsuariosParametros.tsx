@@ -12,6 +12,7 @@ const ROLES_BECK: Array<{ label: string; value: UsuarioApiRol }> = [
   { label: "Ingeniería", value: "ingenieria" },
   { label: "Jefe de obra", value: "jefeobra" },
   { label: "Visualizador", value: "visualizador" },
+  { label: "Cliente", value: "cliente" },
 ];
 
 const BeckUsuariosParametros: React.FC<Props> = ({ themeMode }) => {
@@ -24,6 +25,7 @@ const BeckUsuariosParametros: React.FC<Props> = ({ themeMode }) => {
       titulo="Usuarios y roles"
       subtitulo="Gestion de usuarios."
       labelCrear="Crear usuario"
+      labelCrearCliente="Crear usuario cliente"
     />
   );
 };

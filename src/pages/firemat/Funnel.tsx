@@ -41,6 +41,7 @@ import {
   parseMotivoSelect,
 } from "../../constants/motivosCierre";
 import FunnelFirematDashboard from "./FunnelFirematDashboard";
+import FunnelFirematCalendario from "../../components/FunnelFirematCalendario";
 import {
   clientesFirematAPI,
   firematCotizacionesAPI,
@@ -715,7 +716,7 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
   const [dropOverEtapa, setDropOverEtapa] =
     useState<FirematFunnelEtapa | null>(null);
-  const [viewMode, setViewMode] = useState<"funnel" | "dashboard">("funnel");
+  const [viewMode, setViewMode] = useState<"funnel" | "calendario" | "dashboard">("funnel");
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
   const [historialEtapas, setHistorialEtapas] = useState<HistorialEtapaFiremat[]>([]);
   const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
@@ -2908,6 +2909,13 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
               </button>
               <button
                 type="button"
+                onClick={() => setViewMode("calendario")}
+                className={`firemat-tab-button${viewMode === "calendario" ? " firemat-tab-button-active" : ""}`}
+              >
+                Calendario
+              </button>
+              <button
+                type="button"
                 onClick={() => setViewMode("dashboard")}
                 className={`firemat-tab-button${viewMode === "dashboard" ? " firemat-tab-button-active" : ""}`}
               >
@@ -2925,7 +2933,14 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         </div>
       </section>
 
-      {viewMode === "dashboard" ? (
+      {viewMode === "calendario" ? (
+        <section className="firemat-panel p-4">
+          <FunnelFirematCalendario
+            oportunidades={oportunidades}
+            onOpenDetail={(o) => void openOportunidad(o, "ver")}
+          />
+        </section>
+      ) : viewMode === "dashboard" ? (
         <section className="firemat-panel p-4">
           <FunnelFirematDashboard
             responsablesDisponibles={[...new Set(oportunidades.map((o) => o.responsable).filter((v): v is string => Boolean(v)))]}

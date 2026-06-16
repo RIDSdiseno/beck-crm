@@ -48,6 +48,7 @@ import {
   FirematClientes,
 } from "./pages/firemat";
 
+import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import type { RolUsuario } from "./types/usuario";
@@ -75,21 +76,23 @@ const NO_FIREMAT: Pick<RoleAccess,
   "firemat" | "firematDashboard" | "firematFunnel" | "firematCotizaciones" |
   "firematProductos" | "firematCategorias" | "firematInventario" |
   "firematKardex" | "firematVentas" | "firematReportes" | "firematMovimientos" |
-  "firematClientes"
+  "firematClientes" | "clienteRegistros"
 > = {
   firemat: false, firematDashboard: false, firematFunnel: false,
   firematCotizaciones: false, firematProductos: false, firematCategorias: false,
   firematInventario: false, firematKardex: false, firematVentas: false,
   firematReportes: false, firematMovimientos: false, firematClientes: false,
+  clienteRegistros: false,
 };
 
 const NO_BECK: Pick<RoleAccess,
   "dashboard" | "funnel" | "registro" | "ingenieria" | "reportes" |
-  "oficinaTecnica" | "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes"
+  "oficinaTecnica" | "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes" |
+  "clienteRegistros"
 > = {
   dashboard: false, funnel: false, registro: false, ingenieria: false,
   oficinaTecnica: false, reportes: false, cotizaciones: false, movimientos: false, obras: false,
-  configuracion: false, clientes: false,
+  configuracion: false, clientes: false, clienteRegistros: false,
 };
 
 const getRoleAccess = (rol: RolUsuario): RoleAccess => {
@@ -103,6 +106,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
         firematInventario: true, firematKardex: true, firematVentas: true,
         firematReportes: true, firematMovimientos: true, firematClientes: true,
+        clienteRegistros: true,
       };
     case "Vendedor":
       return {
@@ -155,6 +159,8 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
         oficinaTecnica: false, reportes: true, cotizaciones: false, movimientos: false, obras: true,
         configuracion: true, clientes: false, ...NO_FIREMAT,
       };
+    case "Cliente":
+      return { ...NO_BECK, ...NO_FIREMAT, clienteRegistros: true };
     case "Terreno":
     default:
       return { ...NO_BECK, ...NO_FIREMAT };
@@ -184,6 +190,8 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
     case "Bodeguero":
     case "VisualizadorFiremat":
       return "/firemat/dashboard";
+    case "Cliente":
+      return "/cliente/registros-mi-empresa";
     case "Visualizador":
     default:
       return "/beck/reportes";
@@ -237,6 +245,9 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/firemat/reportes") return access.firematReportes;
   if (pathname === "/firemat/usuarios-parametros") return access.firemat && access.configuracion;
   if (pathname.startsWith("/firemat/")) return access.firemat;
+
+  if (pathname === "/cliente/registros-mi-empresa") return access.clienteRegistros;
+  if (pathname.startsWith("/cliente/")) return access.clienteRegistros;
 
   return true;
 };
@@ -389,9 +400,10 @@ const AppShell: React.FC = () => {
 
   const inFiremat = location.pathname.startsWith("/firemat");
   const inBeck = location.pathname.startsWith("/beck");
+  const inCliente = location.pathname.startsWith("/cliente");
 
   const showBeckBell = canSeeBeck && !inFiremat;
-  const showFirematBell = canSeeFiremat && !inBeck;
+  const showFirematBell = canSeeFiremat && !inBeck && !inCliente;
 
   // En los Funnels la campana va embebida en el header de la página (pasada como prop).
   // En el resto de páginas del módulo se muestra en un strip no-fixed en el Content.
@@ -629,6 +641,18 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/firemat/configuracion-validacion"
                   element={firematRoute(access.firemat && access.configuracion, <BeckConfiguracionValidacion />)}
+                />
+
+                {/* ── Cliente routes ──────────────────────────── */}
+                <Route
+                  path="/cliente/registros-mi-empresa"
+                  element={
+                    access.clienteRegistros ? (
+                      <RegistrosMiEmpresa />
+                    ) : (
+                      <Navigate to={homeRoute} replace />
+                    )
+                  }
                 />
 
                 <Route path="*" element={<Navigate to={homeRoute} replace />} />

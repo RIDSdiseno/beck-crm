@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
   Empty,
@@ -19,6 +19,7 @@ import {
   ClearOutlined,
   EyeOutlined,
   FilePdfOutlined,
+  PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -76,6 +77,7 @@ type FormValues = {
   precio: number;
   precioSugerido?: number;
   stockMinimo: number;
+  stockInicial?: number;
   ubicacion?: string;
   criticidad: string;
   activo: boolean;
@@ -101,6 +103,9 @@ const ModalProducto: React.FC<{
   const [saving, setSaving] = useState(false);
   const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
+  const [imagenFile, setImagenFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isView = mode === "ver";
   const isEdit = mode === "editar";
   const isCreate = mode === "crear";
@@ -131,6 +136,8 @@ const ModalProducto: React.FC<{
         criticidad: producto.criticidad,
         activo: producto.activo,
       });
+      setImagenFile(null);
+      setPreviewUrl(producto.imagen ?? null);
     } else {
       form.resetFields();
       form.setFieldsValue({
@@ -138,12 +145,33 @@ const ModalProducto: React.FC<{
         criticidad: "baja",
         disponibilidad: "En stock",
         stockMinimo: 0,
+        stockInicial: 0,
         precio: 0,
       });
+      setImagenFile(null);
+      setPreviewUrl(null);
     }
   }, [open, producto, mode, form, isEdit, isView]);
 
   const sinCategorias = !loadingCats && categorias.length === 0;
+
+  const handleImagenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      void message.error("Solo se permiten imágenes JPG, PNG o WebP");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      void message.error("La imagen no puede superar 10 MB");
+      e.target.value = "";
+      return;
+    }
+    setImagenFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
 
   const handleOk = async () => {
     if (isView) { onClose(); return; }
@@ -163,15 +191,16 @@ const ModalProducto: React.FC<{
         formato: values.formato || null,
         cantidadCaja: values.cantidadCaja?.trim() || null,
         stockMinimo: values.stockMinimo,
+        ...(isCreate && { stockInicial: values.stockInicial ?? 0 }),
         ubicacion: values.ubicacion || null,
         criticidad: values.criticidad,
         activo: values.activo,
       };
       if (isCreate) {
-        await firematProductosAPI.crear(payload);
+        await firematProductosAPI.crear(payload, imagenFile);
         void message.success("Producto creado");
       } else if (isEdit && producto) {
-        await firematProductosAPI.editar(producto.id, payload);
+        await firematProductosAPI.editar(producto.id, payload, imagenFile);
         void message.success("Producto actualizado");
       }
       onSaved();
@@ -313,6 +342,25 @@ const ModalProducto: React.FC<{
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
 
+          {isCreate && (
+            <Form.Item
+              name="stockInicial"
+              label="Stock inicial"
+              rules={[
+                { required: true, message: "Stock inicial requerido" },
+                { type: "number", min: 0, message: "Stock inicial debe ser >= 0" },
+                {
+                  validator: (_, value) =>
+                    value !== undefined && !Number.isInteger(value)
+                      ? Promise.reject("Debe ser un número entero")
+                      : Promise.resolve(),
+                },
+              ]}
+            >
+              <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="0" />
+            </Form.Item>
+          )}
+
           <Form.Item name="ubicacion" label="Ubicación / Bodega">
             <Input placeholder="Ej: Bodega A - Pasillo 3" />
           </Form.Item>
@@ -337,6 +385,44 @@ const ModalProducto: React.FC<{
               ]}
             />
           </Form.Item>
+
+          <div className="col-span-2 mt-1">
+            <p className="text-sm font-medium text-beck-ink mb-2">Imagen del producto</p>
+            <div className="flex items-start gap-3 flex-wrap">
+              {!isView && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleImagenChange}
+                  />
+                  <Button
+                    icon={<PictureOutlined />}
+                    size="small"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {imagenFile ? "Cambiar imagen" : previewUrl ? "Reemplazar imagen" : "Seleccionar imagen"}
+                  </Button>
+                  {imagenFile && (
+                    <span className="text-xs text-beck-muted self-center truncate max-w-[200px]">
+                      {imagenFile.name}
+                    </span>
+                  )}
+                </>
+              )}
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt="Vista previa"
+                  style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
+                />
+              ) : isView ? (
+                <span className="text-sm text-beck-muted">Sin imagen</span>
+              ) : null}
+            </div>
+          </div>
         </div>
       </Form>
     </Modal>
@@ -647,6 +733,34 @@ const FirematProductos: React.FC = () => {
 
   const columns: ColumnsType<ProductoFiremat> = [
     {
+      title: "Imagen",
+      key: "imagen",
+      width: 70,
+      align: "center",
+      render: (_, row) =>
+        row.imagen ? (
+          <img
+            src={row.imagen}
+            alt={row.nombre}
+            style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              background: "#f5f5f5",
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <PictureOutlined style={{ color: "#d1d5db" }} />
+          </div>
+        ),
+    },
+    {
       title: "SKU",
       dataIndex: "sku",
       key: "sku",
@@ -908,7 +1022,7 @@ const FirematProductos: React.FC = () => {
             columns={columns}
             rowKey="id"
             size="small"
-            scroll={{ x: 1400 }}
+            scroll={{ x: 1470 }}
             pagination={{
               pageSize: 25,
               total,

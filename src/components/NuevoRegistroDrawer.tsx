@@ -1,5 +1,5 @@
 // src/components/NuevoRegistroDrawer.tsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Drawer,
   Form,
@@ -42,7 +42,7 @@ export type NuevoRegistroValues = {
   cantidadSellos?: number;
   metrosLineales?: number;
   holguraCm: number;
-  factorHolgura: 1 | 1.2 | 1.4 | 1.8;
+  factorHolgura?: 1 | 1.2 | 1.4 | 1.8;
   cieloModular: 1 | 2 | 3;
   cantidadSellosConFactores?: number;
   aislacion?: number;
@@ -139,6 +139,44 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   const selectedObra = obras.find((o) => o.id === obraId);
   const esEspuma = tipoRegistro === "junta_lineal_espuma";
   const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
+
+  const cantidadSellosWatched = Form.useWatch("cantidadSellos", form);
+  const holguraCmWatched = Form.useWatch("holguraCm", form);
+  const cieloModularWatched = Form.useWatch("cieloModular", form);
+  const aislacionWatched = Form.useWatch("aislacion", form);
+  const reparacionTabiqueWatched = Form.useWatch("reparacionTabique", form);
+
+  const preview = useMemo(() => {
+    const holgura = Number(holguraCmWatched) || 0;
+    const cantidad = Number(cantidadSellosWatched) || 0;
+    const accesibilidad = Number(cieloModularWatched) || 1;
+
+    let factorHolgura: number | null = null;
+    let holguraAlerta = false;
+
+    if (holgura > 0) {
+      if (holgura <= 2) factorHolgura = 1;
+      else if (holgura <= 4) factorHolgura = 1.2;
+      else if (holgura <= 6) factorHolgura = 1.4;
+      else if (holgura <= 10) factorHolgura = 1.8;
+      else holguraAlerta = true;
+    }
+
+    const cantidadConFactores =
+      factorHolgura !== null && cantidad > 0
+        ? cantidad * factorHolgura * accesibilidad
+        : null;
+
+    const factorAislacion = Number(aislacionWatched) === 1.3 ? 1.3 : 1;
+    const cantidadAislacion =
+      cantidadConFactores !== null ? cantidadConFactores * factorAislacion : null;
+
+    const repTabique = Number(reparacionTabiqueWatched) === 1 ? 1 : 0;
+    const cantidadFinal =
+      cantidadAislacion !== null ? cantidadAislacion + repTabique : null;
+
+    return { factorHolgura, holguraAlerta, cantidadConFactores, factorAislacion, cantidadAislacion, cantidadFinal };
+  }, [cantidadSellosWatched, holguraCmWatched, cieloModularWatched, aislacionWatched, reparacionTabiqueWatched]);
 
   const handleAfterOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -474,24 +512,6 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                   <InputNumber min={0} style={{ width: "100%" }} />
                 </Form.Item>
                 )}
-
-                {showCampo("factor_por_holguras") && (
-                <Form.Item
-                  name="factorHolgura"
-                  label="Factor por holguras"
-                  rules={[{ required: true, message: "Seleccione factor" }]}
-                >
-                  <Select
-                    placeholder="Seleccione F"
-                    options={[
-                      { value: 1, label: "F = 1 · menor a 2 cm" },
-                      { value: 1.2, label: "F = 1,2 · entre 2 y 4 cm" },
-                      { value: 1.4, label: "F = 1,4 · entre 4 y 6 cm" },
-                      { value: 1.8, label: "F = 1,8 · entre 6 y 10 cm" },
-                    ]}
-                  />
-                </Form.Item>
-                )}
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -513,33 +533,27 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                   />
                 </Form.Item>
 
-                {showCampo("cantidad_sellos_con_factores") && (
-                  <Form.Item name="cantidadSellosConFactores" label="Cantidad sellos con factores">
-                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
-                  </Form.Item>
-                )}
-
                 {showCampo("aislacion") && (
-                  <Form.Item name="aislacion" label="Aislaciónn">
-                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
-                  </Form.Item>
-                )}
-
-                {showCampo("cantidad_sellos_aislacion") && (
-                  <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislación">
-                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                  <Form.Item name="aislacion" label="Aislación">
+                    <Select
+                      placeholder="Seleccione aislación"
+                      options={[
+                        { value: 1, label: "NO APLICA (F = 1)" },
+                        { value: 1.3, label: "APLICA (F = 1.3)" },
+                      ]}
+                    />
                   </Form.Item>
                 )}
 
                 {showCampo("reparacion_tabique") && (
                   <Form.Item name="reparacionTabique" label="Reparación tabique">
-                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
-                  </Form.Item>
-                )}
-
-                {showCampo("cantidad_final") && (
-                  <Form.Item name="cantidadFinal" label="Cantidad final">
-                    <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+                    <Select
+                      placeholder="Seleccione"
+                      options={[
+                        { value: 0, label: "NO APLICA" },
+                        { value: 1, label: "APLICA (+1 sello)" },
+                      ]}
+                    />
                   </Form.Item>
                 )}
 
@@ -567,6 +581,53 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                 </Form.Item>
               </div>
             </div>
+
+            {/* Cálculo automático */}
+            {!esEspuma && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 md:p-4">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                  Cálculo automático
+                </p>
+                {preview.holguraAlerta && (
+                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+                    ⚠ CORREGIR HOLGURA — El valor supera 10 cm. Corrija antes de guardar.
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Factor por holgura</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {preview.factorHolgura !== null ? `F = ${preview.factorHolgura}` : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Cantidad con factores</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {preview.cantidadConFactores !== null
+                        ? preview.cantidadConFactores.toFixed(2)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Factor aislación</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {preview.factorAislacion}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Cantidad final</p>
+                    <p className="text-sm font-bold text-emerald-600">
+                      {preview.cantidadFinal !== null
+                        ? preview.cantidadFinal.toFixed(2)
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-400">
+                  Vista previa en tiempo real. El servidor recalcula al guardar.
+                </p>
+              </div>
+            )}
 
             {/* Bloque 4: Observaciones */}
             <div className="rounded-xl border border-slate-200 bg-white p-3 md:p-4">

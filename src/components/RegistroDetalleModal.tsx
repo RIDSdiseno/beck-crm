@@ -234,41 +234,117 @@ const renderDetalleSelloCortafuego = (
   r: RegistroSello,
   showCampo: (key: string) => boolean = () => true
 ): React.ReactNode => (
-  <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
-    <FieldView label="Codigo BECK" value={r.codigo} />
-    <FieldView label="Itemizado BECK" value={r.itemizadoBeck} />
-    <FieldView label="Itemizado SACYR" value={r.itemizadoSacyr} span={2} />
-    <FieldView
-      label="Fecha ejecucion sello"
-      value={r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
-    />
-    <FieldView label="Día" value={r.dia} />
-    <FieldView label="Piso" value={r.piso} />
-    {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
-    {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
-    <FieldView label="Nombre sellador" value={r.nombreSellador} />
-    {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
-    <FieldView label="N° DEL SELLO" value={r.numeroSello} />
-    <FieldView
-      label="Cantidad de Sellos"
-      value={r.cantidadSellos != null ? String(r.cantidadSellos) : "-"}
-    />
-    {showCampo("holgura") && <FieldView
-      label="Holgura (cm)"
-      value={r.holguraCm != null ? String(r.holguraCm) : "-"}
-    />}
-    {showCampo("factor_por_holguras") && <FieldView label="Factor por holguras" value={r.factorPorHolguras ?? r.factorHolgura ?? "-"} />}
-    {showCampo("accesibilidad") && <FieldView label="Accesibilidad" value={r.accesibilidad ?? r.cieloModular ?? "-"} />}
-    {showCampo("cantidad_sellos_con_factores") && <FieldView label="Cantidad sellos con factores" value={r.cantidadSellosConFactores ?? r.cantidadSellosConFactor ?? "-"} />}
-    {showCampo("aislacion") && <FieldView label="Aislación" value={r.aislacion ?? "-"} />}
-    {showCampo("cantidad_sellos_aislacion") && <FieldView label="Cantidad sellos aislación" value={r.cantidadSellosAislacion ?? "-"} />}
-    {showCampo("reparacion_tabique") && <FieldView label="Reparación tabique" value={r.reparacionTabique ?? "-"} />}
-    {showCampo("cantidad_final") && <FieldView label="Cantidad final" value={r.cantidadFinal ?? "-"} />}
-    <FieldView label="Observaciones" value={r.observaciones} span={2} />
-    {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
-    <div className="mb-3">
-      <p className="mb-1 text-[11px] text-slate-500">Estado</p>
-      <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
+  <div className="space-y-3">
+    <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
+      <FieldView label="Codigo BECK" value={r.codigo} />
+      <FieldView label="Itemizado BECK" value={r.itemizadoBeck} />
+      <FieldView label="Itemizado SACYR" value={r.itemizadoSacyr} span={2} />
+      <FieldView
+        label="Fecha ejecucion sello"
+        value={r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
+      />
+      <FieldView label="Día" value={r.dia} />
+      <FieldView label="Piso" value={r.piso} />
+      {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
+      {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
+      <FieldView label="Nombre sellador" value={r.nombreSellador} />
+      {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
+      <FieldView label="N° DEL SELLO" value={r.numeroSello} />
+      <FieldView
+        label="Cantidad de Sellos"
+        value={r.cantidadSellos != null ? String(r.cantidadSellos) : "-"}
+      />
+      {showCampo("holgura") && (
+        <FieldView label="Holgura (cm)" value={r.holguraCm != null ? String(r.holguraCm) : "-"} />
+      )}
+      {showCampo("accesibilidad") && (
+        <FieldView label="Accesibilidad" value={r.accesibilidad ?? r.cieloModular ?? "-"} />
+      )}
+      {showCampo("aislacion") && (
+        <FieldView
+          label="Aislación"
+          value={
+            Number(r.aislacion) === 1.3
+              ? "APLICA (F = 1.3)"
+              : Number(r.aislacion) === 1
+              ? "NO APLICA (F = 1)"
+              : r.aislacion != null
+              ? String(r.aislacion)
+              : "-"
+          }
+        />
+      )}
+      {showCampo("reparacion_tabique") && (
+        <FieldView
+          label="Reparación tabique"
+          value={
+            Number(r.reparacionTabique) === 1
+              ? "APLICA (+1 sello)"
+              : Number(r.reparacionTabique) === 0
+              ? "NO APLICA"
+              : r.reparacionTabique != null
+              ? String(r.reparacionTabique)
+              : "-"
+          }
+        />
+      )}
+      <FieldView label="Observaciones" value={r.observaciones} span={2} />
+      {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
+      <div className="mb-3">
+        <p className="mb-1 text-[11px] text-slate-500">Estado</p>
+        <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
+      </div>
+    </div>
+
+    {/* Cálculo automático — valores calculados por el servidor */}
+    <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+        Cálculo automático
+      </p>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {showCampo("factor_por_holguras") && (
+          <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+            <p className="text-[10px] text-slate-500">Factor por holguras</p>
+            <p className="text-sm font-bold text-sky-700">
+              {r.factorPorHolguras != null
+                ? `F = ${r.factorPorHolguras}`
+                : r.factorHolgura != null
+                ? `F = ${r.factorHolgura}`
+                : "—"}
+            </p>
+          </div>
+        )}
+        {showCampo("cantidad_sellos_con_factores") && (
+          <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+            <p className="text-[10px] text-slate-500">Cantidad con factores</p>
+            <p className="text-sm font-bold text-sky-700">
+              {r.cantidadSellosConFactores != null
+                ? Number(r.cantidadSellosConFactores).toFixed(2)
+                : r.cantidadSellosConFactor != null
+                ? Number(r.cantidadSellosConFactor).toFixed(2)
+                : "—"}
+            </p>
+          </div>
+        )}
+        {showCampo("cantidad_sellos_aislacion") && (
+          <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+            <p className="text-[10px] text-slate-500">Cantidad aislación</p>
+            <p className="text-sm font-bold text-sky-700">
+              {r.cantidadSellosAislacion != null
+                ? Number(r.cantidadSellosAislacion).toFixed(2)
+                : "—"}
+            </p>
+          </div>
+        )}
+        {showCampo("cantidad_final") && (
+          <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+            <p className="text-[10px] text-slate-500">Cantidad final</p>
+            <p className="text-sm font-bold text-emerald-600">
+              {r.cantidadFinal != null ? Number(r.cantidadFinal).toFixed(2) : "—"}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   </div>
 );
@@ -664,36 +740,83 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               <InputNumber min={0} className="w-full" />
             </Form.Item>
             )}
-            {showCampo("factor_por_holguras") && (
-              <Form.Item name="factorPorHolguras" label="Factor por holguras" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
-              </Form.Item>
-            )}
-            {showCampo("cantidad_sellos_con_factores") && (
-              <Form.Item name="cantidadSellosConFactores" label="Cantidad sellos con factores" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
-              </Form.Item>
-            )}
             {showCampo("aislacion") && (
               <Form.Item name="aislacion" label="Aislación" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
-              </Form.Item>
-            )}
-            {showCampo("cantidad_sellos_aislacion") && (
-              <Form.Item name="cantidadSellosAislacion" label="Cantidad sellos aislación" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
+                <Select
+                  placeholder="Seleccione aislación"
+                  options={[
+                    { value: 1, label: "NO APLICA (F = 1)" },
+                    { value: 1.3, label: "APLICA (F = 1.3)" },
+                  ]}
+                />
               </Form.Item>
             )}
             {showCampo("reparacion_tabique") && (
               <Form.Item name="reparacionTabique" label="Reparación tabique" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
+                <Select
+                  placeholder="Seleccione"
+                  options={[
+                    { value: 0, label: "NO APLICA" },
+                    { value: 1, label: "APLICA (+1 sello)" },
+                  ]}
+                />
               </Form.Item>
             )}
-            {showCampo("cantidad_final") && (
-              <Form.Item name="cantidadFinal" label="Cantidad final" className="mb-3">
-                <InputNumber min={0} step={0.01} className="w-full" />
-              </Form.Item>
-            )}
+            {/* Cálculo automático — solo lectura, el servidor recalcula al guardar */}
+            <div className="mb-3 md:col-span-2 rounded-xl border border-sky-200 bg-sky-50 p-3">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                Cálculo automático
+              </p>
+              <p className="mb-2 text-[10px] text-slate-500">
+                El servidor recalculará estos valores al guardar los cambios.
+              </p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {showCampo("factor_por_holguras") && (
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Factor por holguras</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {registro?.factorPorHolguras != null
+                        ? `F = ${registro.factorPorHolguras}`
+                        : registro?.factorHolgura != null
+                        ? `F = ${registro.factorHolgura}`
+                        : "—"}
+                    </p>
+                  </div>
+                )}
+                {showCampo("cantidad_sellos_con_factores") && (
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Cantidad con factores</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {registro?.cantidadSellosConFactores != null
+                        ? Number(registro.cantidadSellosConFactores).toFixed(2)
+                        : registro?.cantidadSellosConFactor != null
+                        ? Number(registro.cantidadSellosConFactor).toFixed(2)
+                        : "—"}
+                    </p>
+                  </div>
+                )}
+                {showCampo("cantidad_sellos_aislacion") && (
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Cantidad aislación</p>
+                    <p className="text-sm font-bold text-sky-700">
+                      {registro?.cantidadSellosAislacion != null
+                        ? Number(registro.cantidadSellosAislacion).toFixed(2)
+                        : "—"}
+                    </p>
+                  </div>
+                )}
+                {showCampo("cantidad_final") && (
+                  <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                    <p className="text-[10px] text-slate-500">Cantidad final</p>
+                    <p className="text-sm font-bold text-emerald-600">
+                      {registro?.cantidadFinal != null
+                        ? Number(registro.cantidadFinal).toFixed(2)
+                        : "—"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
             <Form.Item name="estado" label="Estado" className="mb-3">
               <Select options={estadoOptions} />
             </Form.Item>

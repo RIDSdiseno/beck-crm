@@ -59,9 +59,11 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 interface Props {
   open: boolean;
   onClose: () => void;
+  obraId?: string;
+  obraNombre?: string;
 }
 
-const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose }) => {
+const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraNombre }) => {
   const [opciones, setOpciones] = useState<ItemizadoOpcion[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -84,7 +86,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await itemizadoOpcionesAPI.listar();
+      const response = await itemizadoOpcionesAPI.listar(obraId ? { obraId } : undefined);
       const raw = response as unknown;
       const lista = Array.isArray(raw)
         ? (raw as ItemizadoOpcion[])
@@ -108,7 +110,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose }) => {
       void cargar();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, obraId]);
 
   const uniqueOptions = useMemo(() => {
     const toOpts = (vals: (string | null | undefined)[]) =>
@@ -143,7 +145,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose }) => {
     // Optimistic update para feedback inmediato
     setOpciones((prev) => prev.map((o) => (o.id === opcion.id ? { ...o, visible } : o)));
     try {
-      const updated = await itemizadoOpcionesAPI.actualizarVisible(opcion.id, visible);
+      const updated = await itemizadoOpcionesAPI.actualizarVisible(opcion.id, visible, obraId);
       setOpciones((prev) => prev.map((o) => (o.id === opcion.id ? { ...o, ...updated } : o)));
       void message.success("Visibilidad actualizada");
     } catch (err) {
@@ -318,7 +320,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose }) => {
         open={open}
         onClose={onClose}
         width="min(1100px, 97vw)"
-        title="Opciones de itemizado"
+        title={obraNombre ? `Opciones de itemizado — ${obraNombre}` : "Opciones de itemizado"}
         extra={
           <Space wrap>
             <Button

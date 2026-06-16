@@ -157,7 +157,8 @@ export interface LoginResponse {
       | "visualizador"
       | "vendedor_firemat"
       | "bodeguero"
-      | "visualizador_firemat";
+      | "visualizador_firemat"
+      | "cliente";
   };
   empresaDefault?: "beck" | "firemat";
 }
@@ -949,6 +950,13 @@ export interface Obra {
     nombreProyecto?: string | null;
     empresa?: string | null;
   } | null;
+  clienteBeckId?: string | null;
+  clienteBeck?: {
+    id: string;
+    rut: string;
+    razonSocial: string;
+    nombreEmpresa?: string | null;
+  } | null;
   activa: boolean;
   estado?: "activa" | "inactiva" | "pausada" | "finalizada";
   usuarios?: Array<{
@@ -963,6 +971,11 @@ export interface Obra {
   updated_at: string;
 }
 
+export type ObraClienteBeckResumen = Pick<
+  Obra,
+  "id" | "nombre" | "codigo" | "estado" | "clienteBeckId"
+>;
+
 export type ObraEstado = "activa" | "inactiva" | "pausada" | "finalizada";
 
 export interface CrearObraInput {
@@ -976,6 +989,7 @@ export interface CrearObraInput {
   estado: ObraEstado;
   usuariosIds?: string[];
   funnelBeckId?: string;
+  clienteBeckId?: string | null;
 }
 
 export const obrasAPI = {
@@ -1117,7 +1131,8 @@ export type UsuarioApiRol =
   | "jefeobra"
   | "vendedor_firemat"
   | "bodeguero"
-  | "visualizador_firemat";
+  | "visualizador_firemat"
+  | "cliente";
 
 export interface UsuarioApi {
   id: string;
@@ -1127,6 +1142,10 @@ export interface UsuarioApi {
   activo: boolean;
   azureId: string | null;
   createdAt: string;
+  clienteBeckId?: string | null;
+  obraIds?: string[];
+  obras?: ObraClienteBeckResumen[];
+  cantidadObrasAsignadas?: number;
 }
 
 export type UsuarioResumen = Pick<
@@ -1184,6 +1203,8 @@ export interface ActualizarUsuarioInput {
   email?: string;
   rol?: UsuarioApiRol;
   activo?: boolean;
+  clienteBeckId?: string;
+  obraIds?: string[];
 }
 export interface CrearUsuarioInput {
   nombre: string;
@@ -1191,6 +1212,8 @@ export interface CrearUsuarioInput {
   password: string;
   rol: UsuarioApiRol;
   activo?: boolean;
+  clienteBeckId?: string;
+  obraIds?: string[];
 }
 
 export interface EliminarUsuarioResponse {
@@ -1198,8 +1221,13 @@ export interface EliminarUsuarioResponse {
 }
 
 export const usuariosAPI = {
-  listar: async (params?: { rol?: UsuarioApiRol; activo?: boolean }) => {
+  listar: async (params?: { rol?: UsuarioApiRol; activo?: boolean; empresa?: EmpresaParam }) => {
     const response = await api.get<UsuarioApi[]>("/usuarios", { params });
+    return response.data;
+  },
+
+  obtener: async (id: string) => {
+    const response = await api.get<UsuarioApi>(`/usuarios/${id}`);
     return response.data;
   },
 
@@ -1434,6 +1462,25 @@ export const statsAPI = {
   },
 };
 
+export interface RegistrosResumen {
+  pendientes: number;
+  enRevision: number;
+  validados: number;
+  rechazados: number;
+  total: number;
+}
+
+export const registrosAPI = {
+  resumen: async (): Promise<RegistrosResumen> => {
+    const response = await api.get<RegistrosResumen | ApiResponseEnvelope<RegistrosResumen>>("/registros/resumen");
+    const raw = response.data;
+    if (raw && typeof raw === "object" && "success" in raw) {
+      return unwrapApiResponse(raw as ApiResponseEnvelope<RegistrosResumen>);
+    }
+    return raw as RegistrosResumen;
+  },
+};
+
 export default api;
 
 export type ProductoFiremat = {
@@ -1481,6 +1528,7 @@ export type ProductoFirematPayload = {
   formato?: string | null;
   cantidadCaja?: string | null;
   stockMinimo: number;
+  stockInicial?: number;
   ubicacion?: string | null;
   criticidad: string;
   activo: boolean;
@@ -1553,7 +1601,22 @@ export const firematProductosAPI = {
     return { data: productos, total };
   },
 
-  crear: async (payload: ProductoFirematPayload): Promise<ProductoFiremat> => {
+  crear: async (payload: ProductoFirematPayload, imagen?: File | null): Promise<ProductoFiremat> => {
+    if (imagen) {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append("imagen", imagen);
+      const response = await api.post<ApiResponseEnvelope<ProductoFiremat>>(
+        "/firemat/productos",
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      return unwrapApiResponse(response.data);
+    }
     const response = await api.post<ApiResponseEnvelope<ProductoFiremat>>(
       "/firemat/productos",
       payload
@@ -1561,7 +1624,22 @@ export const firematProductosAPI = {
     return unwrapApiResponse(response.data);
   },
 
-  editar: async (id: number, payload: Partial<ProductoFirematPayload>): Promise<ProductoFiremat> => {
+  editar: async (id: number, payload: Partial<ProductoFirematPayload>, imagen?: File | null): Promise<ProductoFiremat> => {
+    if (imagen) {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append("imagen", imagen);
+      const response = await api.put<ApiResponseEnvelope<ProductoFiremat>>(
+        `/firemat/productos/${id}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      return unwrapApiResponse(response.data);
+    }
     const response = await api.put<ApiResponseEnvelope<ProductoFiremat>>(
       `/firemat/productos/${id}`,
       payload
@@ -2621,6 +2699,136 @@ export type MovimientosCRMResponse = {
   };
 };
 
+/* ─────────────── REPORTES FIREMAT ─────────────── */
+
+export type FirematReportesKpis = {
+  totalVentas: number;
+  montoVendido: number;
+  ticketPromedio: number;
+  totalProductos: number;
+  productosActivos: number;
+  productosBajoStock: number;
+  productosSinStock: number;
+  stockTotal: number;
+  stockDisponibleTotal: number;
+  cotizacionesTotal: number;
+  cotizacionesActivas: number;
+  oportunidadesTotal: number;
+  oportunidadesActivas: number;
+};
+
+export type FirematReporteVentaPorMes = {
+  mes: string;
+  cantidad: number;
+  monto: number;
+};
+
+export type FirematReporteVentaPorProducto = {
+  productoId: number;
+  sku: string;
+  nombre: string;
+  cantidadVendida: number;
+  montoVendido: number;
+};
+
+export type FirematReporteInventarioCritico = {
+  productoId: number;
+  sku: string;
+  nombre: string;
+  categoria: string;
+  stock: number;
+  stockDisponible: number;
+  minStock: number;
+  estadoStock: "SIN_STOCK" | "BAJO_STOCK";
+};
+
+export type FirematReporteCotizacionPorEstado = {
+  estado: string;
+  cantidad: number;
+  monto: number;
+};
+
+export type FirematReporteOportunidadPorEtapa = {
+  etapa: string;
+  cantidad: number;
+  monto: number;
+};
+
+export type FirematReporteMovimientoReciente = {
+  id: number;
+  fecha: string;
+  productoId: number;
+  productoNombre: string;
+  tipo: string;
+  cantidad: number;
+  stockAnterior: number;
+  stockNuevo: number;
+  motivo: string | null;
+};
+
+export type FirematReporteVentaDetalle = {
+  id: number;
+  fecha: string;
+  cliente: string;
+  contacto: string | null;
+  responsable: string | null;
+  estado: string;
+  total: number;
+  detalle: Array<{
+    productoId: number;
+    nombre: string;
+    cantidad: number;
+    precio: number;
+    subtotal: number;
+  }>;
+};
+
+export type FirematReporteProductoResumen = {
+  id: number;
+  sku: string;
+  nombre: string;
+  categoria: string;
+  stock: number;
+  stockReservado: number;
+  stockDisponible: number;
+  minStock: number;
+  activo: boolean;
+  precio: number;
+  precioSugerido: number | null;
+};
+
+export type FirematReportesData = {
+  kpis: FirematReportesKpis;
+  ventasPorMes: FirematReporteVentaPorMes[];
+  ventasPorProducto: FirematReporteVentaPorProducto[];
+  inventarioCritico: FirematReporteInventarioCritico[];
+  cotizacionesPorEstado: FirematReporteCotizacionPorEstado[];
+  oportunidadesPorEtapa: FirematReporteOportunidadPorEtapa[];
+  movimientosRecientes: FirematReporteMovimientoReciente[];
+  ventasDetalle: FirematReporteVentaDetalle[];
+  productosResumen: FirematReporteProductoResumen[];
+};
+
+export type FirematReportesParams = {
+  fechaDesde?: string;
+  fechaHasta?: string;
+  categoriaId?: number;
+  productoId?: number;
+  estadoVenta?: string;
+  estadoCotizacion?: string;
+  etapaOportunidad?: string;
+};
+
+export const firematReportesAPI = {
+  obtener: async (params?: FirematReportesParams): Promise<FirematReportesData> => {
+    const response = await api.get<ApiResponseEnvelope<FirematReportesData>>(
+      "/firemat/reportes",
+      { params }
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
 export const movimientosCrmAPI = {
   listar: async (params?: {
     page?: number;
@@ -2846,6 +3054,13 @@ export const clientesBeckAPI = {
   oportunidades: async (clienteId: string): Promise<unknown[]> => {
     const response = await api.get<ApiResponseEnvelope<unknown[]> | unknown[]>(`/clientes-beck/${clienteId}/oportunidades`);
     return unwrapArray(response.data as ApiResponseEnvelope<unknown[]> | unknown[]);
+  },
+
+  obras: async (clienteId: string): Promise<ObraClienteBeckResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<ObraClienteBeckResumen[]> | ObraClienteBeckResumen[]>(
+      `/clientes-beck/${clienteId}/obras`
+    );
+    return unwrapArray(response.data);
   },
 
   importar: async (file: File): Promise<ImportarClientesResult> => {
@@ -3102,6 +3317,7 @@ export type ItemizadoImportarResult = {
 
 export const itemizadoOpcionesAPI = {
   listar: async (params?: {
+    obraId?: string;
     codigoBeck?: string;
     tipo?: string;
     elementoPasante?: string;
@@ -3128,10 +3344,10 @@ export const itemizadoOpcionesAPI = {
     return response.data;
   },
 
-  actualizarVisible: async (id: string, visible: boolean): Promise<ItemizadoOpcion> => {
+  actualizarVisible: async (id: string, visible: boolean, obraId?: string): Promise<ItemizadoOpcion> => {
     const response = await api.patch<ApiResponseEnvelope<ItemizadoOpcion> | ItemizadoOpcion>(
       `/itemizado-opciones/${id}/visible`,
-      { visible }
+      obraId ? { visible, obraId } : { visible }
     );
     return unwrapItem(response.data);
   },
@@ -3223,5 +3439,127 @@ export const alertasAPI = {
 
   marcarVistaFiremat: async (alertaKeys: string[]): Promise<void> => {
     await api.post("/alertas/firemat/marcar-vista", { alertaKeys });
+  },
+};
+
+// ── Cliente (rol externo) ─────────────────────────────────────────────────────
+
+export interface ClienteObraResumen {
+  id: string;
+  nombre: string;
+  codigo?: string | null;
+  cliente?: string | null;
+  estado?: string | null;
+  totalRegistros: number;
+  cantidadFinalTotal: number;
+}
+
+export interface ClienteRegistroValidado {
+  id: string;
+  fecha?: string | null;
+  tipoRegistro?: string | null;
+  piso?: string | null;
+  modulo?: string | null;
+  recinto?: string | null;
+  eje?: string | null;
+  numeroSello?: string | null;
+  cantidad?: number | null;
+  cantidadFinal?: number | null;
+  material?: string | null;
+  sellador?: string | null;
+  itemizadoBeck?: string | null;
+  itemizadoMandante?: string | null;
+  fotosUrls?: string[] | null;
+  fotoUrl?: string | null;
+  fotos_registro?: Array<{ url: string; nombre?: string }> | null;
+  [key: string]: unknown;
+}
+
+export interface ClienteDashboardData {
+  totalObras: number;
+  totalRegistros: number;
+  cantidadFinalTotal: number;
+  registrosEsteMes: number;
+  registrosPorObra: Array<{ nombre: string; total: number }>;
+  registrosPorTipo: Array<{ tipo: string; total: number }>;
+  registrosPorPiso: Array<{ piso: string; total: number }>;
+  registrosPorFecha: Array<{ fecha: string; total: number }>;
+}
+
+export interface ClienteUsuario {
+  id: string;
+  nombre: string;
+  email: string;
+  activo: boolean;
+  cantidadObrasAsignadas: number;
+}
+
+export interface ClienteBeckVistaCliente {
+  id: string;
+  rut: string;
+  razonSocial: string;
+  nombreEmpresa?: string | null;
+  correo?: string | null;
+  telefono?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  activo: boolean;
+  cantidadObrasAsociadas: number;
+  totalRegistrosValidados: number;
+}
+
+type ClienteParams = { clienteUsuarioId?: string; clienteBeckId?: string };
+
+export const clienteAPI = {
+  usuariosClientes: async (): Promise<ClienteUsuario[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteUsuario[]>>("/cliente/usuarios-clientes");
+    return unwrapApiResponse(response.data);
+  },
+
+  clientesBeck: async (): Promise<ClienteBeckVistaCliente[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteBeckVistaCliente[]>>("/cliente/clientes-beck");
+    return unwrapApiResponse(response.data);
+  },
+
+  obras: async (params?: ClienteParams): Promise<ClienteObraResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteObraResumen[]>>("/cliente/obras", { params });
+    return unwrapApiResponse(response.data);
+  },
+
+  registrosPorObra: async (obraId: string, params?: ClienteParams): Promise<ClienteRegistroValidado[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteRegistroValidado[]>>(
+      `/cliente/obras/${obraId}/registros`,
+      { params }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  dashboard: async (params?: ClienteParams): Promise<ClienteDashboardData> => {
+    const response = await api.get<ApiResponseEnvelope<{
+      kpis?: {
+        totalObras?: number;
+        totalRegistrosValidados?: number;
+        cantidadFinalTotal?: number;
+        registrosEsteMes?: number;
+      };
+      registrosPorObra?: Array<{ obraId?: string; nombre: string; cantidad: number }>;
+      registrosPorTipo?: Array<{ tipo: string; cantidad: number }>;
+      registrosPorPiso?: Array<{ piso: string; cantidad: number }>;
+      registrosPorFecha?: Array<{ fecha: string; cantidad: number }>;
+    }>>("/cliente/dashboard", { params });
+    const raw = unwrapApiResponse(response.data);
+    if (import.meta.env.DEV) {
+      console.log("dashboard cliente raw", raw);
+    }
+    return {
+      totalObras: raw.kpis?.totalObras ?? 0,
+      totalRegistros: raw.kpis?.totalRegistrosValidados ?? 0,
+      cantidadFinalTotal: raw.kpis?.cantidadFinalTotal ?? 0,
+      registrosEsteMes: raw.kpis?.registrosEsteMes ?? 0,
+      registrosPorObra: (raw.registrosPorObra ?? []).map((o) => ({ nombre: o.nombre, total: o.cantidad })),
+      registrosPorTipo: (raw.registrosPorTipo ?? []).map((t) => ({ tipo: t.tipo, total: t.cantidad })),
+      registrosPorPiso: (raw.registrosPorPiso ?? []).map((p) => ({ piso: p.piso, total: p.cantidad })),
+      registrosPorFecha: (raw.registrosPorFecha ?? []).map((f) => ({ fecha: f.fecha, total: f.cantidad })),
+    };
   },
 };

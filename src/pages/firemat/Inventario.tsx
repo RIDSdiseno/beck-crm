@@ -17,6 +17,7 @@ import {
   ClearOutlined,
   FilePdfOutlined,
   InboxOutlined,
+  PictureOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
@@ -54,6 +55,34 @@ const estadoStockTag = (estado: InventarioFirematItem["estadoStock"]) => {
 };
 
 const columns: ColumnsType<InventarioFirematItem> = [
+  {
+    title: "Imagen",
+    key: "imagen",
+    width: 70,
+    align: "center",
+    render: (_, row) =>
+      row.imagen ? (
+        <img
+          src={row.imagen}
+          alt={row.nombre}
+          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            background: "#f5f5f5",
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <PictureOutlined style={{ color: "#d1d5db" }} />
+        </div>
+      ),
+  },
   {
     title: "Producto",
     key: "producto",
@@ -597,7 +626,7 @@ const FirematInventario: React.FC = () => {
             columns={tableColumns}
             rowKey="id"
             size="small"
-            scroll={{ x: 1300 }}
+            scroll={{ x: 1370 }}
             rowClassName={(row) =>
               row.alertaStockBajo ? "bg-orange-50" : ""
             }
