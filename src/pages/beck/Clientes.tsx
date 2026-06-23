@@ -41,7 +41,7 @@ import {
   type ContactoClienteBeckPayload,
   type ImportarClientesResult,
 } from "../../services/api";
-import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 
 const { Option } = Select;
@@ -120,8 +120,8 @@ type FiltroActivo = "todos" | "activos" | "inactivos";
 // ── Componente principal ──────────────────────────────────────────────────────
 
 const Clientes: React.FC = () => {
-  const { user: currentUser } = useAuth();
-  const isReadOnly = currentUser?.rol === "Visualizador";
+  const { canEdit } = usePermisos();
+  const isReadOnly = !canEdit("beck_clientes");
 
   // Lista
   const [clientes, setClientes] = useState<ClienteBeck[]>([]);

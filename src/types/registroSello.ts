@@ -46,4 +46,19 @@ export type RegistroSello = {
   esCorreccion?: boolean;
   registroOrigenId?: string | null;
   registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
+  cantidadEjecutada?: number | null;
+  rendimientoIndividual?: number | null;
+  rendimientoIndividualPct?: number | null;
+  seleccionadoParaInspeccion?: boolean | null;
+  fechaSeleccionInspeccion?: string | null;
+  seleccionadoInspeccionPorId?: string | null;
+  seleccionadoInspeccionPor?: { id?: string | null; nombre?: string | null } | null;
+  controlesInspeccion?: Array<{
+    id?: string | null;
+    conformidad?: string | null;
+    fecha?: string | null;
+    createdAt?: string | null;
+  }>;
 };

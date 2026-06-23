@@ -31,6 +31,7 @@ import {
   BeckUsuariosParametros,
   BeckClientes,
   BeckConfiguracionValidacion,
+  BeckPermisos,
 } from "./pages/beck";
 
 // Firemat pages
@@ -46,13 +47,15 @@ import {
   FirematMovimientos,
   FirematUsuariosParametros,
   FirematClientes,
+  FirematPermisos,
 } from "./pages/firemat";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
+import { usePermisos } from "./hooks/usePermisos";
 import type { RolUsuario } from "./types/usuario";
-import { EMPRESA_STORAGE_KEY } from "./services/api";
+import { EMPRESA_STORAGE_KEY, type ModuloBeck } from "./services/api";
 import { AlertasBeckBell, AlertasFirematBell } from "./components/AlertasBell";
 
 const { Content } = Layout;
@@ -230,6 +233,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/obras") return access.obras;
   if (pathname === "/beck/clientes") return access.clientes;
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
+  if (pathname === "/beck/permisos") return access.configuracion;
   if (pathname === "/beck/configuracion-campos-registro") return true;
   if (pathname === "/beck/itemizados-mandante") return true;
   if (pathname === "/beck/configuracion-validacion") return access.configuracion;
@@ -274,6 +278,82 @@ const getLoginErrorMessage = (error: unknown): string => {
   return "No se pudo iniciar sesión";
 };
 
+const BECK_ROUTE_MODULO: Record<string, ModuloBeck> = {
+  "/beck/dashboard": "beck_dashboard",
+  "/beck/procesamiento-ingenieria": "beck_procesamiento_ingenieria",
+  "/beck/oficina-tecnica": "beck_oficina_tecnica",
+  "/beck/registro": "beck_registro",
+  "/beck/reportes": "beck_reportes",
+  "/beck/cotizaciones": "beck_cotizaciones",
+  "/beck/movimientos": "beck_movimientos",
+  "/beck/obras": "beck_obras",
+  "/beck/funnel": "beck_funnel",
+  "/beck/clientes": "beck_clientes",
+  "/cliente/registros-mi-empresa": "beck_vista_cliente",
+  "/beck/usuarios-parametros": "beck_usuarios_parametros",
+  "/beck/permisos": "beck_usuarios_parametros",
+  "/beck/configuracion-validacion": "beck_reglas_validacion",
+};
+
+const FIREMAT_ROUTE_MODULO: Record<string, ModuloBeck> = {
+  "/firemat/dashboard": "firemat_dashboard",
+  "/firemat/funnel": "firemat_funnel",
+  "/firemat/cotizaciones": "firemat_cotizaciones",
+  "/firemat/clientes": "firemat_clientes",
+  "/firemat/productos": "firemat_productos",
+  "/firemat/categorias": "firemat_categorias",
+  "/firemat/inventario": "firemat_inventario",
+  "/firemat/ventas": "firemat_ventas",
+  "/firemat/movimientos": "firemat_movimientos",
+  "/firemat/reportes": "firemat_reportes",
+  "/firemat/usuarios-parametros": "firemat_usuarios_parametros",
+  "/firemat/permisos": "firemat_usuarios_parametros",
+};
+
+const PermisosFallback: React.FC = () => (
+  <div className="flex min-h-[200px] items-center justify-center" aria-hidden="true">
+    <div className="w-full max-w-3xl space-y-4 px-4">
+      <div className="h-8 w-1/3 animate-pulse rounded-lg bg-black/5" />
+      <div className="space-y-2">
+        <div className="h-4 w-full animate-pulse rounded bg-black/5" />
+        <div className="h-4 w-5/6 animate-pulse rounded bg-black/5" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-black/5" />
+      </div>
+    </div>
+  </div>
+);
+
+interface PermisosGateProps {
+  modulo: ModuloBeck;
+  homeRoute: string;
+  permisosReady: boolean;
+  children: React.ReactElement;
+}
+
+const PermisosGate: React.FC<PermisosGateProps> = ({
+  modulo,
+  homeRoute,
+  permisosReady: pathValidated,
+  children,
+}) => {
+  // permisosReady (context) = permisos loaded at least once (permisos !== null)
+  // pathValidated (prop)    = permisosValidPath === location.pathname
+  // Both must be true before we can evaluate canView; do NOT block on
+  // refreshingPermisos — that would cause an infinite hang when the path-validation
+  // effect resolves early (loadingRef guard) while a parallel fetch is still running.
+  const { canView, permisosReady: permisosLoaded } = usePermisos();
+
+  if (!pathValidated || !permisosLoaded) {
+    return <PermisosFallback />;
+  }
+
+  if (!canView(modulo)) {
+    return <Navigate to={homeRoute} replace />;
+  }
+
+  return children;
+};
+
 const AppShell: React.FC = () => {
   const themeMode: ThemeMode = "light";
 
@@ -286,12 +366,77 @@ const AppShell: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, login, logout } = useAuth();
+  const { canView, refreshPermisos, permisosReady: permisosLoaded } = usePermisos();
+
+  // Tracks the path for which permisos have been validated.
+  // Initialized to the current path so initial page load shows content immediately.
+  // On navigation, location.pathname differs from permisosValidPath until refresh completes,
+  // which is what PermisosGate uses to show the fallback and prevent the flash.
+  // Path for which permisos have been validated. Differs from location.pathname
+  // during navigation, causing PermisosGate to show a fallback instead of the page.
+  const [permisosValidPath, setPermisosValidPath] = useState(location.pathname);
 
   const access = useMemo(
     () => (user ? getRoleAccess(user.rol) : null),
     [user]
   );
-  const homeRoute = user ? getHomeRouteForRole(user.rol) : "/login";
+  const homeRoute = useMemo(() => {
+    if (!user) return "/login";
+    if (isCrmBlockedRole(user.rol)) return ACCESS_DENIED_PATH;
+
+    // Admin and Cliente keep static routing
+    if (user.rol === "Administrador" || user.rol === "Cliente") {
+      return getHomeRouteForRole(user.rol);
+    }
+
+    // All other roles: fall back to static until permisos load
+    if (!permisosLoaded) return getHomeRouteForRole(user.rol);
+
+    const isFirematRole =
+      user.rol === "VendedorFiremat" ||
+      user.rol === "Bodeguero" ||
+      user.rol === "VisualizadorFiremat";
+
+    if (isFirematRole) {
+      const FIREMAT_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
+        { route: "/firemat/dashboard", modulo: "firemat_dashboard" },
+        { route: "/firemat/funnel", modulo: "firemat_funnel" },
+        { route: "/firemat/cotizaciones", modulo: "firemat_cotizaciones" },
+        { route: "/firemat/clientes", modulo: "firemat_clientes" },
+        { route: "/firemat/productos", modulo: "firemat_productos" },
+        { route: "/firemat/categorias", modulo: "firemat_categorias" },
+        { route: "/firemat/inventario", modulo: "firemat_inventario" },
+        { route: "/firemat/ventas", modulo: "firemat_ventas" },
+        { route: "/firemat/movimientos", modulo: "firemat_movimientos" },
+        { route: "/firemat/reportes", modulo: "firemat_reportes" },
+        { route: "/firemat/usuarios-parametros", modulo: "firemat_usuarios_parametros" },
+      ];
+      for (const { route, modulo } of FIREMAT_HOME_ORDER) {
+        if (canView(modulo)) return route;
+      }
+      return "/login";
+    }
+
+    // Beck roles: find first accessible module
+    const BECK_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
+      { route: "/beck/dashboard", modulo: "beck_dashboard" },
+      { route: "/beck/procesamiento-ingenieria", modulo: "beck_procesamiento_ingenieria" },
+      { route: "/beck/registro", modulo: "beck_registro" },
+      { route: "/beck/obras", modulo: "beck_obras" },
+      { route: "/beck/funnel", modulo: "beck_funnel" },
+      { route: "/beck/cotizaciones", modulo: "beck_cotizaciones" },
+      { route: "/beck/clientes", modulo: "beck_clientes" },
+      { route: "/cliente/registros-mi-empresa", modulo: "beck_vista_cliente" },
+      { route: "/beck/movimientos", modulo: "beck_movimientos" },
+      { route: "/beck/reportes", modulo: "beck_reportes" },
+      { route: "/beck/usuarios-parametros", modulo: "beck_usuarios_parametros" },
+    ];
+    for (const { route, modulo } of BECK_HOME_ORDER) {
+      if (canView(modulo)) return route;
+    }
+
+    return "/login";
+  }, [user, permisosLoaded, canView]);
 
   const isFiremat = location.pathname.startsWith("/firemat");
   const themeClass = isFiremat ? "theme-firemat" : "theme-beck";
@@ -322,10 +467,67 @@ const AppShell: React.FC = () => {
 
   useEffect(() => {
     if (!user || !access) return;
+    const beckModulo = BECK_ROUTE_MODULO[location.pathname];
+    if (beckModulo) {
+      if (!canView(beckModulo)) {
+        navigate(homeRoute, { replace: true });
+        return;
+      }
+      // /beck/permisos is Admin-only regardless of canView("beck_usuarios_parametros")
+      if (location.pathname === "/beck/permisos" && user.rol !== "Administrador") {
+        navigate(homeRoute, { replace: true });
+        return;
+      }
+      return;
+    }
+    const firematModulo = FIREMAT_ROUTE_MODULO[location.pathname];
+    if (firematModulo) {
+      if (!canView(firematModulo)) {
+        navigate(homeRoute, { replace: true });
+      }
+      return;
+    }
+    // For remaining routes (Cliente, legacy), use role-based access.
     if (!canAccessPath(location.pathname, access)) {
       navigate(homeRoute, { replace: true });
     }
-  }, [access, homeRoute, location.pathname, navigate, user]);
+  }, [access, homeRoute, location.pathname, navigate, user, canView]);
+
+  useEffect(() => {
+    const currentPath = location.pathname;
+    // cancelled is set to true by the cleanup when this effect re-runs (new path/user),
+    // preventing a stale async IIFE from overwriting permisosValidPath with an old path.
+    let cancelled = false;
+
+    console.log("refresh permisos start", currentPath);
+    console.log("permisosValidPath", permisosValidPath);
+    console.log("pathname", location.pathname);
+
+    if (!user) {
+      // No user: mark path as validated immediately so the gate never hangs.
+      setPermisosValidPath(currentPath);
+      return;
+    }
+
+    void (async () => {
+      try {
+        await refreshPermisos();
+      } catch (error) {
+        console.error("Error refrescando permisos", error);
+      } finally {
+        console.log("refresh permisos finally", currentPath);
+        // Only update if this effect instance is still the latest one.
+        if (!cancelled) {
+          setPermisosValidPath(currentPath);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, user?.id]);
 
   const isLoginRoute = location.pathname === "/login";
   const currentSidebarWidth = collapsed
@@ -392,8 +594,11 @@ const AppShell: React.FC = () => {
     );
   }
 
+  // firematRoute kept only for configuracion-validacion which has no dedicated PermisosGate modulo
   const firematRoute = (flag: boolean, element: React.ReactElement) =>
     flag ? element : <Navigate to={homeRoute} replace />;
+
+  const permisosReady = permisosValidPath === location.pathname;
 
   const canSeeBeck = !!user && ALERTAS_BECK_ROLES.includes(user.rol);
   const canSeeFiremat = !!user && ALERTAS_FIREMAT_ROLES.includes(user.rol);
@@ -493,123 +698,114 @@ const AppShell: React.FC = () => {
                 <Route path="/configuracion" element={<Navigate to="/beck/usuarios-parametros" replace />} />
 
                 {/* ── Beck routes ─────────────────────────────── */}
+                {/* Beck routes: PermisosGate is the sole authority via canView.
+                    Removing the outer access.xxx guard allows individual permission
+                    exceptions to override role defaults (e.g. Ingeniería + cotizaciones). */}
                 <Route
                   path="/beck/dashboard"
                   element={
-                    access.dashboard ? (
+                    <PermisosGate modulo="beck_dashboard" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckDashboard themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/funnel"
                   element={
-                    access.funnel ? (
+                    <PermisosGate modulo="beck_funnel" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckFunnel themeMode={themeMode} alertaBell={bellBeck} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/cotizaciones"
                   element={
-                    access.cotizaciones ? (
+                    <PermisosGate modulo="beck_cotizaciones" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckCotizaciones themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/obras"
                   element={
-                    access.obras ? (
+                    <PermisosGate modulo="beck_obras" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckObras />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/reportes"
                   element={
-                    access.reportes ? (
+                    <PermisosGate modulo="beck_reportes" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckReportes themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/movimientos"
                   element={
-                    access.movimientos ? (
+                    <PermisosGate modulo="beck_movimientos" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckMovimientos />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/registro"
                   element={
-                    access.registro ? (
+                    <PermisosGate modulo="beck_registro" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckRegistro themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/procesamiento-ingenieria"
                   element={
-                    access.ingenieria ? (
+                    <PermisosGate modulo="beck_procesamiento_ingenieria" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckProcesamientoIngenieria themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/oficina-tecnica"
                   element={
-                    access.oficinaTecnica ? (
+                    <PermisosGate modulo="beck_oficina_tecnica" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckOficinaTecnica />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/clientes"
                   element={
-                    access.clientes ? (
+                    <PermisosGate modulo="beck_clientes" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckClientes />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/usuarios-parametros"
                   element={
-                    access.configuracion ? (
+                    <PermisosGate modulo="beck_usuarios_parametros" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckUsuariosParametros themeMode={themeMode} />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
                 <Route
                   path="/beck/configuracion-validacion"
                   element={
-                    access.configuracion ? (
+                    <PermisosGate modulo="beck_reglas_validacion" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckConfiguracionValidacion />
-                    ) : (
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/beck/permisos"
+                  element={
+                    user.rol !== "Administrador" ? (
                       <Navigate to={homeRoute} replace />
+                    ) : (
+                      <PermisosGate modulo="beck_usuarios_parametros" homeRoute={homeRoute} permisosReady={permisosReady}>
+                        <BeckPermisos />
+                      </PermisosGate>
                     )
                   }
                 />
@@ -624,19 +820,101 @@ const AppShell: React.FC = () => {
                   element={<Navigate to="/beck/obras" replace />}
                 />
 
-                <Route path="/firemat/dashboard" element={firematRoute(access.firematDashboard, <FirematDashboard />)} />
-                <Route path="/firemat/funnel" element={firematRoute(access.firematFunnel, <FirematFunnel alertaBell={bellFiremat} />)} />
-                <Route path="/firemat/cotizaciones" element={firematRoute(access.firematCotizaciones, <FirematCotizaciones />)} />
-                <Route path="/firemat/productos" element={firematRoute(access.firematProductos, <FirematProductos />)} />
-                <Route path="/firemat/categorias" element={firematRoute(access.firematCategorias, <FirematCategorias/>)}/>
-                <Route path="/firemat/inventario" element={firematRoute(access.firematInventario, <FirematInventario />)} />
-                <Route path="/firemat/ventas" element={firematRoute(access.firematVentas, <FirematVentas />)} />
-                <Route path="/firemat/clientes" element={firematRoute(access.firematClientes, <FirematClientes />)} />
-                <Route path="/firemat/reportes" element={firematRoute(access.firematReportes, <FirematReportes />)} />
-                <Route path="/firemat/movimientos" element={firematRoute(access.firematMovimientos || access.firematKardex, <FirematMovimientos />)} />
+                <Route
+                  path="/firemat/dashboard"
+                  element={
+                    <PermisosGate modulo="firemat_dashboard" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematDashboard />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/funnel"
+                  element={
+                    <PermisosGate modulo="firemat_funnel" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematFunnel alertaBell={bellFiremat} />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/cotizaciones"
+                  element={
+                    <PermisosGate modulo="firemat_cotizaciones" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematCotizaciones />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/clientes"
+                  element={
+                    <PermisosGate modulo="firemat_clientes" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematClientes />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/productos"
+                  element={
+                    <PermisosGate modulo="firemat_productos" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematProductos />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/categorias"
+                  element={
+                    <PermisosGate modulo="firemat_categorias" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematCategorias />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/inventario"
+                  element={
+                    <PermisosGate modulo="firemat_inventario" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematInventario />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/ventas"
+                  element={
+                    <PermisosGate modulo="firemat_ventas" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematVentas />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/movimientos"
+                  element={
+                    <PermisosGate modulo="firemat_movimientos" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematMovimientos />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/reportes"
+                  element={
+                    <PermisosGate modulo="firemat_reportes" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematReportes />
+                    </PermisosGate>
+                  }
+                />
                 <Route
                   path="/firemat/usuarios-parametros"
-                  element={firematRoute(access.firemat && access.configuracion, <FirematUsuariosParametros />)}
+                  element={
+                    <PermisosGate modulo="firemat_usuarios_parametros" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematUsuariosParametros />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/firemat/permisos"
+                  element={
+                    <PermisosGate modulo="firemat_usuarios_parametros" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <FirematPermisos />
+                    </PermisosGate>
+                  }
                 />
                 <Route
                   path="/firemat/configuracion-validacion"
@@ -647,11 +925,9 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/cliente/registros-mi-empresa"
                   element={
-                    access.clienteRegistros ? (
+                    <PermisosGate modulo="beck_vista_cliente" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <RegistrosMiEmpresa />
-                    ) : (
-                      <Navigate to={homeRoute} replace />
-                    )
+                    </PermisosGate>
                   }
                 />
 

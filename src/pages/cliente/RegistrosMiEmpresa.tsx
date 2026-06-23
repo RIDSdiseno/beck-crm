@@ -53,6 +53,7 @@ import {
   type ClienteRegistroValidado,
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 
 dayjs.locale("es");
 
@@ -99,7 +100,14 @@ const getErrorMessage = (err: unknown): string => {
 
 const RegistrosMiEmpresa: React.FC = () => {
   const { user } = useAuth();
+  const { canView } = usePermisos();
+
   const isAdmin = user?.rol === "Administrador";
+  const isCliente = user?.rol === "Cliente";
+  // Usuario interno con permiso beck_vista_cliente pero sin ser admin ni cliente real
+  const isInterno = !isAdmin && !isCliente && canView("beck_vista_cliente");
+  // Cualquier rol que necesita selector para elegir cliente
+  const necesitaSelector = isAdmin || isInterno;
 
   // ── Estado admin: selector de cliente Beck ──
   const [clientesBeck, setClientesBeck] = useState<ClienteBeckVistaCliente[]>([]);
@@ -127,26 +135,26 @@ const RegistrosMiEmpresa: React.FC = () => {
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
   const [filtroFechas, setFiltroFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
-  // params que se pasan a la API — solo si admin con cliente Beck seleccionado
-  const apiParams = isAdmin
+  // params que se pasan a la API — solo si admin/interno con cliente Beck seleccionado
+  const apiParams = necesitaSelector
     ? clienteSeleccionadoId
       ? { clienteBeckId: clienteSeleccionadoId }
       : undefined
     : undefined;
 
-  // Si admin y no hay cliente seleccionado, no llamamos nada
-  const listoParaCargar = !isAdmin || !!clienteSeleccionadoId;
+  // Si admin/interno y no hay cliente seleccionado, no llamamos nada
+  const listoParaCargar = !necesitaSelector || !!clienteSeleccionadoId;
 
-  // ── Carga clientes Beck (solo admin) ──
+  // ── Carga clientes Beck (admin e internos con permiso) ──
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!necesitaSelector) return;
     setLoadingClientes(true);
     clienteAPI
       .clientesBeck()
       .then(setClientesBeck)
       .catch((err) => void message.error("No se pudieron cargar los clientes: " + getErrorMessage(err)))
       .finally(() => setLoadingClientes(false));
-  }, [isAdmin]);
+  }, [necesitaSelector]);
 
   // ── Carga dashboard + obras ──
   const cargarDatos = useCallback(
@@ -181,26 +189,26 @@ const RegistrosMiEmpresa: React.FC = () => {
     []
   );
 
-  // Carga inicial para rol cliente; para admin espera selección
+  // Carga inicial solo para rol Cliente real; admin/internos esperan selección
   useEffect(() => {
-    if (!isAdmin) {
+    if (!necesitaSelector) {
       void cargarDatos(undefined);
     }
-  }, [isAdmin, cargarDatos]);
+  }, [necesitaSelector, cargarDatos]);
 
-  // Re-carga cuando admin cambia de cliente Beck
+  // Re-carga cuando admin/interno cambia de cliente Beck
   useEffect(() => {
-    if (isAdmin && clienteSeleccionadoId) {
+    if (necesitaSelector && clienteSeleccionadoId) {
       void cargarDatos({ clienteBeckId: clienteSeleccionadoId });
     }
-    if (isAdmin && !clienteSeleccionadoId) {
+    if (necesitaSelector && !clienteSeleccionadoId) {
       setDashboard(null);
       setObras([]);
       setObraSeleccionada(null);
       setRegistros([]);
       setErrorDatos(null);
     }
-  }, [isAdmin, clienteSeleccionadoId, cargarDatos]);
+  }, [necesitaSelector, clienteSeleccionadoId, cargarDatos]);
 
   // ── Abrir obra ──
   const abrirObra = useCallback(
@@ -403,11 +411,11 @@ const RegistrosMiEmpresa: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3">
         <BuildOutlined style={{ fontSize: 20, color: "#d4a017" }} />
         <Title level={3} style={{ margin: 0 }}>
-          {isAdmin ? "Vista Cliente" : "Registros de mi empresa"}
+          {necesitaSelector ? "Vista Cliente" : "Registros de mi empresa"}
         </Title>
       </div>
 
-      {isAdmin && (
+      {necesitaSelector && (
         <Card size="small" style={{ maxWidth: 640 }}>
           <Space direction="vertical" style={{ width: "100%" }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -593,8 +601,8 @@ const RegistrosMiEmpresa: React.FC = () => {
     <div className="w-full min-w-0 space-y-6">
       {encabezado}
 
-      {/* Admin sin cliente seleccionado */}
-      {isAdmin && !clienteSeleccionadoId && (
+      {/* Admin/interno sin cliente seleccionado */}
+      {necesitaSelector && !clienteSeleccionadoId && (
         <Card>
           <Empty
             image={<BuildOutlined style={{ fontSize: 48, color: "#d4a017" }} />}

@@ -1,6 +1,7 @@
 // src/components/NuevoRegistroDrawer.tsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Drawer,
   Form,
   Input,
@@ -23,7 +24,11 @@ import dayjs, { Dayjs } from "dayjs";
 import { useAuth } from "../context/useAuth";
 import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
+import { obrasAPI } from "../services/api";
 import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
+import { TIPOS_REGISTRO_TERRENO } from "../constants/roles";
+
+type ObraMin = { id: string; nombre: string; codigo?: string | null };
 
 export type NuevoRegistroValues = {
   tipoRegistro: "sello_cortafuego" | "junta_lineal_espuma";
@@ -57,9 +62,11 @@ export type NuevoRegistroValues = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: NuevoRegistroValues) => void;
+  onSubmit: (values: NuevoRegistroValues) => void | Promise<void>;
   itemizadosMandante?: ItemizadoMandante[];
   camposConfigurados?: CampoConfiguracionRegistro[];
+  obrasApi?: ObraMin[];
+  submitting?: boolean;
 };
 
 type CreateObraValues = {
@@ -124,6 +131,8 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   onSubmit,
   itemizadosMandante = [],
   camposConfigurados = [],
+  obrasApi,
+  submitting = false,
 }) => {
   const { user } = useAuth();
   const isAdministrador = user?.rol === "Administrador";
@@ -133,12 +142,47 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   const [obras, setObras] = useState<Obra[]>([]);
   const [createObraOpen, setCreateObraOpen] = useState(false);
   const [obraForm] = Form.useForm<CreateObraValues>();
+  const [tiposFetchedFor, setTiposFetchedFor] = useState<string | null>(null);
+  const [fetchedTipos, setFetchedTipos] = useState<string[]>([]);
 
   const obraId = Form.useWatch("obraId", form);
   const tipoRegistro = Form.useWatch("tipoRegistro", form);
-  const selectedObra = obras.find((o) => o.id === obraId);
+
+  // null while fetch pending or no obra selected; array once loaded for current obraId
+  const tiposRegistroObra: string[] | null =
+    obraId && tiposFetchedFor === obraId ? fetchedTipos : null;
+  const loadingTipos = Boolean(obraId) && tiposFetchedFor !== obraId;
+
+  const listaObras: ObraMin[] = obrasApi ?? obras;
+  const selectedObra = listaObras.find((o) => o.id === obraId);
   const esEspuma = tipoRegistro === "junta_lineal_espuma";
   const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
+
+  useEffect(() => {
+    if (!obraId) return;
+    let active = true;
+    void obrasAPI.getTiposRegistro(obraId).then((tipos) => {
+      if (!active) return;
+      setFetchedTipos(tipos);
+      setTiposFetchedFor(obraId);
+      if (tipos.length === 1) {
+        form.setFieldValue("tipoRegistro", tipos[0]);
+      }
+    }).catch(() => {
+      if (active) {
+        setFetchedTipos([]);
+        setTiposFetchedFor(obraId);
+      }
+    });
+    return () => { active = false; };
+  }, [obraId, form]);
+
+  const tipoOptions = useMemo(() => {
+    if (!tiposRegistroObra || tiposRegistroObra.length === 0) {
+      return TIPOS_REGISTRO_TERRENO;
+    }
+    return TIPOS_REGISTRO_TERRENO.filter((t) => tiposRegistroObra.includes(t.value));
+  }, [tiposRegistroObra]);
 
   const cantidadSellosWatched = Form.useWatch("cantidadSellos", form);
   const holguraCmWatched = Form.useWatch("holguraCm", form);
@@ -185,7 +229,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
     }
     form.resetFields();
     setFileList([]);
-    setObras(loadObras());
+    if (!obrasApi) setObras(loadObras());
     form.setFieldsValue({
       fechaEjecucion: dayjs(),
       tipoRegistro: "sello_cortafuego",
@@ -314,13 +358,11 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
             rules={[{ required: true, message: "Selecciona el tipo" }]}
             className="mb-0"
           >
-            <Select
-              options={[
-                { value: "sello_cortafuego", label: "Sello cortafuego" },
-                { value: "junta_lineal_espuma", label: "Junta lineal ESPUMA" },
-              ]}
-            />
+            <Select loading={loadingTipos} options={tipoOptions} />
           </Form.Item>
+          {obraId && tiposRegistroObra !== null && tiposRegistroObra.length === 0 && (
+            <Alert type="warning" showIcon className="mt-2" message="Esta obra no tiene tipos de registro configurados. Ingeniería debe configurarla antes de registrar." />
+          )}
         </div>
 
         {/* Obra */}
@@ -337,9 +379,9 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
             >
               <Select
                 placeholder={
-                  obras.length ? "Selecciona una obra" : "No hay obras creadas"
+                  listaObras.length ? "Selecciona una obra" : "No hay obras creadas"
                 }
-                options={obras.map((o) => ({
+                options={listaObras.map((o) => ({
                   value: o.id,
                   label: o.codigo ? `${o.codigo} · ${o.nombre}` : o.nombre,
                 }))}
@@ -348,7 +390,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               />
             </Form.Item>
 
-            {isAdministrador && (
+            {!obrasApi && isAdministrador && (
               <div className="flex items-end">
                 <Button
                   icon={<PlusOutlined />}
@@ -361,7 +403,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
             )}
           </div>
 
-          {!isAdministrador && obras.length === 0 && (
+          {!obrasApi && !isAdministrador && obras.length === 0 && (
             <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
               No hay obras creadas. Pide al Administrador que cree una para
               continuar.
@@ -647,6 +689,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               <Button
                 type="primary"
                 htmlType="submit"
+                loading={submitting}
                 className="bg-orange-500 hover:bg-orange-600 border-none"
               >
                 Guardar registro

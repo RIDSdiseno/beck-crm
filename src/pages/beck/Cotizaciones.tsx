@@ -41,6 +41,7 @@ import CotizacionEditorModal, {
   type LineaCotizacion,
 } from "../../components/CotizacionEditorModal";
 import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 
 const { RangePicker } = DatePicker;
 
@@ -472,9 +473,9 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   void themeMode;
 
   const { user } = useAuth();
-  const canWriteCotizaciones =
-    user?.rol === "Administrador" || user?.rol === "Vendedor";
-  const canManageGanancia = user?.rol === "Administrador";
+  const { canView, canEdit } = usePermisos();
+  const canWriteCotizaciones = canEdit("beck_cotizaciones");
+  const canManageGanancia = canWriteCotizaciones;
   const canCreateCotizaciones = canWriteCotizaciones;
   const canEditCotizaciones = canWriteCotizaciones;
   const canDeleteCotizaciones = canWriteCotizaciones;
@@ -515,6 +516,12 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   useEffect(() => {
     void loadCotizaciones();
   }, [loadCotizaciones]);
+
+  useEffect(() => {
+    console.log("canView cotizaciones", canView("beck_cotizaciones"));
+    console.log("canEdit cotizaciones", canEdit("beck_cotizaciones"));
+    console.log("usuario", user?.rol);
+  }, [canEdit, canView, user?.rol]);
 
   useEffect(() => {
     if (canWriteCotizaciones) {

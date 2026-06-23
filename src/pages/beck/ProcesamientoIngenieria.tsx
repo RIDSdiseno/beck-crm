@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Input, Modal, Select, Table, Tag, message } from "antd";
+import { Button, Card, DatePicker, Input, Modal, Segmented, Select, Table, Tag, message } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
@@ -8,7 +8,10 @@ import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
 } from "../../components/RegistroDetalleModal";
 import type { RegistroSello } from "../../types/registroSello";
-import { api, obrasAPI, registrosAPI, type Obra } from "../../services/api";
+import { api, obrasAPI, registrosAPI, inspeccionAPI, type Obra } from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
+import { useAuth } from "../../context/useAuth";
+import ControlInspeccionModal from "../../components/ControlInspeccionModal";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -83,7 +86,9 @@ type RegistroApiRecord = {
   fotos_urls?: string[] | null;
   fotos?: Array<{ url?: string | null }> | null;
   fotos_registro?: Array<{ url?: string | null }> | null;
-  obra?: { nombre?: string | null } | null;
+  obra?: { nombre?: string | null; rendimientoSellosEsperadoDiario?: number | null; rendimientoReparacionEsperadoDiario?: number | null } | null;
+  rendimiento_sellos_esperado_diario?: number | null;
+  rendimiento_reparacion_esperado_diario?: number | null;
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
@@ -93,6 +98,18 @@ type RegistroApiRecord = {
   esCorreccion?: boolean | null;
   registroOrigenId?: string | null;
   registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
+  cantidadEjecutada?: number | null;
+  rendimientoIndividual?: number | null;
+  rendimientoIndividualPct?: number | null;
+  seleccionadoParaInspeccion?: boolean | null;
+  seleccionado_para_inspeccion?: boolean | null;
+  fechaSeleccionInspeccion?: string | null;
+  fecha_seleccion_inspeccion?: string | null;
+  seleccionadoInspeccionPorId?: string | null;
+  seleccionado_inspeccion_por_id?: string | null;
+  seleccionadoInspeccionPor?: { id?: string; nombre?: string | null } | null;
+  seleccionado_inspeccion_por_nombre?: string | null;
+  controlesInspeccion?: Array<{ id?: string; conformidad?: string | null; fecha?: string | null; createdAt?: string | null }> | null;
 };
 
 type RegistroIngenieria = RegistroSello & {
@@ -374,6 +391,22 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     esCorreccion: r.esCorreccion ?? false,
     registroOrigenId: r.registroOrigenId ?? null,
     registroOrigen: r.registroOrigen ?? null,
+    rendimientoSellosEsperadoDiario:
+      r.obra?.rendimientoSellosEsperadoDiario ??
+      r.rendimiento_sellos_esperado_diario ??
+      null,
+    rendimientoReparacionEsperadoDiario:
+      r.obra?.rendimientoReparacionEsperadoDiario ??
+      r.rendimiento_reparacion_esperado_diario ??
+      null,
+    cantidadEjecutada: r.cantidadEjecutada ?? null,
+    rendimientoIndividual: r.rendimientoIndividual ?? null,
+    rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
+    seleccionadoParaInspeccion: Boolean(r.seleccionadoParaInspeccion ?? r.seleccionado_para_inspeccion),
+    fechaSeleccionInspeccion: r.fechaSeleccionInspeccion ?? r.fecha_seleccion_inspeccion ?? null,
+    seleccionadoInspeccionPorId: r.seleccionadoInspeccionPorId ?? r.seleccionado_inspeccion_por_id ?? null,
+    seleccionadoInspeccionPor: r.seleccionadoInspeccionPor ?? (r.seleccionado_inspeccion_por_nombre ? { nombre: r.seleccionado_inspeccion_por_nombre } : null),
+    controlesInspeccion: r.controlesInspeccion ?? [],
   };
 };
 
@@ -409,6 +442,9 @@ const KpiCard: React.FC<{
 
 const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   void themeMode;
+  const { user } = useAuth();
+  const { canEdit } = usePermisos();
+  const canEditIngenieria = canEdit("beck_procesamiento_ingenieria");
 
   const [registros, setRegistros] = useState<RegistroIngenieria[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
@@ -420,12 +456,15 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
   const [tipoSeleccionado, setTipoSeleccionado] = useState<"todos" | "sello_cortafuego" | "junta_lineal_espuma">("todos");
+  const [filtroEstado, setFiltroEstado] = useState<"activos" | "validado" | "rechazado" | "todos">("activos");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
   const [rechazandoRegistro, setRechazandoRegistro] = useState<RegistroSello | null>(null);
   const [motivoRechazoInput, setMotivoRechazoInput] = useState("");
   const [motivoRechazoError, setMotivoRechazoError] = useState(false);
   const [savingRechazo, setSavingRechazo] = useState(false);
   const [resumenKpis, setResumenKpis] = useState<{ pendientes: number; enRevision: number; validados: number; rechazados: number; total: number } | null>(null);
+  const [marcandoInspeccionId, setMarcandoInspeccionId] = useState<string | null>(null);
+  const [controlInspeccionRegistroId, setControlInspeccionRegistroId] = useState<string | null>(null);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
@@ -495,7 +534,13 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
 
     return registros.filter((r) => {
       const est = normalizeEstado(r.estado);
-      if (est !== "pendiente" && est !== "en_revision") return false;
+      if (filtroEstado === "activos") {
+        if (est !== "pendiente" && est !== "en_revision") return false;
+      } else if (filtroEstado === "validado") {
+        if (est !== "validado") return false;
+      } else if (filtroEstado === "rechazado") {
+        if (est !== "rechazado") return false;
+      }
       if (tipoSeleccionado !== "todos" && (r.tipoRegistro ?? "sello_cortafuego") !== tipoSeleccionado) return false;
       if (obraEmpresaQuery && !getRegistroObraEmpresaSearchText(r).includes(obraEmpresaQuery)) return false;
       if (rangoFechas) {
@@ -509,7 +554,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       const db = b.fechaEjecucion ? new Date(b.fechaEjecucion).getTime() : 0;
       return db - da;
     });
-  }, [registros, obraSeleccionada, tipoSeleccionado, rangoFechas]);
+  }, [registros, obraSeleccionada, tipoSeleccionado, rangoFechas, filtroEstado]);
 
   const limpiarFiltros = () => {
     setObraSeleccionada("");
@@ -594,6 +639,61 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     } finally {
       setSavingRechazo(false);
     }
+  };
+
+  const handleEnviarInspeccion = (record: RegistroSello) => {
+    Modal.confirm({
+      title: "¿Enviar registro a inspección?",
+      content: "El registro quedará marcado como seleccionado para control de inspección.",
+      okText: "Enviar",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        const id = String(record.id);
+        setMarcandoInspeccionId(id);
+        try {
+          await inspeccionAPI.marcarInspeccion(id, true);
+          await cargarRegistros();
+          message.success("Registro enviado a inspección");
+        } catch (err) {
+          const e = err as { response?: { data?: { error?: string; message?: string } } };
+          const msg =
+            e?.response?.data?.error ??
+            e?.response?.data?.message ??
+            "No se pudo enviar a inspección";
+          message.error(msg);
+        } finally {
+          setMarcandoInspeccionId(null);
+        }
+      },
+    });
+  };
+
+  const handleQuitarInspeccion = (record: RegistroSello) => {
+    Modal.confirm({
+      title: "¿Quitar de inspección?",
+      content: "El registro dejará de estar seleccionado para control de inspección.",
+      okText: "Quitar",
+      okType: "danger",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        const id = String(record.id);
+        setMarcandoInspeccionId(id);
+        try {
+          await inspeccionAPI.marcarInspeccion(id, false);
+          await cargarRegistros();
+          message.success("Registro quitado de inspección");
+        } catch (err) {
+          const e = err as { response?: { data?: { error?: string; message?: string } } };
+          const msg =
+            e?.response?.data?.error ??
+            e?.response?.data?.message ??
+            "No se pudo quitar de inspección";
+          message.error(msg);
+        } finally {
+          setMarcandoInspeccionId(null);
+        }
+      },
+    });
   };
 
   const handleDescargarPdf = async (record: RegistroSello) => {
@@ -701,6 +801,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const renderAcciones = (_: unknown, record: RegistroSello) => {
     const estado = normalizeEstado(record.estado);
     const loadingEstado = changingEstadoId === String(record.id);
+    const loadingInspeccion = marcandoInspeccionId === String(record.id);
+    const seleccionado = record.seleccionadoParaInspeccion;
     return (
       <div className="flex flex-wrap gap-1">
         <Button
@@ -713,7 +815,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         >
           Ver
         </Button>
-        {estado === "pendiente" && (
+        {estado === "pendiente" && canEditIngenieria && (
           <Button
             size="small"
             type="primary"
@@ -726,34 +828,81 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         )}
         {estado === "en_revision" && (
           <>
-            <Button
-              size="small"
-              className="px-2"
-              onClick={() => {
-                setRegistroDetalle(record);
-                setDetalleMode("edit");
-              }}
-            >
-              Editar
-            </Button>
-            <Button
-              size="small"
-              type="primary"
-              className="px-2"
-              loading={loadingEstado}
-              onClick={() => void handleCambiarEstado(record, "validado")}
-            >
-              Validar
-            </Button>
-            <Button
-              size="small"
-              danger
-              className="px-2"
-              onClick={() => handleAbrirRechazo(record)}
-            >
-              Rechazar
-            </Button>
+            {canEditIngenieria && (
+              <Button
+                size="small"
+                className="px-2"
+                onClick={() => {
+                  setRegistroDetalle(record);
+                  setDetalleMode("edit");
+                }}
+              >
+                Editar
+              </Button>
+            )}
+            {canEditIngenieria && (
+              <Button
+                size="small"
+                type="primary"
+                className="px-2"
+                loading={loadingEstado}
+                onClick={() => void handleCambiarEstado(record, "validado")}
+              >
+                Validar
+              </Button>
+            )}
+            {canEditIngenieria && (
+              <Button
+                size="small"
+                danger
+                className="px-2"
+                onClick={() => handleAbrirRechazo(record)}
+              >
+                Rechazar
+              </Button>
+            )}
           </>
+        )}
+        {estado === "rechazado" && canEditIngenieria && (
+          <Button
+            size="small"
+            className="px-2"
+            loading={loadingEstado}
+            onClick={() => void handleCambiarEstado(record, "pendiente")}
+          >
+            Reenviar a revisión
+          </Button>
+        )}
+        {!seleccionado && canEditIngenieria && (
+          <Button
+            size="small"
+            className="px-2"
+            loading={loadingInspeccion}
+            onClick={() => handleEnviarInspeccion(record)}
+          >
+            Enviar a inspección
+          </Button>
+        )}
+        {seleccionado && canEditIngenieria && (
+          <Button
+            size="small"
+            danger
+            className="px-2"
+            loading={loadingInspeccion}
+            onClick={() => handleQuitarInspeccion(record)}
+          >
+            Quitar inspección
+          </Button>
+        )}
+        {seleccionado && (
+          <Button
+            size="small"
+            type="dashed"
+            className="px-2"
+            onClick={() => setControlInspeccionRegistroId(String(record.id))}
+          >
+            Control inspección
+          </Button>
         )}
         <Button
           size="small"
@@ -764,6 +913,36 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         </Button>
       </div>
     );
+  };
+
+  const columnaInspeccion: ColumnsType<RegistroIngenieria>[number] = {
+    title: "Inspección",
+    key: "inspeccion",
+    width: 140,
+    render: (_, r) => {
+      const seleccionado = r.seleccionadoParaInspeccion;
+      const ultimoControl = r.controlesInspeccion?.[0];
+      return (
+        <div className="flex flex-col gap-1">
+          <Tag
+            color={seleccionado ? "gold" : "default"}
+            style={{ marginInlineEnd: 0 }}
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+          >
+            {seleccionado ? "En inspección" : "No enviado"}
+          </Tag>
+          {ultimoControl?.conformidad && (
+            <Tag
+              color={ultimoControl.conformidad === "conforme" ? "green" : "red"}
+              style={{ marginInlineEnd: 0 }}
+              className="rounded-full px-2 py-0.5 text-[10px]"
+            >
+              {ultimoControl.conformidad === "conforme" ? "Conforme" : "No conforme"}
+            </Tag>
+          )}
+        </div>
+      );
+    },
   };
 
   const columnaEstado: ColumnsType<RegistroIngenieria>[number] = {
@@ -1005,6 +1184,63 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
+    ...(user?.rol === "Administrador" || user?.rol === "Ingenieria"
+      ? [
+          {
+            title: "Rend. esperado diario",
+            key: "rendimientoSellos",
+            width: 150,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoSellosEsperadoDiario;
+              return v != null ? (
+                <span className="font-medium text-slate-700">{v} sellos/día</span>
+              ) : (
+                <span className="text-slate-400">Sin definir</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+          {
+            title: "Rend. reparación diario",
+            key: "rendimientoReparacion",
+            width: 160,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoReparacionEsperadoDiario;
+              return v != null ? (
+                <span className="font-medium text-slate-700">{v} reparaciones/día</span>
+              ) : (
+                <span className="text-slate-400">Sin definir</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+          {
+            title: "Cantidad ejecutada",
+            key: "cantidadEjecutada",
+            width: 140,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.cantidadEjecutada;
+              return v != null ? (
+                <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}</span>
+              ) : (
+                <span className="text-slate-400">Sin calcular</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+          {
+            title: "Rendimiento individual",
+            key: "rendimientoIndividual",
+            width: 160,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoIndividualPct;
+              return v != null ? (
+                <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}%</span>
+              ) : (
+                <span className="text-slate-400">Sin calcular</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+        ]
+      : []),
+    columnaInspeccion,
     columnaEstado,
     columnaAcciones,
   ];
@@ -1067,13 +1303,34 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         }}
         title={
           <div className="flex items-center justify-between gap-3">
-            <span>Registros para revisión técnica</span>
+            <span>
+              {filtroEstado === "activos"
+                ? "Registros para revisión técnica"
+                : filtroEstado === "validado"
+                  ? "Registros validados"
+                  : filtroEstado === "rechazado"
+                    ? "Registros rechazados"
+                    : "Todos los registros"}
+            </span>
             <span className="text-xs font-normal text-slate-500">
               {filteredRegistros.length} registros
             </span>
           </div>
         }
       >
+        <div className="border-b border-slate-100 px-4 py-2.5">
+          <Segmented
+            options={[
+              { label: "Pendientes / En revisión", value: "activos" },
+              { label: "Validados", value: "validado" },
+              { label: "Rechazados", value: "rechazado" },
+              { label: "Todos", value: "todos" },
+            ]}
+            value={filtroEstado}
+            onChange={(v) => setFiltroEstado(v as "activos" | "validado" | "rechazado" | "todos")}
+            size="small"
+          />
+        </div>
         <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 px-4 py-3">
           <Select
             showSearch
@@ -1145,6 +1402,22 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         }}
         onSave={handleGuardarDetalle}
         onDownloadPdf={handleDescargarPdf}
+        showRendimientoSellos={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
+        rendimientoSellosEsperadoDiario={
+          registroDetalle?.rendimientoSellosEsperadoDiario ??
+          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoSellosEsperadoDiario
+        }
+        rendimientoReparacionEsperadoDiario={
+          registroDetalle?.rendimientoReparacionEsperadoDiario ??
+          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoReparacionEsperadoDiario
+        }
+      />
+
+      <ControlInspeccionModal
+        registroId={controlInspeccionRegistroId}
+        open={!!controlInspeccionRegistroId}
+        onClose={() => setControlInspeccionRegistroId(null)}
+        onSaved={() => void cargarRegistros()}
       />
 
       <Modal

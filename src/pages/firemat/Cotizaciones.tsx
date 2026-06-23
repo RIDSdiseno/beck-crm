@@ -40,11 +40,12 @@ import {
   type ContactoClienteFirematPayload,
   type FirematCotizacion,
   type FirematCotizacionEstado,
+  type FirematCotizacionLinea,
   type FirematCotizacionPayload,
   type FirematCotizacionesResumen,
   type ProductoFiremat,
 } from "../../services/api";
-import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
@@ -77,7 +78,7 @@ type CotizacionFormValues = {
 };
 
 type FirematCotizacionConDetalles = FirematCotizacion & {
-  detalles?: FirematCotizacion["lineas"];
+  detalles?: FirematCotizacionLinea[];
 };
 
 const ESTADOS: Array<{ label: string; value: FirematCotizacionEstado; color: string }> = [
@@ -243,13 +244,13 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
 );
 
 const FirematCotizaciones: React.FC = () => {
-  const { user } = useAuth();
+  const { canEdit: canEditPerm } = usePermisos();
   const [form] = Form.useForm<CotizacionFormValues>();
   const lineasWatch = Form.useWatch("lineas", form) ?? [];
 
-  const canCreate = user?.rol === "Administrador" || user?.rol === "Vendedor";
+  const canCreate = canEditPerm("firemat_cotizaciones");
   const canEdit = canCreate;
-  const canDelete = user?.rol === "Administrador";
+  const canDelete = canEditPerm("firemat_cotizaciones");
 
   const [cotizaciones, setCotizaciones] = useState<FirematCotizacion[]>([]);
   const [resumen, setResumen] =
@@ -297,6 +298,48 @@ const FirematCotizaciones: React.FC = () => {
     [productos]
   );
   const totals = useMemo(() => calculateTotals(lineasWatch), [lineasWatch]);
+
+  // Inicializar formulario después del render para evitar condición de carrera
+  // con React 19 concurrent mode + Antd 6 Form.List + destroyOnClose.
+  // setFieldsValue inline (antes del mount) puede ser sobrescrito por initialValues.
+  useEffect(() => {
+    if (!selected || !modalOpen || modalMode === "crear") return;
+
+    const lineasDetalle = getLineas(selected).map((linea) => ({
+      productoId: Number(linea.productoId),
+      cantidad: Number(linea.cantidad || 1),
+      precioUnitario: Number(linea.precioUnitario || 0),
+      descuentoPct: Number(linea.descuentoPct || 0),
+    }));
+
+    const ext = selected as FirematCotizacion & {
+      clienteId?: string | null;
+      clienteFirematId?: string | null;
+      contactoId?: string | null;
+      contactoFirematId?: string | null;
+      telefono?: string | null;
+      correo?: string | null;
+    };
+
+    form.setFieldsValue({
+      clienteId: ext.clienteId ?? undefined,
+      clienteFirematId: ext.clienteFirematId ?? ext.clienteId ?? undefined,
+      contactoId: ext.contactoId ?? undefined,
+      contactoFirematId: ext.contactoFirematId ?? ext.contactoId ?? undefined,
+      cliente: selected.cliente,
+      contacto: selected.contacto ?? "",
+      telefono: ext.telefono ?? "",
+      correo: ext.correo ?? "",
+      tipoCliente: normalizeTipoClienteFiremat(selected.tipoCliente) ?? "cliente_final",
+      responsable: selected.responsable ?? "",
+      fechaVencimiento: selected.fechaVencimiento ? dayjs(selected.fechaVencimiento) : null,
+      fechaSeguimiento: selected.fechaSeguimiento ? dayjs(selected.fechaSeguimiento) : null,
+      observaciones: selected.observaciones ?? "",
+      lineas: lineasDetalle.length > 0 ? lineasDetalle : [{ cantidad: 1, descuentoPct: 0 }],
+    });
+  // form es estable (Form.useForm), no cambia entre renders
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, modalOpen, modalMode]);
 
   const clienteOptions = useMemo(
     () =>
@@ -482,51 +525,22 @@ const FirematCotizaciones: React.FC = () => {
       setModalOpen(true);
       void cargarClientesActivos();
       const detalle = await firematCotizacionesAPI.obtener(record.id);
-      console.log("DETALLE COTIZACION FIREMAT", detalle);
-      console.log("DETALLES/LINEAS MAPPEADAS", getLineas(detalle));
-      const lineasDetalle = getLineas(detalle).map((linea) => ({
-        productoId: Number(linea.productoId),
-        cantidad: Number(linea.cantidad || 1),
-        precioUnitario: Number(linea.precioUnitario || 0),
-        descuentoPct: Number(linea.descuentoPct || 0),
-      }));
+      console.log("cotizacion firemat detalle raw", detalle);
+      console.log("cotizacion firemat detalles array", getLineas(detalle));
+      // setSelected dispara useEffect que inicializa el formulario tras el render,
+      // evitando la condición de carrera de React 19 + Antd 6 Form.List.
       setSelected(detalle);
-      const detalleConCliente = detalle as FirematCotizacion & {
+      const ext = detalle as FirematCotizacion & {
         clienteId?: string | null;
         clienteFirematId?: string | null;
-        contactoId?: string | null;
-        contactoFirematId?: string | null;
-        telefono?: string | null;
-        correo?: string | null;
       };
-      const clienteId =
-        detalleConCliente.clienteId ?? detalleConCliente.clienteFirematId;
+      const clienteId = ext.clienteId ?? ext.clienteFirematId;
       if (clienteId) {
         setSelectedClienteId(clienteId);
         void seleccionarClienteFiremat(clienteId, false);
       } else {
         limpiarClienteFirematSeleccionado();
       }
-      form.setFieldsValue({
-        clienteId: detalleConCliente.clienteId ?? undefined,
-        clienteFirematId: detalleConCliente.clienteFirematId ?? detalleConCliente.clienteId ?? undefined,
-        contactoId: detalleConCliente.contactoId ?? undefined,
-        contactoFirematId: detalleConCliente.contactoFirematId ?? detalleConCliente.contactoId ?? undefined,
-        cliente: detalle.cliente,
-        contacto: detalle.contacto ?? "",
-        telefono: detalleConCliente.telefono ?? "",
-        correo: detalleConCliente.correo ?? "",
-        tipoCliente: normalizeTipoClienteFiremat(detalle.tipoCliente) ?? "cliente_final",
-        responsable: detalle.responsable ?? "",
-        fechaVencimiento: detalle.fechaVencimiento
-          ? dayjs(detalle.fechaVencimiento)
-          : null,
-        fechaSeguimiento: detalle.fechaSeguimiento
-          ? dayjs(detalle.fechaSeguimiento)
-          : null,
-        observaciones: detalle.observaciones ?? "",
-        lineas: lineasDetalle,
-      });
     } catch {
       setModalOpen(false);
       void message.error("No se pudo cargar la cotización");

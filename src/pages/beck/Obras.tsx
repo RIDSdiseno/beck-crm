@@ -10,6 +10,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -30,7 +31,7 @@ import {
   SaveOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 import {
   clientesBeckAPI,
   configuracionCamposRegistroAPI,
@@ -46,6 +47,7 @@ import {
   type ObraEstado,
   type RolConfiguracionCamposRegistro,
 } from "../../services/api";
+import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
 
@@ -62,6 +64,9 @@ type ObraFormValues = {
   estado: EstadoForm;
   funnelBeckId?: string;
   clienteBeckId?: string | null;
+  tiposRegistro?: string[];
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
 };
 
 type RegistroRoleBlock = {
@@ -384,12 +389,9 @@ const getOportunidadObra = (obra: Obra) =>
   obra.funnelBeck ?? obra.oportunidad ?? null;
 
 const Obras: React.FC = () => {
-  const { user } = useAuth();
-  const canManageObras = user?.rol !== "Visualizador";
-  const canManageItemizado =
-    user?.rol === "Administrador" ||
-    user?.rol === "Ingenieria" ||
-    user?.rol === "JefeObra";
+  const { canEdit } = usePermisos();
+  const canManageObras = canEdit("beck_obras");
+  const canManageItemizado = canEdit("beck_obras");
 
   const [obras, setObras] = useState<Obra[]>([]);
   const [loading, setLoading] = useState(true);
@@ -417,6 +419,7 @@ const Obras: React.FC = () => {
   const [registroError, setRegistroError] = useState<string | null>(null);
   const [form] = Form.useForm<ObraFormValues>();
   const selectedRegion = Form.useWatch("region", form);
+  const selectedTiposRegistro = Form.useWatch("tiposRegistro", form);
   const comunasDisponibles =
     regionesComunasChile.find((region) => region.nombre === selectedRegion)
       ?.comunas ?? [];
@@ -521,7 +524,7 @@ const Obras: React.FC = () => {
     if (!canManageObras) return;
     setSaving(true);
     try {
-      await obrasAPI.crear({
+      const obraCreada = await obrasAPI.crear({
         nombre: values.nombre.trim(),
         codigo: values.codigo?.trim() || null,
         direccion: values.direccion?.trim() || null,
@@ -532,7 +535,12 @@ const Obras: React.FC = () => {
         estado: values.estado ?? "activa",
         funnelBeckId: values.funnelBeckId || undefined,
         clienteBeckId: values.clienteBeckId || undefined,
+        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
+        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
       });
+      if (values.tiposRegistro !== undefined) {
+        await obrasAPI.putTiposRegistro(obraCreada.id, values.tiposRegistro);
+      }
       message.success("Obra creada correctamente");
       setModalOpen(false);
       form.resetFields();
@@ -557,6 +565,8 @@ const Obras: React.FC = () => {
         cliente: values.cliente ?? "",
         estado: values.estado,
         activa: values.estado === "activa",
+        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
+        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
       };
 
       if (values.funnelBeckId) {
@@ -566,6 +576,10 @@ const Obras: React.FC = () => {
       payload.clienteBeckId = values.clienteBeckId ?? null;
 
       const obraActualizada = await obrasAPI.actualizar(obraSeleccionada.id, payload);
+      if (values.tiposRegistro !== undefined) {
+        await obrasAPI.putTiposRegistro(obraSeleccionada.id, values.tiposRegistro);
+        obraActualizada.tiposRegistro = values.tiposRegistro;
+      }
       setObras((prev) =>
         prev.map((obra) => (obra.id === obraSeleccionada.id ? obraActualizada : obra))
       );
@@ -624,6 +638,9 @@ const Obras: React.FC = () => {
         cliente: obraDetalle.cliente ?? "",
         estado: getObraEstado(obraDetalle),
         clienteBeckId: obraDetalle.clienteBeckId ?? undefined,
+        tiposRegistro: obraDetalle.tiposRegistro ?? [],
+        rendimientoSellosEsperadoDiario: obraDetalle.rendimientoSellosEsperadoDiario ?? undefined,
+        rendimientoReparacionEsperadoDiario: obraDetalle.rendimientoReparacionEsperadoDiario ?? undefined,
       });
     } catch (error) {
       setModalOpen(false);
@@ -949,6 +966,56 @@ const Obras: React.FC = () => {
           <span className="text-xs text-slate-700">{nombre}</span>
         ) : (
           <span className="text-xs text-slate-400">Sin cliente asociado</span>
+        );
+      },
+    },
+    {
+      title: "Rend. diario",
+      key: "rendimientoSellosEsperadoDiario",
+      width: 110,
+      render: (_: unknown, record: Obra) =>
+        record.rendimientoSellosEsperadoDiario != null ? (
+          <span className="text-xs text-slate-700">{record.rendimientoSellosEsperadoDiario}</span>
+        ) : (
+          <span className="text-xs text-slate-400">-</span>
+        ),
+    },
+    {
+      title: "Rend. reparación",
+      key: "rendimientoReparacionEsperadoDiario",
+      width: 130,
+      render: (_: unknown, record: Obra) =>
+        record.rendimientoReparacionEsperadoDiario != null ? (
+          <span className="text-xs text-slate-700">{record.rendimientoReparacionEsperadoDiario}</span>
+        ) : (
+          <span className="text-xs text-slate-400">-</span>
+        ),
+    },
+    {
+      title: "Tipos de registro",
+      key: "tiposRegistro",
+      width: 240,
+      render: (_: unknown, record: Obra) => {
+        const tipos = record.tiposRegistro ?? [];
+        if (tipos.length === 0) {
+          return (
+            <Tag color="default" style={{ marginInlineEnd: 0 }}>
+              Sin tipos configurados
+            </Tag>
+          );
+        }
+        return (
+          <Space wrap size={[4, 4]}>
+            {tipos.map((tipo) => {
+              const label =
+                TIPOS_REGISTRO_TERRENO.find((t) => t.value === tipo)?.label ?? tipo;
+              return (
+                <Tag key={tipo} color="blue" style={{ marginInlineEnd: 0 }}>
+                  {label}
+                </Tag>
+              );
+            })}
+          </Space>
         );
       },
     },
@@ -1361,6 +1428,48 @@ const Obras: React.FC = () => {
           <Form.Item name="estado" label="Estado">
             <Select options={estadoOptions} />
           </Form.Item>
+
+          <Form.Item
+            name="rendimientoSellosEsperadoDiario"
+            label="Rendimiento Sellos Esperado diario"
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              placeholder="Ej: 20"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="rendimientoReparacionEsperadoDiario"
+            label="Rendimiento Reparación Esperado diario"
+            extra="Es ingresado manualmente por Ingeniería una vez que crea el proyecto. Será un número fijo para reparaciones."
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              placeholder="Ej: 24"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="tiposRegistro"
+            label="Tipos de registro habilitados"
+          >
+            <Checkbox.Group
+              options={TIPOS_REGISTRO_TERRENO.map((t) => ({
+                label: t.label,
+                value: t.value,
+              }))}
+            />
+          </Form.Item>
+          {(!selectedTiposRegistro || selectedTiposRegistro.length === 0) && (
+            <Typography.Text type="secondary" className="block text-xs -mt-3 mb-2">
+              Si no selecciona tipos, Terreno seguirá funcionando con advertencia hasta que Ingeniería configure la obra.
+            </Typography.Text>
+          )}
         </Form>
         )}
       </Modal>

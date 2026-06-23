@@ -9,3 +9,4 @@ export { default as FirematReportes } from "./Reportes";
 export { default as FirematMovimientos } from "./Movimientos";
 export { default as FirematUsuariosParametros } from "./UsuariosParametros";
 export { default as FirematClientes } from "./Clientes";
+export { default as FirematPermisos } from "./Permisos";

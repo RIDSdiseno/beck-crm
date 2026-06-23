@@ -1,16 +1,22 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import dayjs from "dayjs";
-import { Alert, Button, Card, Form, Input, Modal, Select, Switch, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Form, Input, Modal, Select, Switch, Table, Tag, Tooltip, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { EditOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
+import { EditOutlined, KeyOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/useAuth";
+import { usePermisos } from "../hooks/usePermisos";
 import {
   clientesBeckAPI,
+  permisosUsuarioAPI,
   usuariosParametrosAPI,
   usuariosAPI,
   type ClienteBeck,
+  type ModuloBeck,
   type ObraClienteBeckResumen,
+  type PermisoModulo,
+  type PermisoModuloInput,
+  type PermisosUsuarioDetalleResponse,
   type UsuarioApi,
   type UsuarioApiRol,
 } from "../services/api";
@@ -18,6 +24,22 @@ import {
 type EmpresaParam = "beck" | "firemat";
 
 type RoleOption = { label: string; value: UsuarioApiRol };
+
+const MODULOS_BECK: Array<{ key: ModuloBeck; label: string }> = [
+  { key: "beck_dashboard", label: "Dashboard" },
+  { key: "beck_procesamiento_ingenieria", label: "Procesamiento Ingeniería" },
+  { key: "beck_oficina_tecnica", label: "Oficina Técnica" },
+  { key: "beck_registro", label: "Registro" },
+  { key: "beck_reportes", label: "Reportes" },
+  { key: "beck_cotizaciones", label: "Cotizaciones" },
+  { key: "beck_movimientos", label: "Movimientos" },
+  { key: "beck_obras", label: "Obras" },
+  { key: "beck_funnel", label: "Funnel" },
+  { key: "beck_clientes", label: "Clientes" },
+  { key: "beck_vista_cliente", label: "Vista Cliente" },
+  { key: "beck_usuarios_parametros", label: "Usuarios y parámetros" },
+  { key: "beck_reglas_validacion", label: "Reglas de Validación" },
+];
 
 type Props = {
   empresa: EmpresaParam;
@@ -168,6 +190,8 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   labelCrearCliente,
 }) => {
   const { user: currentUser, refreshSession } = useAuth();
+  const { canEdit } = usePermisos();
+  const canEditModulo = empresa === "beck" ? canEdit("beck_usuarios_parametros") : true;
   const [usuarios, setUsuarios] = useState<UsuarioApi[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
@@ -221,6 +245,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
   useEffect(() => {
     if (empresa !== "beck") return;
+    // Solo Administrador puede crear/editar usuarios de rol "cliente" y necesita la lista de clientes Beck.
+    // Otros roles (JefeObra, Ingeniería, etc.) no tienen ese acceso y el endpoint devolvería 403.
+    if (currentUser?.rol !== "Administrador") return;
     let isMounted = true;
 
     const fetchClientesBeck = async () => {
@@ -239,7 +266,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
     void fetchClientesBeck();
     return () => { isMounted = false; };
-  }, [empresa]);
+  }, [empresa, currentUser?.rol]);
 
   const cargarObrasClienteBeck = async (
     clienteBeckId: string,
@@ -297,8 +324,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const refreshUsuarios = () => setReloadKey((prev) => prev + 1);
   const isCurrentIngenieriaBeck =
     empresa === "beck" && (currentUser?.rol === "Ingenieria" || currentUser?.rol === "JefeObra");
-  const canChangePassword =
-    currentUser?.rol === "Administrador" || currentUser?.rol === "Ingenieria" || currentUser?.rol === "JefeObra";
+  const canChangePassword = canEditModulo;
   const rolesForCurrentUser = useMemo(
     () =>
       isCurrentIngenieriaBeck
@@ -307,7 +333,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     [isCurrentIngenieriaBeck, rolesDisponibles]
   );
   const canEditUsuario = (record: UsuarioApi) =>
-    !isCurrentIngenieriaBeck || record.rol !== "administrador";
+    canEditModulo && (!isCurrentIngenieriaBeck || record.rol !== "administrador");
   const canToggleUsuario = (record: UsuarioApi) => {
     if (!isCurrentIngenieriaBeck) return true;
     if (record.rol === "administrador") return false;
@@ -315,6 +341,81 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     return true;
   };
   const [createClienteMode, setCreateClienteMode] = useState(false);
+
+  // ── Permisos modal ──────────────────────────────────────────────────────────
+  const [permisosUsuario, setPermisosUsuario] = useState<UsuarioApi | null>(null);
+  const [permisosData, setPermisosData] = useState<PermisoModulo[]>([]);
+  const [permisosDetalle, setPermisosDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
+  const [loadingPermisos, setLoadingPermisos] = useState(false);
+  const [savingPermisos, setSavingPermisos] = useState(false);
+  const openPermisosModal = async (usuario: UsuarioApi) => {
+    setPermisosUsuario(usuario);
+    setPermisosDetalle(null);
+    setLoadingPermisos(true);
+    try {
+      const detalle = await permisosUsuarioAPI.obtenerDetallado(usuario.id);
+      setPermisosDetalle(detalle);
+      const efectivos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
+      setPermisosData(Array.isArray(efectivos) ? [...efectivos] : []);
+    } catch {
+      setPermisosDetalle(null);
+      setPermisosData([]);
+      message.error("No se pudieron cargar los permisos");
+    } finally {
+      setLoadingPermisos(false);
+    }
+  };
+
+  const getPermisoModulo = (modulo: ModuloBeck): PermisoModulo => {
+    const found = permisosData.find((p) => p.modulo === modulo);
+    return found ?? { modulo, puedeVer: true, puedeEditar: true };
+  };
+
+  const getPermisoRol = (modulo: ModuloBeck): PermisoModulo => {
+    const list = permisosDetalle?.permisosRol ?? [];
+    return list.find((p) => p.modulo === modulo) ?? { modulo, puedeVer: true, puedeEditar: true };
+  };
+
+  const getPermisoEfectivo = (modulo: ModuloBeck): PermisoModulo => {
+    const list = permisosDetalle?.permisosEfectivos ?? [];
+    return list.find((p) => p.modulo === modulo) ?? { modulo, puedeVer: true, puedeEditar: true };
+  };
+
+  const setPermisoModulo = (modulo: ModuloBeck, field: "puedeVer" | "puedeEditar", value: boolean) => {
+    setPermisosData((prev) => {
+      const existing = prev.find((p) => p.modulo === modulo);
+      let next: PermisoModulo;
+      if (field === "puedeVer" && !value) {
+        next = { modulo, puedeVer: false, puedeEditar: false };
+      } else if (field === "puedeEditar" && value) {
+        next = { modulo, puedeVer: true, puedeEditar: true };
+      } else {
+        next = { ...(existing ?? { modulo, puedeVer: true, puedeEditar: true }), [field]: value };
+      }
+      if (existing) {
+        return prev.map((p) => (p.modulo === modulo ? next : p));
+      }
+      return [...prev, next];
+    });
+  };
+
+  const guardarPermisos = async () => {
+    if (!permisosUsuario) return;
+    setSavingPermisos(true);
+    try {
+      const payload: PermisoModuloInput[] = MODULOS_BECK.map(({ key }) => {
+        const p = getPermisoModulo(key);
+        return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
+      });
+      await permisosUsuarioAPI.actualizar(permisosUsuario.id, payload);
+      message.success("Permisos guardados correctamente");
+      setPermisosUsuario(null);
+    } catch {
+      message.error("No se pudieron guardar los permisos");
+    } finally {
+      setSavingPermisos(false);
+    }
+  };
 
   const openCrearUsuario = () => {
     setCreateClienteMode(false);
@@ -611,17 +712,27 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             key: "clienteBeck",
             width: 220,
             ellipsis: true,
-            render: (_value: unknown, record: UsuarioApi) =>
-              record.rol === "cliente" ? (
-                <span
-                  className="block truncate text-xs text-slate-700"
-                  title={formatClienteBeck(clientesBeckById.get(record.clienteBeckId ?? ""))}
-                >
-                  {formatClienteBeck(clientesBeckById.get(record.clienteBeckId ?? ""))}
+            render: (_value: unknown, record: UsuarioApi) => {
+              if (record.rol !== "cliente") {
+                return <span className="text-xs text-slate-400">-</span>;
+              }
+              if (!record.clienteBeckId) {
+                return <span className="text-xs text-slate-400">Sin Cliente Beck</span>;
+              }
+              // Prefer embedded object (always available), fall back to admin map
+              const embedded = record.clienteBeck;
+              const fromMap = clientesBeckById.get(record.clienteBeckId);
+              const label = embedded
+                ? [embedded.razonSocial, embedded.nombreEmpresa, embedded.rut].filter(Boolean).join(" - ")
+                : fromMap
+                  ? formatClienteBeck(fromMap)
+                  : record.clienteBeckId;
+              return (
+                <span className="block truncate text-xs text-slate-700" title={label}>
+                  {label}
                 </span>
-              ) : (
-                <span className="text-xs text-slate-400">-</span>
-              ),
+              );
+            },
           },
           {
             title: "Cantidad obras",
@@ -681,22 +792,33 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     {
       title: "Acciones",
       key: "acciones",
-      width: 130,
-      fixed: "right",
+      width: empresa === "beck" && currentUser?.rol === "Administrador" ? 190 : 130,
       align: "center",
-      render: (_value: unknown, record) =>
-        canEditUsuario(record) ? (
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => void openEditarUsuario(record)}
-            disabled={isSaving(record.id)}
-          >
-            Editar
-          </Button>
-        ) : (
-          null
-        ),
+      render: (_value: unknown, record) => (
+        <div className="flex items-center justify-center gap-1">
+          {canEditUsuario(record) && (
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => void openEditarUsuario(record)}
+              disabled={isSaving(record.id)}
+            >
+              Editar
+            </Button>
+          )}
+          {empresa === "beck" && currentUser?.rol === "Administrador" && (
+            <Tooltip title="Configurar permisos de módulos">
+              <Button
+                size="small"
+                icon={<KeyOutlined />}
+                onClick={() => void openPermisosModal(record)}
+              >
+                Permisos
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -712,7 +834,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {empresa === "beck" && labelCrearCliente && !isCurrentIngenieriaBeck && (
+          {empresa === "beck" && labelCrearCliente && !isCurrentIngenieriaBeck && canEditModulo && (
             <Button
               icon={<UserAddOutlined />}
               onClick={openCrearUsuarioCliente}
@@ -721,7 +843,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               {labelCrearCliente}
             </Button>
           )}
-          {empresa === "beck" && (
+          {empresa === "beck" && canEditModulo && (
             <Button
               type="primary"
               icon={<UserAddOutlined />}
@@ -1064,6 +1186,107 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           </div>
         )}
       </Modal>
+      <Modal
+        title={
+          <div>
+            <div className="text-sm font-semibold">Permisos de usuario</div>
+            {permisosUsuario && (
+              <div className="mt-0.5 text-xs font-normal text-slate-500">
+                {permisosUsuario.nombre} — {permisosUsuario.email} —{" "}
+                <Tag color={getTagColor(permisosUsuario.rol)}>{getRoleLabel(permisosUsuario.rol)}</Tag>
+              </div>
+            )}
+          </div>
+        }
+        open={Boolean(permisosUsuario)}
+        onCancel={() => { if (!savingPermisos) setPermisosUsuario(null); }}
+        onOk={() => void guardarPermisos()}
+        confirmLoading={savingPermisos}
+        okText="Guardar permisos"
+        cancelText="Cancelar"
+        width={700}
+      >
+        {loadingPermisos ? (
+          <div className="space-y-3 py-6" aria-hidden="true">
+            <div className="h-4 w-2/3 animate-pulse rounded bg-black/5" />
+            <div className="h-4 w-full animate-pulse rounded bg-black/5" />
+            <div className="h-4 w-5/6 animate-pulse rounded bg-black/5" />
+            <div className="h-4 w-full animate-pulse rounded bg-black/5" />
+            <div className="h-4 w-3/4 animate-pulse rounded bg-black/5" />
+          </div>
+        ) : (
+          <div className="mt-2">
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Estos permisos son <strong>excepciones individuales</strong> sobre el rol. La columna{" "}
+              <strong>Usuario</strong> sobreescribe los permisos del rol cuando se guarda.
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500">
+                    <th className="py-2 text-left font-medium">Módulo</th>
+                    <th className="py-2 text-center font-medium" colSpan={2}>Rol</th>
+                    <th className="py-2 text-center font-medium" colSpan={2}>Usuario</th>
+                    <th className="py-2 text-center font-medium" colSpan={2}>Efectivo</th>
+                  </tr>
+                  <tr className="border-b border-slate-200 text-[10px] text-slate-400">
+                    <th />
+                    <th className="pb-1.5 text-center">Ver</th>
+                    <th className="pb-1.5 text-center">Edit</th>
+                    <th className="pb-1.5 text-center">Ver</th>
+                    <th className="pb-1.5 text-center">Edit</th>
+                    <th className="pb-1.5 text-center">Ver</th>
+                    <th className="pb-1.5 text-center">Edit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MODULOS_BECK.map(({ key, label }) => {
+                    const pRol = getPermisoRol(key);
+                    const pUsuario = getPermisoModulo(key);
+                    const pEfectivo = getPermisoEfectivo(key);
+                    return (
+                      <tr key={key} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 text-slate-700">{label}</td>
+                        {/* Rol - solo lectura */}
+                        <td className="py-2 text-center">
+                          <Switch size="small" checked={pRol.puedeVer} disabled />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Switch size="small" checked={pRol.puedeEditar} disabled />
+                        </td>
+                        {/* Usuario - editable */}
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={pUsuario.puedeVer}
+                            onChange={(val) => setPermisoModulo(key, "puedeVer", val)}
+                          />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={pUsuario.puedeEditar}
+                            disabled={!pUsuario.puedeVer}
+                            onChange={(val) => setPermisoModulo(key, "puedeEditar", val)}
+                          />
+                        </td>
+                        {/* Efectivo - solo lectura */}
+                        <td className="py-2 text-center">
+                          <Switch size="small" checked={pEfectivo.puedeVer} disabled />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Switch size="small" checked={pEfectivo.puedeEditar} disabled />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
+
     </div>
   );
 };

@@ -26,18 +26,21 @@ import RegistroDetalleModal, {
 import NuevoRegistroDrawer, {
   type NuevoRegistroValues,
 } from "../../components/NuevoRegistroDrawer";
-import { loadObras } from "../../data/obrasStorage";
 import {
   api,
   configuracionCamposRegistroAPI,
   itemizadosMandanteAPI,
   obrasAPI,
+  registrosAPI,
   type CampoConfiguracionRegistro,
   type ItemizadoMandante,
   type Obra,
+  type RendimientoAcumuladoItem,
+  type RendimientoAcumuladoParams,
   type RolConfiguracionCamposRegistro,
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
@@ -102,7 +105,7 @@ type RegistroApiRecord = {
   itemizadoMandante?: { id?: string | null; nombre?: string | null; codigoBeck?: string | null } | null;
   codigoBeck?: string | null;
   codigo_beck?: string | null;
-  obra?: { nombre?: string | null } | null;
+  obra?: { nombre?: string | null; rendimientoSellosEsperadoDiario?: number | null; rendimientoReparacionEsperadoDiario?: number | null } | null;
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
@@ -112,6 +115,9 @@ type RegistroApiRecord = {
   esCorreccion?: boolean | null;
   registroOrigenId?: string | null;
   registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
+  cantidadEjecutada?: number | null;
+  rendimientoIndividual?: number | null;
+  rendimientoIndividualPct?: number | null;
 };
 
 type RegistrosApiResponse = {
@@ -164,6 +170,13 @@ type ImportarResponse = {
   duplicadosOmitidos?: number;
   advertencias?: string[];
   resultados?: ImportarResultadoHoja[];
+  message?: string;
+};
+
+type CreateRegistroResponse = {
+  success?: boolean;
+  data?: RegistroApiRecord;
+  warningTipoRegistro?: boolean;
   message?: string;
 };
 
@@ -510,6 +523,11 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     esCorreccion: r.esCorreccion ?? false,
     registroOrigenId: r.registroOrigenId ?? null,
     registroOrigen: r.registroOrigen ?? null,
+    rendimientoSellosEsperadoDiario: r.obra?.rendimientoSellosEsperadoDiario ?? null,
+    rendimientoReparacionEsperadoDiario: r.obra?.rendimientoReparacionEsperadoDiario ?? null,
+    cantidadEjecutada: r.cantidadEjecutada ?? null,
+    rendimientoIndividual: r.rendimientoIndividual ?? null,
+    rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
   };
 };
 
@@ -544,17 +562,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   void themeMode;
 
   const { user } = useAuth();
-  const canReview =
-    user?.rol === "Administrador" || user?.rol === "Ingenieria";
-  const canCreateRegistro = user?.rol === "Administrador";
-  const canImportarExcel =
-    user?.rol === "Administrador" || user?.rol === "JefeObra";
-  const canEditRegistro =
-    user?.rol === "Administrador" || user?.rol === "Ingenieria";
-  const canDownloadPdf =
-    user?.rol === "Administrador" || user?.rol === "Ingenieria" || user?.rol === "JefeObra";
+  const { canEdit, canView } = usePermisos();
+  const canCreateRegistro = canEdit("beck_registro");
+  const canImportarExcel = canEdit("beck_registro");
+  const canEditRegistro = canEdit("beck_registro");
+  const canDownloadPdf = canView("beck_registro");
   const [itemizadosMandante, setItemizadosMandante] = useState<ItemizadoMandante[]>([]);
-  void canReview;
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState<
     "todos" | "sello_cortafuego" | "junta_lineal_espuma"
@@ -573,8 +586,43 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [camposConfigurados, setCamposConfigurados] = useState<CampoConfiguracionRegistro[]>([]);
   const [obrasLoading, setObrasLoading] = useState(false);
   const [savingDetalle, setSavingDetalle] = useState(false);
+  const [savingNuevoRegistro, setSavingNuevoRegistro] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
+
+  // Rendimiento acumulado
+  const [showRendimientoAcumuladoModal, setShowRendimientoAcumuladoModal] = useState(false);
+  const [rendimientoAcumuladoLoading, setRendimientoAcumuladoLoading] = useState(false);
+  const [rendimientoAcumuladoData, setRendimientoAcumuladoData] = useState<RendimientoAcumuladoItem[]>([]);
+  const [rendimientoParams, setRendimientoParams] = useState<Partial<RendimientoAcumuladoParams>>({});
+  const [rendimientoRangoFechas, setRendimientoRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
+  const [rendimientoObraId, setRendimientoObraId] = useState<string>("");
+  const [rendimientoNombreSellador, setRendimientoNombreSellador] = useState<string>("");
+
+  const handleBuscarRendimientoAcumulado = async () => {
+    if (!rendimientoRangoFechas) {
+      message.warning("Selecciona un rango de fechas");
+      return;
+    }
+    const params: RendimientoAcumuladoParams = {
+      fechaInicio: rendimientoRangoFechas[0].format("YYYY-MM-DD"),
+      fechaFin: rendimientoRangoFechas[1].format("YYYY-MM-DD"),
+      ...(rendimientoObraId ? { obraId: rendimientoObraId } : {}),
+      ...(rendimientoNombreSellador.trim() ? { nombreSellador: rendimientoNombreSellador.trim() } : {}),
+    };
+    setRendimientoParams(params);
+    setRendimientoAcumuladoLoading(true);
+    try {
+      const result = await registrosAPI.getRendimientoAcumulado(params);
+      setRendimientoAcumuladoData(result);
+    } catch {
+      message.error("No se pudo cargar el rendimiento acumulado");
+    } finally {
+      setRendimientoAcumuladoLoading(false);
+    }
+  };
+
+  void rendimientoParams;
 
   const cargarRegistros = useCallback(async () => {
     try {
@@ -1172,6 +1220,58 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       },
     },
     {
+      title: "Rend. esperado diario",
+      key: "rendimientoSellos",
+      width: 150,
+      render: (_: unknown, record: RegistroSello) => {
+        const v = record.rendimientoSellosEsperadoDiario;
+        return v != null ? (
+          <span className="font-medium text-slate-700">{v} sellos/día</span>
+        ) : (
+          <span className="text-slate-400">Sin definir</span>
+        );
+      },
+    },
+    {
+      title: "Rend. reparación diario",
+      key: "rendimientoReparacion",
+      width: 160,
+      render: (_: unknown, record: RegistroSello) => {
+        const v = record.rendimientoReparacionEsperadoDiario;
+        return v != null ? (
+          <span className="font-medium text-slate-700">{v} reparaciones/día</span>
+        ) : (
+          <span className="text-slate-400">Sin definir</span>
+        );
+      },
+    },
+    {
+      title: "Cantidad ejecutada",
+      key: "cantidadEjecutada",
+      width: 140,
+      render: (_: unknown, record: RegistroSello) => {
+        const v = record.cantidadEjecutada;
+        return v != null ? (
+          <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}</span>
+        ) : (
+          <span className="text-slate-400">Sin calcular</span>
+        );
+      },
+    },
+    {
+      title: "Rendimiento individual",
+      key: "rendimientoIndividual",
+      width: 160,
+      render: (_: unknown, record: RegistroSello) => {
+        const v = record.rendimientoIndividualPct;
+        return v != null ? (
+          <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}%</span>
+        ) : (
+          <span className="text-slate-400">Sin calcular</span>
+        );
+      },
+    },
+    {
       title: "Estado",
       dataIndex: "estado",
       key: "estado",
@@ -1216,6 +1316,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         const esCorreccionEditable =
           record.esCorreccion === true && record.estado !== "en_revision";
         const canReenviar =
+          canEdit("beck_registro") &&
           (record.esCorreccion === true || record.estado === "devuelto_a_tecnico") &&
           record.estado !== "en_revision";
         return (
@@ -1420,6 +1521,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "folio",
     // Columnas de gestión
     "cantidadMetros",
+    "rendimientoSellos",
+    "rendimientoReparacion",
+    "cantidadEjecutada",
+    "rendimientoIndividual",
     "estado",
     "acciones",
   ]);
@@ -1479,6 +1584,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           return juntaLinealActive || hasValue(["metrosLineales", "metros_lineales"]);
         }
 
+        // Rendimientos obra — solo Administrador e Ingeniería
+        if (key === "rendimientoSellos" || key === "rendimientoReparacion")
+          return user?.rol === "Administrador" || user?.rol === "Ingenieria";
+
+        // Rendimiento individual ejecutado — solo Administrador e Ingeniería
+        if (key === "cantidadEjecutada" || key === "rendimientoIndividual")
+          return user?.rol === "Administrador" || user?.rol === "Ingenieria";
+
         // itemizadoMandante: clave de columna ≠ clave de configuración (solo aplica para jefeobra)
         if (key === "itemizadoMandanteNombre") return !hiddenKeys.has("itemizado_mandante");
 
@@ -1487,60 +1600,61 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vistaCompleta, camposConfigurados, filteredData, tipoSeleccionado]
+    [vistaCompleta, camposConfigurados, filteredData, tipoSeleccionado, user?.rol]
   );
 
 
-  const handleSubmit = (values: NuevoRegistroValues) => {
-    const obra = loadObras().find((o) => o.id === values.obraId);
-    const holgura = Number(values.holguraCm) || 0;
-    const factor: 1 | 1.2 | 1.4 | 1.8 =
-      holgura <= 2 ? 1 : holgura <= 4 ? 1.2 : holgura <= 6 ? 1.4 : 1.8;
-    const cantidad = Number(values.cantidadSellos || 0);
-    const accesibilidad = Number(values.cieloModular || 1);
-    const factorAislacion = Number(values.aislacion || 1);
-    const cantidadConFactores = cantidad * factor * accesibilidad;
-    const cantidadAislacion = cantidadConFactores * factorAislacion;
-    const repTabique = Number(values.reparacionTabique || 0);
-    const cantidadFinalCalc = cantidadAislacion + repTabique;
+  const handleSubmit = async (values: NuevoRegistroValues) => {
+    setSavingNuevoRegistro(true);
+    try {
+      const formData = new FormData();
+      formData.append("obra_id", values.obraId);
+      formData.append("tipo_registro", values.tipoRegistro);
+      formData.append("descripcion_material", values.itemizadoBeck);
+      formData.append("fecha", values.fechaEjecucion.format("YYYY-MM-DD"));
+      formData.append("piso", values.piso);
+      if (values.ejeAlfabetico) formData.append("eje_alfabetico", values.ejeAlfabetico);
+      if (values.ejeNumerico) formData.append("eje_numerico", values.ejeNumerico);
+      formData.append("nombre_sellador", values.nombreSellador);
+      if (values.recinto) formData.append("modulo", values.recinto);
+      if (values.numeroSello) formData.append("numero_sello", values.numeroSello);
+      if (values.cantidadSellos != null) formData.append("cantidad_sellos", String(values.cantidadSellos));
+      if (values.metrosLineales != null) formData.append("metros_lineales", String(values.metrosLineales));
+      formData.append("holgura", String(values.holguraCm ?? 0));
+      formData.append("accesibilidad", String(values.cieloModular ?? 1));
+      if (values.aislacion != null) formData.append("aislacion", String(values.aislacion));
+      if (values.reparacionTabique != null) formData.append("reparacion_tabique", String(values.reparacionTabique));
+      if (values.observaciones) formData.append("observaciones", values.observaciones);
+      if (values.fotoUrl) formData.append("foto_url", values.fotoUrl);
+      if (values.itemizadoMandanteId) formData.append("itemizado_mandante_id", values.itemizadoMandanteId);
+      if (values.codigoBeck) formData.append("codigo_beck", values.codigoBeck);
+      if (values.itemizadoSacyr) formData.append("itemizado_sacyr", values.itemizadoSacyr);
+      if (values.fotoArchivo) formData.append("foto", values.fotoArchivo);
 
-    const nuevo: RegistroSello = {
-      id: data.length + 1,
-      obraId: values.obraId,
-      obraNombre: obra?.nombre,
-      codigoBeck: values.codigoBeck,
-      itemizadoMandanteId: values.itemizadoMandanteId,
-      itemizadoMandanteNombre:
-        itemizadosMandante.find((item) => item.id === values.itemizadoMandanteId)?.nombre,
-      itemizadoBeck: values.itemizadoBeck,
-      itemizadoSacyr: values.itemizadoSacyr || "",
-      fechaEjecucion: values.fechaEjecucion.format("YYYY-MM-DD"),
-      dia: dayjs(values.fechaEjecucion).format("dddd"),
-      piso: values.piso,
-      ejeAlfabetico: values.ejeAlfabetico || "",
-      ejeNumerico: values.ejeNumerico || "",
-      nombreSellador: values.nombreSellador,
-      fotoUrl: values.fotoUrl,
-      recinto: values.recinto || "",
-      numeroSello: values.numeroSello || "",
-      cantidadSellos: cantidad,
-      metrosLineales: values.metrosLineales ?? 0,
-      tipoRegistro: values.tipoRegistro,
-      holguraCm: values.holguraCm,
-      factorHolgura: factor,
-      cieloModular: values.cieloModular,
-      factorPorHolguras: factor,
-      cantidadSellosConFactores: cantidadConFactores,
-      aislacion: factorAislacion,
-      cantidadSellosAislacion: cantidadAislacion,
-      reparacionTabique: repTabique,
-      cantidadFinal: cantidadFinalCalc,
-      cantidadSellosConFactor: cantidadConFactores,
-      observaciones: values.observaciones,
-    };
+      const res = await api.post<CreateRegistroResponse>("/registros", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
-    setData((prev) => [...prev, nuevo]);
-    setOpenDrawer(false);
+      if (res.data.warningTipoRegistro) {
+        message.warning("Registro guardado con advertencia: el tipo de registro no está configurado en la obra.");
+      } else {
+        message.success("Registro guardado correctamente");
+      }
+
+      await cargarRegistros();
+      setOpenDrawer(false);
+    } catch (error) {
+      console.error(error);
+      const status = (error as { response?: { status?: number; data?: { message?: string } } }).response?.status;
+      const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      if (status === 400 && msg) {
+        message.error(msg);
+      } else {
+        message.error("No se pudo guardar el registro");
+      }
+    } finally {
+      setSavingNuevoRegistro(false);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1574,7 +1688,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     } catch (error) {
       hide();
       console.error(error);
-      if (isNetworkOrTimeoutError(error)) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      const errMsg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      if (status === 400 && errMsg) {
+        message.error(errMsg);
+      } else if (isNetworkOrTimeoutError(error)) {
         message.warning({
           content:
             "La importación pudo haber quedado procesándose. Actualiza la vista antes de volver a importar.",
@@ -2408,6 +2526,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </div>
 
         <div className="flex flex-wrap justify-end gap-2">
+          {canCreateRegistro && (
+            <Button
+              type="primary"
+              icon={<FireOutlined />}
+              className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
+              onClick={() => setOpenDrawer(true)}
+            >
+              Nuevo registro
+            </Button>
+          )}
           {canImportarExcel && (
             <>
               <input
@@ -2439,6 +2567,15 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 {importando ? "Importando..." : "Importar Excel"}
               </Button>
             </>
+          )}
+          {(user?.rol === "Administrador" || user?.rol === "Ingenieria") && (
+            <Button
+              icon={<BarChartOutlined />}
+              className="text-xs"
+              onClick={() => setShowRendimientoAcumuladoModal(true)}
+            >
+              Rendimiento acumulado
+            </Button>
           )}
           <Button
             icon={<DownloadOutlined />}
@@ -2818,6 +2955,102 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         )}
       </Modal>
 
+      {/* Modal rendimiento acumulado */}
+      <Modal
+        title="Rendimiento acumulado por sellador"
+        open={showRendimientoAcumuladoModal}
+        onCancel={() => {
+          setShowRendimientoAcumuladoModal(false);
+          setRendimientoAcumuladoData([]);
+          setRendimientoRangoFechas(null);
+          setRendimientoObraId("");
+          setRendimientoNombreSellador("");
+        }}
+        footer={null}
+        width="min(860px, 95vw)"
+        centered
+      >
+        <div className="space-y-4 pt-2">
+          <div className="flex flex-wrap gap-3">
+            <DatePicker.RangePicker
+              format="DD-MM-YYYY"
+              value={rendimientoRangoFechas}
+              onChange={(dates) => {
+                if (!dates || !dates[0] || !dates[1]) { setRendimientoRangoFechas(null); return; }
+                setRendimientoRangoFechas([dates[0], dates[1]]);
+              }}
+              placeholder={["Fecha inicio *", "Fecha fin *"]}
+              allowClear
+              className="w-[240px]"
+            />
+            <Select
+              showSearch
+              allowClear
+              placeholder="Obra (opcional)"
+              className="w-[220px]"
+              value={rendimientoObraId || undefined}
+              onChange={(val) => setRendimientoObraId(String(val ?? ""))}
+              filterOption={(input, option) =>
+                normalizeSearchText(option?.label?.toString()).includes(normalizeSearchText(input))
+              }
+              options={obras.map((o) => ({ value: o.id, label: getObraOptionLabel(o) }))}
+            />
+            <input
+              type="text"
+              placeholder="Sellador (opcional)"
+              value={rendimientoNombreSellador}
+              onChange={(e) => setRendimientoNombreSellador(e.target.value)}
+              className="h-8 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-400 w-[180px]"
+            />
+            <Button
+              type="primary"
+              loading={rendimientoAcumuladoLoading}
+              onClick={() => void handleBuscarRendimientoAcumulado()}
+            >
+              Buscar
+            </Button>
+          </div>
+
+          {rendimientoAcumuladoLoading ? (
+            <div className="py-8 text-center text-sm text-slate-500">Cargando...</div>
+          ) : rendimientoAcumuladoData.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">
+              {rendimientoRangoFechas ? "Sin datos para los filtros seleccionados." : "Selecciona un rango de fechas y presiona Buscar."}
+            </div>
+          ) : (
+            <Table
+              size="small"
+              rowKey="nombreSellador"
+              dataSource={rendimientoAcumuladoData}
+              pagination={false}
+              scroll={{ x: "max-content" }}
+              columns={[
+                { title: "Sellador", dataIndex: "nombreSellador", key: "nombreSellador", width: 200 },
+                { title: "Total registros", dataIndex: "totalRegistros", key: "totalRegistros", width: 130, align: "right" as const },
+                {
+                  title: "Cantidad ejecutada",
+                  dataIndex: "cantidadEjecutadaTotal",
+                  key: "cantidadEjecutadaTotal",
+                  width: 160,
+                  align: "right" as const,
+                  render: (v: number) => Number(v).toFixed(2),
+                },
+                {
+                  title: "Rendimiento acumulado %",
+                  dataIndex: "rendimientoAcumuladoPct",
+                  key: "rendimientoAcumuladoPct",
+                  width: 190,
+                  align: "right" as const,
+                  render: (v: number) => (
+                    <span className="font-semibold text-indigo-700">{Number(v).toFixed(2)}%</span>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </div>
+      </Modal>
+
       {/* Modal detalle */}
       <RegistroDetalleModal
         registro={registroDetalle}
@@ -2834,6 +3067,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         showEnRevisionAlert
         itemizadosMandante={itemizadosMandante}
         camposConfigurados={camposConfigurados}
+        showRendimientoSellos={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
+        showRendimientoIndividual={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
+        rendimientoSellosEsperadoDiario={
+          registroDetalle?.rendimientoSellosEsperadoDiario ??
+          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoSellosEsperadoDiario
+        }
+        rendimientoReparacionEsperadoDiario={
+          registroDetalle?.rendimientoReparacionEsperadoDiario ??
+          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoReparacionEsperadoDiario
+        }
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}
@@ -2844,6 +3087,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           onSubmit={handleSubmit}
           itemizadosMandante={itemizadosMandante}
           camposConfigurados={camposConfigurados}
+          obrasApi={obras}
+          submitting={savingNuevoRegistro}
         />
       )}
     </div>

@@ -27,7 +27,7 @@ import {
   SaveOutlined,
 } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
-import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 import {
   oficinaTecnicaPreventaAPI,
   type EstadoSolicitudOficinaTecnica,
@@ -146,7 +146,7 @@ const EstadoTag: React.FC<{ estado?: string }> = ({ estado }) => (
 );
 
 const OficinaTecnica: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { canEdit } = usePermisos();
   const [searchParams, setSearchParams] = useSearchParams();
   const [form] = Form.useForm<RevisionFormValues>();
   const [modal, modalContextHolder] = Modal.useModal();
@@ -163,7 +163,7 @@ const OficinaTecnica: React.FC = () => {
   const [estadoFilter, setEstadoFilter] = useState<string | undefined>();
   const [responsableFilter, setResponsableFilter] = useState<string | undefined>();
   const [query, setQuery] = useState("");
-  const isReadOnly = currentUser?.rol === "Visualizador";
+  const isReadOnly = !canEdit("beck_oficina_tecnica");
 
   const loadSolicitudes = async () => {
     try {

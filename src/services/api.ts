@@ -4,6 +4,7 @@
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from "axios";
+import { message as antdMessage } from "antd";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 export const TOKEN_STORAGE_KEY = "beck_token";
@@ -137,7 +138,20 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     const status = error.response?.status;
     handleUnauthorizedSession(status);
-
+    if (status === 403) {
+      console.log(
+        "UsuariosParametros request fallido",
+        error.config?.method,
+        error.config?.url,
+        error.response?.status
+      );
+      // key prevents duplicate toasts when multiple requests fail with 403 simultaneously
+      void antdMessage.error({
+        content: "No tienes permiso para realizar esta acción.",
+        key: "global-403",
+        duration: 3,
+      });
+    }
     return Promise.reject(error);
   }
 );
@@ -786,6 +800,7 @@ export const cotizacionesAPI = {
 
 export interface RegistroTerrenoInput {
   obra_id: string;
+  tipo_registro?: string;
   descripcion_material: string;
   modulo: string;
   piso: string;
@@ -793,6 +808,7 @@ export interface RegistroTerrenoInput {
   eje_alfabetico: string;
   numero_sello: string;
   cantidad_sellos: number;
+  metros_lineales?: number | string | null;
   factor_por_holguras?: number | string | null;
   cielo_modular?: number | string | null;
   cantidad_sellos_con_factores?: number | string | null;
@@ -801,7 +817,7 @@ export interface RegistroTerrenoInput {
   reparacion_tabique?: number | string | null;
   cantidad_final?: number | string | null;
   nombre_sellador: string;
-  holgura: 1 | 1.2 | 1.4 | 1.8;
+  holgura: number;
   accesibilidad: 1 | 2 | 3;
   observaciones?: string;
 }
@@ -959,6 +975,9 @@ export interface Obra {
   } | null;
   activa: boolean;
   estado?: "activa" | "inactiva" | "pausada" | "finalizada";
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
+  tiposRegistro?: string[];
   usuarios?: Array<{
     id: string;
     nombre?: string;
@@ -990,6 +1009,8 @@ export interface CrearObraInput {
   usuariosIds?: string[];
   funnelBeckId?: string;
   clienteBeckId?: string | null;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
 }
 
 export const obrasAPI = {
@@ -1036,6 +1057,17 @@ export const obrasAPI = {
   obtenerUsuarios: async (id: string) =>{
     const response = await api.get<UsuarioApi[]>(`/obras/${id}/usuarios`);
     return response.data;
+  },
+
+  getTiposRegistro: async (id: string): Promise<string[]> => {
+    const response = await api.get<{ tiposRegistro: string[] } | string[]>(`/obras/${id}/tipos-registro`);
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    return data.tiposRegistro ?? [];
+  },
+
+  putTiposRegistro: async (id: string, tiposRegistro: string[]): Promise<void> => {
+    await api.put(`/obras/${id}/tipos-registro`, { tiposRegistro });
   },
 };
 
@@ -1143,6 +1175,12 @@ export interface UsuarioApi {
   azureId: string | null;
   createdAt: string;
   clienteBeckId?: string | null;
+  clienteBeck?: {
+    id?: string;
+    rut?: string | null;
+    razonSocial?: string | null;
+    nombreEmpresa?: string | null;
+  } | null;
   obraIds?: string[];
   obras?: ObraClienteBeckResumen[];
   cantidadObrasAsignadas?: number;
@@ -1470,6 +1508,21 @@ export interface RegistrosResumen {
   total: number;
 }
 
+export interface RendimientoAcumuladoItem {
+  nombreSellador: string;
+  totalRegistros: number;
+  cantidadEjecutadaTotal: number;
+  rendimientoAcumulado: number;
+  rendimientoAcumuladoPct: number;
+}
+
+export interface RendimientoAcumuladoParams {
+  fechaInicio: string;
+  fechaFin: string;
+  obraId?: string;
+  nombreSellador?: string;
+}
+
 export const registrosAPI = {
   resumen: async (): Promise<RegistrosResumen> => {
     const response = await api.get<RegistrosResumen | ApiResponseEnvelope<RegistrosResumen>>("/registros/resumen");
@@ -1478,6 +1531,18 @@ export const registrosAPI = {
       return unwrapApiResponse(raw as ApiResponseEnvelope<RegistrosResumen>);
     }
     return raw as RegistrosResumen;
+  },
+
+  getRendimientoAcumulado: async (params: RendimientoAcumuladoParams): Promise<RendimientoAcumuladoItem[]> => {
+    const response = await api.get<RendimientoAcumuladoItem[] | ApiResponseEnvelope<RendimientoAcumuladoItem[]>>(
+      "/registros/rendimiento-acumulado",
+      { params }
+    );
+    const raw = response.data;
+    if (raw && typeof raw === "object" && "success" in raw) {
+      return unwrapApiResponse(raw as ApiResponseEnvelope<RendimientoAcumuladoItem[]>);
+    }
+    return raw as RendimientoAcumuladoItem[];
   },
 };
 
@@ -1728,6 +1793,7 @@ export type FirematCotizacion = {
   observaciones?: string | null;
   lineas?: FirematCotizacionLinea[];
   detalle?: FirematCotizacionLinea[];
+  detalles?: FirematCotizacionLinea[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -3509,6 +3575,254 @@ export interface ClienteBeckVistaCliente {
 }
 
 type ClienteParams = { clienteUsuarioId?: string; clienteBeckId?: string };
+
+// ── Permisos de módulos BECK ──────────────────────────────────────────────────
+
+export type ModuloBeck =
+  | "beck_dashboard"
+  | "beck_procesamiento_ingenieria"
+  | "beck_oficina_tecnica"
+  | "beck_registro"
+  | "beck_reportes"
+  | "beck_cotizaciones"
+  | "beck_movimientos"
+  | "beck_obras"
+  | "beck_funnel"
+  | "beck_clientes"
+  | "beck_vista_cliente"
+  | "beck_usuarios_parametros"
+  | "beck_reglas_validacion"
+  // Firemat modules
+  | "firemat_dashboard"
+  | "firemat_funnel"
+  | "firemat_cotizaciones"
+  | "firemat_clientes"
+  | "firemat_productos"
+  | "firemat_categorias"
+  | "firemat_inventario"
+  | "firemat_ventas"
+  | "firemat_movimientos"
+  | "firemat_reportes"
+  | "firemat_usuarios_parametros";
+
+export interface PermisoModulo {
+  modulo: ModuloBeck;
+  puedeVer: boolean;
+  puedeEditar: boolean;
+}
+
+export interface PermisoModuloInput {
+  modulo: ModuloBeck;
+  puedeVer: boolean;
+  puedeEditar: boolean;
+}
+
+export interface PermisosUsuarioDetalleResponse {
+  usuario?: UsuarioApi;
+  tienePermisosPersonalizados?: boolean;
+  permisos?: PermisoModulo[];
+  permisosUsuario?: PermisoModulo[];
+  permisosRol?: PermisoModulo[];
+  permisosEfectivos?: PermisoModulo[];
+}
+
+export interface PermisosRolResponse {
+  rol: UsuarioApiRol;
+  permisos: PermisoModulo[];
+  permisosConfigurados?: PermisoModulo[];
+  permisosEfectivos?: PermisoModulo[];
+  totalUsuarios?: number;
+  tienePermisosConfigurados?: boolean;
+}
+
+export type UsuarioConOverride = UsuarioApi & { tienePermisosPersonalizados?: boolean };
+
+const unwrapPermisosResponse = (data: unknown): PermisoModulo[] => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data as PermisoModulo[];
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if ("data" in obj) {
+      const inner = obj.data;
+      if (Array.isArray(inner)) return inner as PermisoModulo[];
+      if (inner && typeof inner === "object") {
+        const innerObj = inner as Record<string, unknown>;
+        if (Array.isArray(innerObj.permisosEfectivos)) return innerObj.permisosEfectivos as PermisoModulo[];
+        if (Array.isArray(innerObj.permisos)) return innerObj.permisos as PermisoModulo[];
+      }
+      if (!inner) return [];
+    }
+    if (Array.isArray(obj.permisosEfectivos)) return obj.permisosEfectivos as PermisoModulo[];
+    if (Array.isArray(obj.permisos)) return obj.permisos as PermisoModulo[];
+  }
+  return [];
+};
+
+const unwrapRolResponse = <T>(data: unknown): T => {
+  if (!data) throw new Error("Sin datos en la respuesta");
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if ("success" in obj) {
+      if (!obj.success) {
+        const msg = (obj.error as string | undefined) ?? (obj.message as string | undefined) ?? "Error en la solicitud";
+        throw new Error(msg);
+      }
+      return obj.data as T;
+    }
+  }
+  return data as T;
+};
+
+export const permisosUsuarioAPI = {
+  obtener: async (usuarioId: string): Promise<PermisoModulo[]> => {
+    const response = await api.get<ApiResponseEnvelope<PermisoModulo[]> | PermisoModulo[]>(
+      `/usuarios/${usuarioId}/permisos`
+    );
+    return unwrapPermisosResponse(response.data);
+  },
+
+  actualizar: async (usuarioId: string, permisos: PermisoModuloInput[]): Promise<PermisoModulo[]> => {
+    const response = await api.put<ApiResponseEnvelope<PermisoModulo[]> | PermisoModulo[]>(
+      `/usuarios/${usuarioId}/permisos`,
+      { permisos }
+    );
+    return unwrapPermisosResponse(response.data);
+  },
+
+  obtenerDetallado: async (usuarioId: string): Promise<PermisosUsuarioDetalleResponse> => {
+    const response = await api.get<unknown>(`/usuarios/${usuarioId}/permisos`);
+    const raw = response.data;
+    if (!raw) return {};
+    if (Array.isArray(raw)) {
+      return { permisosEfectivos: raw as PermisoModulo[], permisos: raw as PermisoModulo[] };
+    }
+    if (typeof raw === "object") {
+      const obj = raw as Record<string, unknown>;
+      if ("data" in obj && obj.data && typeof obj.data === "object") {
+        const inner = obj.data as Record<string, unknown>;
+        if ("permisosEfectivos" in inner || "permisosUsuario" in inner || "permisosRol" in inner) {
+          return obj.data as PermisosUsuarioDetalleResponse;
+        }
+        if (Array.isArray(obj.data)) {
+          return { permisosEfectivos: obj.data as unknown as PermisoModulo[] };
+        }
+      }
+      if ("permisosEfectivos" in obj || "permisosUsuario" in obj || "permisosRol" in obj) {
+        return raw as PermisosUsuarioDetalleResponse;
+      }
+    }
+    return {};
+  },
+
+  misPermisos: async (): Promise<PermisoModulo[]> => {
+    const response = await api.get<ApiResponseEnvelope<PermisoModulo[]> | PermisoModulo[]>(
+      `/me/permisos`
+    );
+    return unwrapPermisosResponse(response.data);
+  },
+};
+
+export const permisosRolAPI = {
+  listarRoles: async (): Promise<PermisosRolResponse[]> => {
+    const response = await api.get<unknown>("/permisos/roles");
+    const result = unwrapRolResponse<PermisosRolResponse[]>(response.data);
+    return Array.isArray(result) ? result : [];
+  },
+
+  obtenerRol: async (rol: UsuarioApiRol): Promise<PermisosRolResponse> => {
+    const response = await api.get<unknown>(`/permisos/roles/${rol}`);
+    return unwrapRolResponse<PermisosRolResponse>(response.data);
+  },
+
+  actualizarRol: async (rol: UsuarioApiRol, permisos: PermisoModuloInput[]): Promise<PermisosRolResponse> => {
+    const response = await api.put<unknown>(`/permisos/roles/${rol}`, { permisos });
+    return unwrapRolResponse<PermisosRolResponse>(response.data);
+  },
+
+  usuariosPorRol: async (rol: UsuarioApiRol): Promise<UsuarioConOverride[]> => {
+    const response = await api.get<unknown>(`/permisos/roles/${rol}/usuarios`);
+    const result = unwrapRolResponse<UsuarioConOverride[]>(response.data);
+    return Array.isArray(result) ? result : [];
+  },
+};
+
+// ── Control de Inspección ────────────────────────────────────────────────────
+
+export type ResultadoParametroInspeccion = "cumple" | "no_cumple" | "no_aplica";
+export type EstadoConformidadInspeccion = "conforme" | "no_conforme";
+
+export interface ControlInspeccionParametro {
+  id?: string;
+  controlInspeccionId?: string;
+  orden: number;
+  parametro: string;
+  resultado: ResultadoParametroInspeccion;
+  observacion?: string | null;
+}
+
+export interface ControlInspeccion {
+  id?: string;
+  registroTerrenoId?: string;
+  ingenieroId?: string;
+  fecha: string;
+  ensayo?: string | null;
+  observacion?: string | null;
+  conformidad: EstadoConformidadInspeccion;
+  fotoInspeccionUrl?: string | null;
+  fotoNoConformidadUrl?: string | null;
+  parametros?: ControlInspeccionParametro[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ControlInspeccionPayload {
+  fecha: string;
+  ensayo?: string | null;
+  observacion?: string | null;
+  conformidad: EstadoConformidadInspeccion;
+  parametros: Array<{
+    orden: number;
+    parametro: string;
+    resultado: ResultadoParametroInspeccion;
+    observacion?: string | null;
+  }>;
+}
+
+export const inspeccionAPI = {
+  marcarInspeccion: async (
+    registroId: string,
+    seleccionadoParaInspeccion: boolean
+  ): Promise<void> => {
+    await api.patch(`/registros/${registroId}/inspeccion`, {
+      seleccionadoParaInspeccion,
+    });
+  },
+
+  obtenerControl: async (
+    registroId: string
+  ): Promise<ControlInspeccion | null> => {
+    try {
+      const response = await api.get<
+        ApiResponseEnvelope<ControlInspeccion> | ControlInspeccion
+      >(`/registros/${registroId}/control-inspeccion`);
+      return unwrapItem(response.data) as ControlInspeccion;
+    } catch (err) {
+      const e = err as { response?: { status?: number } };
+      if (e?.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
+  crearControl: async (
+    registroId: string,
+    data: ControlInspeccionPayload
+  ): Promise<ControlInspeccion> => {
+    const response = await api.post<
+      ApiResponseEnvelope<ControlInspeccion> | ControlInspeccion
+    >(`/registros/${registroId}/control-inspeccion`, data);
+    return unwrapItem(response.data) as ControlInspeccion;
+  },
+};
 
 export const clienteAPI = {
   usuariosClientes: async (): Promise<ClienteUsuario[]> => {

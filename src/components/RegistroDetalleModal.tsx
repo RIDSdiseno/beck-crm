@@ -3,6 +3,7 @@ import React, { useEffect } from "react";
 import { Alert, Button, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
 import {
   CameraOutlined,
+  CloseOutlined,
   EnvironmentOutlined,
   FieldTimeOutlined,
   FireOutlined,
@@ -53,6 +54,10 @@ type RegistroDetalleModalProps = {
   showEnRevisionAlert?: boolean;
   itemizadosMandante?: ItemizadoMandante[];
   camposConfigurados?: CampoConfiguracionRegistro[];
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
+  showRendimientoSellos?: boolean;
+  showRendimientoIndividual?: boolean;
 };
 
 const estadoOptions = [
@@ -364,6 +369,10 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   showEnRevisionAlert = false,
   itemizadosMandante = [],
   camposConfigurados = [],
+  rendimientoSellosEsperadoDiario,
+  rendimientoReparacionEsperadoDiario,
+  showRendimientoSellos = false,
+  showRendimientoIndividual = false,
 }) => {
   const [form] = Form.useForm<RegistroDetalleUpdateValues>();
   const visible = open && !!registro;
@@ -429,9 +438,9 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       width="min(760px, 95vw)"
       centered
       title={null}
+      closable={false}
       className="registro-detalle-modal"
       styles={{
-        header: { display: "none" },
         body: { padding: 0, backgroundColor: "#ffffff", maxHeight: "85vh", overflowY: "auto" },
       }}
     >
@@ -492,6 +501,14 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
           <Tag color={getEstadoColor(registro.estado)} className="m-0 text-[11px]">
             {getEstadoLabel(registro.estado)}
           </Tag>
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <CloseOutlined className="text-[13px]" />
+          </button>
         </div>
       </div>
 
@@ -569,6 +586,59 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                 Obra: <b>{registro.obraNombre ?? "Sin obra"}</b>
               </span>
             </div>
+
+            {showRendimientoSellos && (
+              <>
+                <div className="flex items-center gap-2 text-slate-700">
+                  <span className="text-[13px] text-orange-700">◎</span>
+                  <span>
+                    Rendimiento Sellos Esperado diario:{" "}
+                    <b>
+                      {rendimientoSellosEsperadoDiario != null
+                        ? `${rendimientoSellosEsperadoDiario} sellos/día`
+                        : "Sin definir"}
+                    </b>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-700">
+                  <span className="text-[13px] text-orange-700">◎</span>
+                  <span>
+                    Rendimiento Reparación Esperado diario:{" "}
+                    <b>
+                      {rendimientoReparacionEsperadoDiario != null
+                        ? `${rendimientoReparacionEsperadoDiario} reparaciones/día`
+                        : "Sin definir"}
+                    </b>
+                  </span>
+                </div>
+              </>
+            )}
+
+            {showRendimientoIndividual && (
+              <div className="mt-1 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px]">
+                <p className="mb-1 font-semibold uppercase tracking-wide text-indigo-700">
+                  Rendimiento individual ejecutado
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500">Cantidad ejecutada: </span>
+                    <b className="text-indigo-700">
+                      {registro.cantidadEjecutada != null
+                        ? Number(registro.cantidadEjecutada).toFixed(2)
+                        : "Sin calcular"}
+                    </b>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Rendimiento individual: </span>
+                    <b className="text-indigo-700">
+                      {registro.rendimientoIndividualPct != null
+                        ? `${Number(registro.rendimientoIndividualPct).toFixed(2)}%`
+                        : "Sin calcular"}
+                    </b>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-2 text-slate-700">
               <UserOutlined className="text-[13px] text-orange-700" />

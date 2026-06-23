@@ -25,6 +25,8 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 import type { RolUsuario } from "../types/usuario";
+import { usePermisos } from "../hooks/usePermisos";
+import type { ModuloBeck } from "../services/api";
 
 export type RoleAccess = {
   // Beck modules
@@ -90,6 +92,33 @@ const ROUTE_MAP: Record<string, Record<string, string>> = {
   },
 };
 
+const BECK_NAV_MODULO: Partial<Record<string, ModuloBeck>> = {
+  dashboard: "beck_dashboard",
+  ingenieria: "beck_procesamiento_ingenieria",
+  oficinaTecnica: "beck_oficina_tecnica",
+  registro: "beck_registro",
+  reportes: "beck_reportes",
+  cotizaciones: "beck_cotizaciones",
+  movimientos: "beck_movimientos",
+  obras: "beck_obras",
+  funnel: "beck_funnel",
+  clientes: "beck_clientes",
+  clienteRegistros: "beck_vista_cliente",
+};
+
+const FIREMAT_NAV_MODULO: Partial<Record<string, ModuloBeck>> = {
+  dashboard: "firemat_dashboard",
+  funnel: "firemat_funnel",
+  cotizaciones: "firemat_cotizaciones",
+  clientes: "firemat_clientes",
+  productos: "firemat_productos",
+  categorias: "firemat_categorias",
+  inventario: "firemat_inventario",
+  ventas: "firemat_ventas",
+  movimientos: "firemat_movimientos",
+  reportes: "firemat_reportes",
+};
+
 const Sidebar: React.FC<SidebarProps> = ({
   themeMode,
   collapsed,
@@ -100,6 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
 }) => {
   void themeMode;
+  const { canView, refreshingPermisos, loadingPermisos, permisosReady } = usePermisos();
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -315,33 +345,62 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 space-y-6 overflow-y-auto px-2 py-4">
         {!collapsed && <p className={sectionTitleCls}>Módulos</p>}
 
-        <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-          {navItems.filter((item) => item.access).map((item) => (
-            <NavLink
-              key={item.key}
-              to={item.to}
-              end={item.to.endsWith("dashboard")}
-              className={({ isActive }) =>
-                `${linkBase} ${
-                  collapsed
-                    ? "justify-center gap-0 px-0"
-                    : "justify-start gap-2 px-3"
-                } ${getLinkClasses(isActive)}`
+        {refreshingPermisos || loadingPermisos || (!isBeck && !permisosReady) ? (
+          <div className={`flex flex-col gap-2 ${collapsed ? "items-center" : ""}`}>
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className={`animate-pulse rounded-xl bg-black/5 ${
+                  collapsed ? "h-9 w-9" : "h-8 w-full"
+                }`}
+              />
+            ))}
+          </div>
+        ) : (
+          <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
+            {navItems.filter((item) => {
+              if (isBeck) {
+                const modulo = BECK_NAV_MODULO[item.key];
+                if (modulo) return canView(modulo);
+              } else {
+                const modulo = FIREMAT_NAV_MODULO[item.key];
+                if (modulo) return canView(modulo);
               }
-            >
-              {item.icon}
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
-          ))}
-        </nav>
+              // No permission mapping: fall back to role-based access flag
+              if (!item.access) return false;
+              return true;
+            }).map((item) => (
+              <NavLink
+                key={item.key}
+                to={item.to}
+                end={item.to.endsWith("dashboard")}
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed
+                      ? "justify-center gap-0 px-0"
+                      : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                {item.icon}
+                {!collapsed && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </nav>
+        )}
 
-        {(access.configuracion || (isBeck && access.ingenieria)) && (
+        {/* Configuración — Firemat hides this section until permisosReady to prevent
+            canView() fallback-true flash exposing restricted links on F5 */}
+        {(isBeck || permisosReady) && (isBeck
+          ? canView("beck_usuarios_parametros") || canView("beck_reglas_validacion")
+          : canView("firemat_usuarios_parametros")
+        ) && (
           <div className="border-t border-inherit pt-4">
             {!collapsed && (
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
             <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-              {access.configuracion && (
+              {(isBeck ? canView("beck_usuarios_parametros") : canView("firemat_usuarios_parametros")) && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : "/firemat/usuarios-parametros"}
                 className={({ isActive }) =>
@@ -356,7 +415,37 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Usuarios y parámetros</span>}
               </NavLink>
               )}
-              {access.configuracion && isBeck && user?.rol === "Administrador" && (
+              {isBeck && user?.rol === "Administrador" && (
+              <NavLink
+                to="/beck/permisos"
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed
+                      ? "justify-center gap-0 px-0"
+                      : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                <SafetyCertificateOutlined />
+                {!collapsed && <span>Permisos</span>}
+              </NavLink>
+              )}
+              {!isBeck && canView("firemat_usuarios_parametros") && (
+              <NavLink
+                to="/firemat/permisos"
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    collapsed
+                      ? "justify-center gap-0 px-0"
+                      : "justify-start gap-2 px-3"
+                  } ${getLinkClasses(isActive)}`
+                }
+              >
+                <SafetyCertificateOutlined />
+                {!collapsed && <span>Permisos</span>}
+              </NavLink>
+              )}
+              {isBeck && canView("beck_reglas_validacion") && (
               <NavLink
                 to="/beck/configuracion-validacion"
                 className={({ isActive }) =>
@@ -371,7 +460,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Reglas de Validación</span>}
               </NavLink>
               )}
-              {access.configuracion && !isBeck && user?.rol === "Administrador" && (
+              {!isBeck && user?.rol === "Administrador" && (
               <NavLink
                 to="/firemat/configuracion-validacion"
                 className={({ isActive }) =>

@@ -41,7 +41,7 @@
     type CotizacionEditorValues,
     type LineaCotizacion,
   } from "../../components/CotizacionEditorModal";
-  import { useAuth } from "../../context/useAuth";
+  import { usePermisos } from "../../hooks/usePermisos";
   import {
     clientesBeckAPI,
     cotizacionesAPI,
@@ -3033,17 +3033,13 @@
   const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode, alertaBell }) => {
     void themeMode;
 
-    const { user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const pendingOportunidadId = useRef<string | null>(null);
     const lastOpenedAlertTs = useRef<number | null>(null);
-    const canEditFunnel =
-      user?.rol === "Administrador" ||
-      user?.rol === "Vendedor" ||
-      user?.rol === "Terreno" ||
-      user?.rol === "Ingenieria";
-    const canManageGanancia = user?.rol === "Administrador";
+    const { canEdit } = usePermisos();
+    const canEditFunnel = canEdit("beck_funnel");
+    const canManageGanancia = canEdit("beck_funnel");
     const sensors = useSensors(
       useSensor(PointerSensor, {
         activationConstraint: {
@@ -5307,9 +5303,7 @@
 
               <p className="mt-1 max-w-2xl text-xs text-beck-ink-soft">
                 Visualiza oportunidades comerciales por etapa.
-                {canEditFunnel
-                  ? " Crea nuevas oportunidades y actualiza su avance directamente desde el tablero."
-                  : " Tu perfil tiene acceso de solo lectura."}
+                {canEditFunnel && " Crea nuevas oportunidades y actualiza su avance directamente desde el tablero."}
               </p>
             </div>
 

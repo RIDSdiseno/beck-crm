@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { message, Select, Switch, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useLocation } from "react-router-dom";
+import { usePermisos } from "../../hooks/usePermisos";
 import {
   getConfiguracionValidacion,
   updateConfiguracionValidacion,
@@ -131,6 +132,8 @@ const formatFecha = (value?: string | null): string => {
 const ConfiguracionValidacionPage: React.FC = () => {
   const { pathname } = useLocation();
   const moduloActual: "BECK" | "FIREMAT" = pathname.startsWith("/firemat") ? "FIREMAT" : "BECK";
+  const { canEdit } = usePermisos();
+  const canEditReglas = moduloActual === "BECK" ? canEdit("beck_reglas_validacion") : true;
 
   const [data, setData] = useState<ConfiguracionValidacion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,7 +250,7 @@ const ConfiguracionValidacionPage: React.FC = () => {
             <Select
               value={safeNivel}
               loading={updatingId === record.id}
-              disabled={updatingId === record.id}
+              disabled={updatingId === record.id || !canEditReglas}
               size="small"
               style={{ width: 140 }}
               placeholder="Sin nivel"
@@ -290,7 +293,7 @@ const ConfiguracionValidacionPage: React.FC = () => {
               <Switch
                 checked={isActivo}
                 loading={updatingId === record.id}
-                disabled={updatingId === record.id}
+                disabled={updatingId === record.id || !canEditReglas}
                 size="small"
                 onChange={(checked) => {
                   void handleActivoChange(record.id, checked);

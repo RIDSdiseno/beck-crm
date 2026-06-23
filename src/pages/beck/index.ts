@@ -10,3 +10,4 @@ export { default as BeckOficinaTecnica } from "./OficinaTecnica";
 export { default as BeckUsuariosParametros } from "./UsuariosParametros";
 export { default as BeckClientes } from "./Clientes";
 export { default as BeckConfiguracionValidacion } from "./ConfiguracionValidacion";
+export { default as BeckPermisos } from "./Permisos";

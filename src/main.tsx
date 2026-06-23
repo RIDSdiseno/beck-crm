@@ -5,6 +5,7 @@ import App from "./App";
 import "./index.css";
 import { RegistrosProvider } from "./context/RegistrosProvider";
 import { AuthProvider } from "./context/AuthProvider";
+import { PermisosProvider } from "./context/PermisosProvider";
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
@@ -13,7 +14,9 @@ root.render(
     <BrowserRouter>
       <AuthProvider>
         <RegistrosProvider>
-          <App />
+          <PermisosProvider>
+            <App />
+          </PermisosProvider>
         </RegistrosProvider>
       </AuthProvider>
     </BrowserRouter>

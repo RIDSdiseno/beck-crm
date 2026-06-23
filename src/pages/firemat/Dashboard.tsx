@@ -37,7 +37,7 @@ import {
   type MovimientoFiremat,
   type VentaFiremat,
 } from "../../services/api";
-import { useAuth } from "../../context/useAuth";
+import { usePermisos } from "../../hooks/usePermisos";
 
 /* ── helpers ────────────────────────────────────────────── */
 
@@ -121,8 +121,9 @@ type VentasMesState =
 /* ── componente principal ───────────────────────────────── */
 
 const FirematDashboard: React.FC = () => {
-  const { user } = useAuth();
-  const esBodeguero = user?.rol === "Bodeguero";
+  const { canView } = usePermisos();
+  // Show commercial KPIs only when the user can access ventas/cotizaciones modules
+  const esBodeguero = !canView("firemat_ventas");
 
   /* inventario — todos los roles */
   const [inventarioData, setInventarioData] = useState<InventarioFirematItem[]>([]);
