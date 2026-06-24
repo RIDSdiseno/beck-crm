@@ -71,14 +71,17 @@ const Login: React.FC<LoginProps> = ({ themeMode, onLogin }) => {
         style={{
           backgroundImage: "url('/login.jpg')",
           backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundPosition: "left center",
           backgroundRepeat: "no-repeat",
         }}
       />
       <div
-        className={`absolute inset-0 ${
-          isDark ? "bg-black/75" : "bg-black/55"
-        }`}
+        className="absolute inset-0"
+        style={{
+          background: isDark
+            ? "linear-gradient(to right, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.78) 50%, rgba(0,0,0,0.97) 75%)"
+            : "linear-gradient(to right, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.62) 50%, rgba(0,0,0,0.97) 75%)",
+        }}
       />
 
       <div className="relative flex min-h-screen items-center justify-center px-4">
