@@ -28,7 +28,27 @@ import {
   type InventarioFirematItem,
   type InventarioFirematResumen,
 } from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
 import ImportarPdfModal from "./ImportarPdfModal";
+
+const EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE =
+  "No tienes permiso para editar inventario Firemat.";
+
+const getInventarioErrorMessage = (err: unknown, fallback: string): string => {
+  const apiErr = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    message?: string;
+  } | null;
+  if (apiErr?.response?.status === 403) {
+    return EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE;
+  }
+  return (
+    apiErr?.response?.data?.error ||
+    apiErr?.response?.data?.message ||
+    apiErr?.message ||
+    fallback
+  );
+};
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return "-";
@@ -280,9 +300,10 @@ type InventarioFormValues = {
 const ModalEditarInventario: React.FC<{
   item: InventarioFirematItem | null;
   open: boolean;
+  canEditInventario: boolean;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ item, open, onClose, onSaved }) => {
+}> = ({ item, open, canEditInventario, onClose, onSaved }) => {
   const [form] = Form.useForm<InventarioFormValues>();
   const [saving, setSaving] = useState(false);
   const stockInicial = Form.useWatch("stockInicial", form) ?? 0;
@@ -306,6 +327,10 @@ const ModalEditarInventario: React.FC<{
 
   const guardar = async () => {
     if (!item) return;
+    if (!canEditInventario) {
+      void message.error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     try {
       const values = await form.validateFields();
       const totalCalculado = values.stockInicial - values.salidas + values.entradas;
@@ -330,7 +355,7 @@ const ModalEditarInventario: React.FC<{
       onSaved();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "errorFields" in err) return;
-      void message.error("No se pudo actualizar el inventario");
+      void message.error(getInventarioErrorMessage(err, "No se pudo actualizar el inventario"));
     } finally {
       setSaving(false);
     }
@@ -343,13 +368,16 @@ const ModalEditarInventario: React.FC<{
       okText="Guardar"
       cancelText="Cancelar"
       confirmLoading={saving}
-      okButtonProps={{ className: "firemat-action-button" }}
+      okButtonProps={{
+        className: "firemat-action-button",
+        style: canEditInventario ? undefined : { display: "none" },
+      }}
       onCancel={onClose}
-      onOk={() => void guardar()}
+      onOk={canEditInventario ? () => void guardar() : undefined}
       destroyOnClose
       width={760}
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" disabled={!canEditInventario}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item label="Producto">
             <Input value={item?.nombre ?? ""} disabled />
@@ -460,6 +488,9 @@ const ResultadoImportInventario: React.FC<{ result: ImportarPdfInventarioResult 
 );
 
 const FirematInventario: React.FC = () => {
+  const { canEdit } = usePermisos();
+  const canEditInventario = canEdit("firemat_inventario");
+
   const [items, setItems] = useState<InventarioFirematItem[]>([]);
   const [resumen, setResumen] = useState<InventarioFirematResumen>(RESUMEN_VACIO);
   const [loading, setLoading] = useState(true);
@@ -504,18 +535,48 @@ const FirematInventario: React.FC = () => {
 
   const hayFiltros = q !== "" || activo !== "" || bajoStock !== "" || criticidad !== "";
 
+  const abrirImportarPdf = () => {
+    if (!canEditInventario) {
+      void message.error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
+    setPdfModalOpen(true);
+  };
+
+  const abrirEditarInventario = (row: InventarioFirematItem) => {
+    if (!canEditInventario) {
+      void message.error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
+    setItemEditando(row);
+  };
+
+  const importarInventarioPdf = async (file: File): Promise<ImportarPdfInventarioResult> => {
+    if (!canEditInventario) {
+      throw new Error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
+    }
+    try {
+      return await firematInventarioAPI.importarInventarioPdf(file);
+    } catch (err: unknown) {
+      if ((err as { response?: { status?: number } })?.response?.status === 403) {
+        throw new Error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
+      }
+      throw err;
+    }
+  };
+
   const tableColumns: ColumnsType<InventarioFirematItem> = [
     ...columns,
-    {
+    ...(canEditInventario ? [{
       title: "Acciones",
       key: "acciones",
       width: 90,
-      render: (_, row) => (
-        <Button size="small" type="link" onClick={() => setItemEditando(row)}>
+      render: (_: unknown, row: InventarioFirematItem) => (
+        <Button size="small" type="link" onClick={() => abrirEditarInventario(row)}>
           Editar
         </Button>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -536,12 +597,14 @@ const FirematInventario: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              icon={<FilePdfOutlined />}
-              onClick={() => setPdfModalOpen(true)}
-            >
-              Importar inventario PDF
-            </Button>
+            {canEditInventario && (
+              <Button
+                icon={<FilePdfOutlined />}
+                onClick={abrirImportarPdf}
+              >
+                Importar inventario PDF
+              </Button>
+            )}
             <Button
               className="firemat-action-button"
               icon={<ReloadOutlined />}
@@ -640,17 +703,18 @@ const FirematInventario: React.FC = () => {
       </section>
 
       <ImportarPdfModal<ImportarPdfInventarioResult>
-        open={pdfModalOpen}
+        open={pdfModalOpen && canEditInventario}
         titulo="Importar inventario PDF"
         onClose={() => setPdfModalOpen(false)}
         onImportado={() => void cargar()}
-        importar={firematInventarioAPI.importarInventarioPdf}
+        importar={importarInventarioPdf}
         renderResultado={(result) => <ResultadoImportInventario result={result} />}
       />
 
       <ModalEditarInventario
         item={itemEditando}
-        open={itemEditando !== null}
+        open={itemEditando !== null && canEditInventario}
+        canEditInventario={canEditInventario}
         onClose={() => setItemEditando(null)}
         onSaved={() => void cargar()}
       />

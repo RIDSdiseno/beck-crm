@@ -3069,14 +3069,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         camposConfigurados={camposConfigurados}
         showRendimientoSellos={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
         showRendimientoIndividual={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
-        rendimientoSellosEsperadoDiario={
-          registroDetalle?.rendimientoSellosEsperadoDiario ??
-          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoSellosEsperadoDiario
-        }
-        rendimientoReparacionEsperadoDiario={
-          registroDetalle?.rendimientoReparacionEsperadoDiario ??
-          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoReparacionEsperadoDiario
-        }
+        rendimientoSellosEsperadoDiario={registroDetalle?.rendimientoSellosEsperadoDiario}
+        rendimientoReparacionEsperadoDiario={registroDetalle?.rendimientoReparacionEsperadoDiario}
       />
 
       {/* Drawer nuevo registro (desde la derecha) */}

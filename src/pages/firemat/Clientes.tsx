@@ -41,10 +41,13 @@ import {
   type ContactoClienteFirematPayload,
   type ImportarClientesResult,
 } from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 
 const { Option } = Select;
 const { Text, Title } = Typography;
+const EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE =
+  "No tienes permiso para editar clientes Firemat.";
 
 const formatRut = (raw: string): string => {
   const clean = raw.replace(/[^0-9kK]/g, "").toUpperCase();
@@ -76,9 +79,12 @@ const CANALES_VENTA = [
 
 const extractBackendMsg = (err: unknown, fallback: string): string => {
   const e = err as {
-    response?: { data?: { error?: string; message?: string } };
+    response?: { status?: number; data?: { error?: string; message?: string } };
     message?: string;
   } | null;
+  if (e?.response?.status === 403) {
+    return EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE;
+  }
   return (
     e?.response?.data?.error ??
     e?.response?.data?.message ??
@@ -110,6 +116,9 @@ type ClienteFirematFormValues = ClienteFirematPayload & {
 };
 
 const ClientesFiremat: React.FC = () => {
+  const { canEdit } = usePermisos();
+  const canEditClientes = canEdit("firemat_clientes");
+
   const [clientes, setClientes] = useState<ClienteFiremat[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -195,6 +204,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const abrirCrear = () => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setEditingCliente(null);
     form.resetFields();
     form.setFieldsValue({ activo: true });
@@ -203,6 +216,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const abrirEditar = (cliente: ClienteFiremat) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     const clienteEmail = cliente as ClienteFirematEmailFields;
     setEditingCliente(cliente);
     setRegionSeleccionada(cliente.region ?? "");
@@ -224,6 +241,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const handleGuardarCliente = async (values: ClienteFirematFormValues) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setModalLoading(true);
     try {
       const payload: ClienteFirematPayload & { email?: string | null } = {
@@ -253,13 +274,17 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const handleToggleEstado = async (cliente: ClienteFiremat) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     try {
       await clientesFirematAPI.toggleEstado(cliente.id, !cliente.activo);
       message.success(`Cliente ${!cliente.activo ? "activado" : "desactivado"}`);
       void fetchClientes(buildParams(searchInput, filtroActivo));
       if (selectedCliente?.id === cliente.id) void fetchDetalle(cliente.id);
-    } catch {
-      message.error("Error al cambiar estado del cliente");
+    } catch (err: unknown) {
+      message.error(extractBackendMsg(err, "Error al cambiar estado del cliente"));
     }
   };
 
@@ -272,6 +297,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const abrirAgregarContacto = (cliente?: ClienteFiremat) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     if (cliente) {
       setSelectedCliente(cliente);
       setContactos(cliente.contactos ?? []);
@@ -284,6 +313,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const abrirEditarContacto = (contacto: ContactoClienteFiremat) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setEditingContacto(contacto);
     contactoForm.setFieldsValue({
       nombre: contacto.nombre,
@@ -299,6 +332,10 @@ const ClientesFiremat: React.FC = () => {
 
   const handleGuardarContacto = async (values: ContactoClienteFirematPayload) => {
     if (!selectedCliente) return;
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setContactoLoading(true);
     try {
       if (editingContacto) {
@@ -319,6 +356,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const handleToggleContacto = async (contacto: ContactoClienteFiremat) => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     try {
       await clientesFirematAPI.toggleEstadoContacto(contacto.id, !contacto.activo);
       message.success(`Contacto ${!contacto.activo ? "activado" : "desactivado"}`);
@@ -326,8 +367,8 @@ const ClientesFiremat: React.FC = () => {
         void fetchDetalle(selectedCliente.id);
         void fetchClientes(buildParams(searchInput, filtroActivo));
       }
-    } catch {
-      message.error("Error al cambiar estado del contacto");
+    } catch (err: unknown) {
+      message.error(extractBackendMsg(err, "Error al cambiar estado del contacto"));
     }
   };
 
@@ -369,6 +410,10 @@ const ClientesFiremat: React.FC = () => {
   };
 
   const handleImportar = async () => {
+    if (!canEditClientes) {
+      message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     if (!importarFile) {
       message.error("Selecciona un archivo .xlsx o .csv primero");
       return;
@@ -508,18 +553,20 @@ const ClientesFiremat: React.FC = () => {
           >
             {r.contactos?.length ?? 0}
           </Tag>
-          <Button
-            type="link"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => abrirAgregarContacto(r)}
-            title="Agregar contacto"
-            className="!h-5 !px-1"
-          />
+          {canEditClientes && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => abrirAgregarContacto(r)}
+              title="Agregar contacto"
+              className="!h-5 !px-1"
+            />
+          )}
         </Space>
       ),
     },
-    {
+    ...(canEditClientes ? [{
       title: "Acciones",
       key: "acciones",
       width: 140,
@@ -555,7 +602,7 @@ const ClientesFiremat: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   // ── Columnas contactos ────────────────────────────────────────────────────
@@ -614,7 +661,7 @@ const ClientesFiremat: React.FC = () => {
           <Badge status="default" text="Inactivo" />
         ),
     },
-    {
+    ...(canEditClientes ? [{
       title: "Acciones",
       key: "acciones",
       width: 90,
@@ -643,7 +690,7 @@ const ClientesFiremat: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   // ── Columnas oportunidades ────────────────────────────────────────────────
@@ -726,21 +773,25 @@ const ClientesFiremat: React.FC = () => {
           >
             Descargar plantilla Excel
           </Button>
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => setImportarModalOpen(true)}
-            disabled={importarLoading}
-          >
-            Importar Excel
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={abrirCrear}
-            danger
-          >
-            Nuevo cliente
-          </Button>
+          {canEditClientes && (
+            <>
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => setImportarModalOpen(true)}
+                disabled={importarLoading}
+              >
+                Importar Excel
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={abrirCrear}
+                danger
+              >
+                Nuevo cliente
+              </Button>
+            </>
+          )}
         </Space>
       </div>
 
@@ -802,24 +853,29 @@ const ClientesFiremat: React.FC = () => {
           <Button key="cancel" onClick={() => setModalOpen(false)}>
             Cancel
           </Button>,
-          <Button
-            key="submit"
-            loading={modalLoading}
-            onClick={() => form.submit()}
-            style={{
-              backgroundColor: "#475569",
-              borderColor: "#475569",
-              color: "#ffffff",
-            }}
-          >
-            {editingCliente ? "Guardar cambios" : "Crear cliente"}
-          </Button>,
+          ...(canEditClientes
+            ? [
+                <Button
+                  key="submit"
+                  loading={modalLoading}
+                  onClick={() => form.submit()}
+                  style={{
+                    backgroundColor: "#475569",
+                    borderColor: "#475569",
+                    color: "#ffffff",
+                  }}
+                >
+                  {editingCliente ? "Guardar cambios" : "Crear cliente"}
+                </Button>,
+              ]
+            : []),
         ]}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={handleGuardarCliente}
+          disabled={!canEditClientes}
           className="mt-3"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
@@ -963,7 +1019,7 @@ const ClientesFiremat: React.FC = () => {
         onClose={() => setDrawerOpen(false)}
         width={760}
         extra={
-          selectedCliente && (
+          selectedCliente && canEditClientes && (
             <Button
               icon={<EditOutlined />}
               onClick={() => {
@@ -1039,13 +1095,15 @@ const ClientesFiremat: React.FC = () => {
                 <Text strong className="text-sm">
                   Contactos
                 </Text>
-                <Button
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => abrirAgregarContacto()}
-                >
-                  Agregar contacto
-                </Button>
+                {canEditClientes && (
+                  <Button
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={() => abrirAgregarContacto()}
+                  >
+                    Agregar contacto
+                  </Button>
+                )}
               </div>
               <Table
                 dataSource={contactos}
@@ -1105,16 +1163,20 @@ const ClientesFiremat: React.FC = () => {
           >
             Cancelar
           </Button>,
-          <Button
-            key="import"
-            type="primary"
-            icon={<UploadOutlined />}
-            loading={importarLoading}
-            onClick={() => void handleImportar()}
-            danger
-          >
-            Importar
-          </Button>,
+          ...(canEditClientes
+            ? [
+                <Button
+                  key="import"
+                  type="primary"
+                  icon={<UploadOutlined />}
+                  loading={importarLoading}
+                  onClick={() => void handleImportar()}
+                  danger
+                >
+                  Importar
+                </Button>,
+              ]
+            : []),
         ]}
         width={560}
         destroyOnClose
@@ -1150,7 +1212,12 @@ const ClientesFiremat: React.FC = () => {
             accept=".xlsx,.csv"
             maxCount={1}
             fileList={importarFileList}
+            disabled={!canEditClientes}
             beforeUpload={(file) => {
+              if (!canEditClientes) {
+                message.error(EDIT_CLIENTES_FIREMAT_PERMISSION_MESSAGE);
+                return Upload.LIST_IGNORE;
+              }
               const isValid = /\.(xlsx|csv)$/i.test(file.name);
               if (!isValid) {
                 message.error("Solo se permiten archivos .xlsx o .csv");
@@ -1249,8 +1316,9 @@ const ClientesFiremat: React.FC = () => {
         title={editingContacto ? "Editar contacto" : "Nuevo contacto"}
         open={contactoModalOpen}
         onCancel={() => setContactoModalOpen(false)}
-        onOk={() => contactoForm.submit()}
+        onOk={canEditClientes ? () => contactoForm.submit() : undefined}
         okText={editingContacto ? "Guardar" : "Agregar"}
+        okButtonProps={{ style: canEditClientes ? undefined : { display: "none" } }}
         confirmLoading={contactoLoading}
         width={480}
         destroyOnClose
@@ -1259,6 +1327,7 @@ const ClientesFiremat: React.FC = () => {
           form={contactoForm}
           layout="vertical"
           onFinish={handleGuardarContacto}
+          disabled={!canEditClientes}
           className="mt-3"
         >
           <Form.Item

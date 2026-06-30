@@ -35,6 +35,11 @@ const roleBlocks: RoleBlock[] = [
     title: "Trabajador / Terreno",
     description: "Campos disponibles para usuarios de terreno.",
   },
+  {
+    key: "cliente",
+    title: "Cliente",
+    description: "Campos visibles para usuarios cliente en la vista de registros de su empresa.",
+  },
 ];
 
 const colorConfig: Record<
@@ -84,6 +89,20 @@ const matrixCampoLabels: Record<string, string> = {
   cantidad_final: "Cantidad final",
   folio: "FOLIO",
   itemizado_mandante: "Itemizado Mandante",
+  codigo_beck: "Código Beck",
+  itemizado_beck: "Itemizado Beck",
+  fecha_ejecucion_sello: "Fecha ejecución sello",
+  dia: "Día",
+  piso: "Piso",
+  nombre_sellador: "Nombre sellador",
+  foto: "Foto",
+  numero_sello: "Número sello",
+  cantidad_sellos: "Cantidad sellos",
+  separacion_cm: "Separación (cm)",
+  factor_separacion: "Factor separación",
+  accesibilidad_cielo_modular: "Accesibilidad / cielo modular",
+  aislacion: "Aislación",
+  reparacion_tabique: "Reparación tabique",
 };
 
 const jefeObraConfigurableCampos = new Set([
@@ -114,10 +133,37 @@ const trabajadorProhibidoCampos = new Set([
   "cantidad_final",
 ]);
 
-const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) =>
-  role === "trabajador"
-    ? [...trabajadorConfigurableCampos, ...trabajadorProhibidoCampos]
-    : [...jefeObraConfigurableCampos];
+const clienteConfigurableCampos = new Set([
+  "codigo_beck",
+  "itemizado_beck",
+  "itemizado_mandante",
+  "fecha_ejecucion_sello",
+  "dia",
+  "piso",
+  "eje_alfabetico",
+  "eje_numerico",
+  "nombre_sellador",
+  "foto",
+  "recinto",
+  "modulo",
+  "numero_sello",
+  "cantidad_sellos",
+  "separacion_cm",
+  "factor_separacion",
+  "accesibilidad_cielo_modular",
+  "cantidad_sellos_con_factores",
+  "aislacion",
+  "cantidad_sellos_aislacion",
+  "reparacion_tabique",
+  "cantidad_final",
+  "folio",
+]);
+
+const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
+  if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoCampos];
+  if (role === "cliente") return [...clienteConfigurableCampos];
+  return [...jefeObraConfigurableCampos];
+};
 
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -186,6 +232,8 @@ const normalizeFieldForRole = (
   const isConfigurableMatrix =
     role === "jefeobra"
       ? jefeObraConfigurableCampos.has(campo)
+      : role === "cliente"
+      ? clienteConfigurableCampos.has(campo)
       : trabajadorConfigurableCampos.has(campo);
   const color: ColorConfiguracionCampoRegistro = isTrabajadorProhibido
     ? "rojo"
@@ -255,6 +303,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
   >({
     jefeobra: [],
     trabajador: [],
+    cliente: [],
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -264,6 +313,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     return {
       jefeobra: withCatalogFields("jefeobra", config.jefeobra),
       trabajador: withCatalogFields("trabajador", config.trabajador),
+      cliente: withCatalogFields("cliente", config.cliente),
     };
   }, [config]);
 
@@ -271,13 +321,15 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const [jefeobra, trabajador] = await Promise.all([
+      const [jefeobra, trabajador, cliente] = await Promise.all([
         configuracionCamposRegistroAPI.obtenerPorRol("jefeobra"),
         configuracionCamposRegistroAPI.obtenerPorRol("trabajador"),
+        configuracionCamposRegistroAPI.obtenerPorRol("cliente"),
       ]);
       setConfig({
         jefeobra,
         trabajador,
+        cliente,
       });
     } catch {
       setError(

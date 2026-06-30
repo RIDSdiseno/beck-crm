@@ -969,35 +969,14 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   };
 
   const columnasUnificadas: ColumnsType<RegistroIngenieria> = [
-    {
-      title: "Obra",
-      key: "obraNombre",
-      width: 160,
-      render: (_, r) => r.obraNombre || "Sin obra",
-    },
-    {
-      title: "Tipo registro",
-      key: "tipoRegistro",
-      width: 150,
-      render: (_, r) => {
-        const tipo = r.tipoRegistro ?? "sello_cortafuego";
-        return (
-          <Tag
-            color={getTipoRegistroColor(tipo)}
-            className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoRegistroBadgeClass(tipo)}`}
-            style={{ marginInlineEnd: 0 }}
-          >
-            {getTipoRegistroLabel(tipo)}
-          </Tag>
-        );
-      },
-    },
+    // 1. Código BECK
     {
       title: "Código BECK",
       key: "codigoBeck",
       width: 140,
       render: (_, r) => displayValue(r.codigoBeck),
     },
+    // 2. Itemizado BECK
     {
       title: "Itemizado BECK",
       key: "itemizadoBeck",
@@ -1011,6 +990,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         </div>
       ),
     },
+    // 3. Itemizado Mandante
     {
       title: "Itemizado Mandante",
       key: "itemizadoMandante",
@@ -1018,61 +998,72 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       ellipsis: true,
       render: (_, r) => displayValue(r.itemizadoMandanteNombre),
     },
+    // 4. Fecha ejecución de sello
     {
       title: "Fecha ejecución de sello",
       key: "fechaEjecucion",
       width: 155,
       render: (_, r) => (r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"),
     },
+    // 5. Día
     {
       title: "Día",
       key: "dia",
       width: 90,
       render: (_, r) => displayValue(r.dia),
     },
+    // 6. Piso
     {
       title: "Piso",
       key: "piso",
       width: 90,
       render: (_, r) => displayValue(r.piso),
     },
+    // 7. Eje Alfabético
     {
       title: "Eje Alfabético",
       key: "ejeAlfabetico",
       width: 110,
       render: (_, r) => displayValue(r.ejeAlfabetico),
     },
+    // 8. Eje Numérico
     {
       title: "Eje Numérico",
       key: "ejeNumerico",
       width: 110,
       render: (_, r) => getEjeNumerico(r),
     },
+    // 9. Nombre sellador
     {
       title: "Nombre sellador",
       key: "nombreSellador",
       width: 150,
       render: (_, r) => displayValue(r.nombreSellador),
     },
+    // 10. Foto
     { title: "Foto", key: "foto", width: 160, render: renderFotoCell },
+    // 11. Recinto
     {
       title: "Recinto",
       key: "recinto",
       width: 160,
       render: (_, r) => displayValue(r.recinto),
     },
+    // 12. Módulo o edificio
     {
       title: "Módulo o edificio",
       key: "modulo_edificio",
       width: 160,
       render: (_, r) => displayValue(r.recinto),
     },
+    // 13. N° DEL SELLO
     {
       title: "N° DEL SELLO",
       key: "numero_sello",
       width: 120,
       render: (_, r) => displayValue(r.numeroSello),
     },
+    // 14. Cantidad de Sellos
     {
       title: "Cantidad de Sellos",
       key: "cantidad_sellos",
@@ -1082,12 +1073,14 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           <span className="font-medium text-orange-700">{r.cantidadSellos}</span>
         ) : "-",
     },
+    // 15. Holgura (cm)
     {
       title: "Holgura (cm)",
       key: "holgura",
       width: 100,
       render: (_, r) => displayValue(r.holguraCm),
     },
+    // 16. Factor por Holguras
     {
       title: "Factor por Holguras",
       key: "factor_por_holguras",
@@ -1108,6 +1101,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
+    // 17. Accesibilidad
     {
       title: "Accesibilidad",
       key: "accesibilidad",
@@ -1121,36 +1115,57 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         return <span className="text-xs">{label}</span>;
       },
     },
+    // 18. Cielo modular
+    {
+      title: "Cielo modular",
+      key: "cieloModular",
+      width: 130,
+      render: (_, r) => {
+        const v = r.cieloModular;
+        if (v == null) return <span className="text-slate-400">—</span>;
+        const label =
+          v === 1 ? "F=1 Normal"
+          : v === 2 ? "F=2 Americano"
+          : "F=3 Cielo duro";
+        return <span className="text-xs">{label}</span>;
+      },
+    },
+    // 19. Cantidad de Sellos con Factores
     {
       title: "Cantidad de Sellos con Factores",
       key: "cantidad_sellos_con_factores",
       width: 200,
       render: (_, r) => formatDecimal(r.cantidadSellosConFactores ?? r.cantidadSellosConFactor, 2),
     },
+    // 20. Aislación
     {
       title: "Aislación",
       key: "aislacion",
       width: 110,
       render: (_, r) => formatDecimal(r.aislacion, 2),
     },
+    // 21. Cantidad de Sellos Aislación
     {
       title: "Cantidad de Sellos Aislación",
       key: "cantidad_sellos_aislacion",
       width: 195,
       render: (_, r) => formatDecimal(r.cantidadSellosAislacion, 2),
     },
+    // 22. Reparación de tabique
     {
       title: "Reparación de tabique",
       key: "reparacion_tabique",
       width: 160,
       render: (_, r) => formatDecimal(r.reparacionTabique, 2),
     },
+    // 23. Cantidad final
     {
       title: "Cantidad final",
       key: "cantidad_final",
       width: 130,
       render: (_, r) => formatDecimal(r.cantidadFinal, 2),
     },
+    // 24. Observaciones
     {
       title: "Observaciones",
       key: "observaciones",
@@ -1158,12 +1173,95 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       ellipsis: true,
       render: (_, r) => displayValue(r.observaciones),
     },
+    // 25. FOLIO
     {
       title: "FOLIO",
       key: "folio",
       width: 110,
       render: (_, r) => displayValue(r.numeroSello),
     },
+    // 26. Tipo
+    {
+      title: "Tipo",
+      key: "tipoRegistro",
+      width: 150,
+      render: (_, r) => {
+        const tipo = r.tipoRegistro ?? "sello_cortafuego";
+        return (
+          <Tag
+            color={getTipoRegistroColor(tipo)}
+            className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoRegistroBadgeClass(tipo)}`}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {getTipoRegistroLabel(tipo)}
+          </Tag>
+        );
+      },
+    },
+    // 27-29. Rendimientos (solo Administrador / Ingeniería)
+    ...(user?.rol === "Administrador" || user?.rol === "Ingenieria"
+      ? [
+          {
+            title: "Rendimiento Sellos Esperado diario",
+            key: "rendimientoSellos",
+            width: 210,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoSellosEsperadoDiario;
+              return v != null ? (
+                <span className="font-medium text-slate-700">{v} sellos/día</span>
+              ) : (
+                <span className="text-slate-400">Sin definir</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+          {
+            title: "Rendimiento Reparación Esperado diario",
+            key: "rendimientoReparacion",
+            width: 220,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoReparacionEsperadoDiario;
+              return v != null ? (
+                <span className="font-medium text-slate-700">{v} reparaciones/día</span>
+              ) : (
+                <span className="text-slate-400">Sin definir</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+          {
+            title: "Rendimiento individual",
+            key: "rendimientoIndividual",
+            width: 160,
+            render: (_: unknown, r: RegistroIngenieria) => {
+              const v = r.rendimientoIndividualPct;
+              return v != null ? (
+                <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}%</span>
+              ) : (
+                <span className="text-slate-400">Sin calcular</span>
+              );
+            },
+          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
+        ]
+      : []),
+    // 30. SELECCIONADO PARA INSPECCIÓN
+    {
+      title: "SELECCIONADO PARA INSPECCIÓN",
+      key: "seleccionadoParaInspeccion",
+      width: 220,
+      render: (_, r) => {
+        const v = r.seleccionadoParaInspeccion;
+        if (v == null) return <span className="text-slate-400">—</span>;
+        return (
+          <Tag
+            color={v ? "gold" : "default"}
+            style={{ marginInlineEnd: 0 }}
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+          >
+            {v ? "Sí" : "No"}
+          </Tag>
+        );
+      },
+    },
+    // Extra: Cantidad / Metros
     {
       title: "Cantidad / Metros",
       key: "cantidadMetros",
@@ -1184,34 +1282,9 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
+    // Extra: Cantidad ejecutada (solo Administrador / Ingeniería)
     ...(user?.rol === "Administrador" || user?.rol === "Ingenieria"
       ? [
-          {
-            title: "Rend. esperado diario",
-            key: "rendimientoSellos",
-            width: 150,
-            render: (_: unknown, r: RegistroIngenieria) => {
-              const v = r.rendimientoSellosEsperadoDiario;
-              return v != null ? (
-                <span className="font-medium text-slate-700">{v} sellos/día</span>
-              ) : (
-                <span className="text-slate-400">Sin definir</span>
-              );
-            },
-          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
-          {
-            title: "Rend. reparación diario",
-            key: "rendimientoReparacion",
-            width: 160,
-            render: (_: unknown, r: RegistroIngenieria) => {
-              const v = r.rendimientoReparacionEsperadoDiario;
-              return v != null ? (
-                <span className="font-medium text-slate-700">{v} reparaciones/día</span>
-              ) : (
-                <span className="text-slate-400">Sin definir</span>
-              );
-            },
-          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
           {
             title: "Cantidad ejecutada",
             key: "cantidadEjecutada",
@@ -1225,21 +1298,15 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
               );
             },
           } as import("antd/es/table").ColumnType<RegistroIngenieria>,
-          {
-            title: "Rendimiento individual",
-            key: "rendimientoIndividual",
-            width: 160,
-            render: (_: unknown, r: RegistroIngenieria) => {
-              const v = r.rendimientoIndividualPct;
-              return v != null ? (
-                <span className="font-medium text-indigo-700">{Number(v).toFixed(2)}%</span>
-              ) : (
-                <span className="text-slate-400">Sin calcular</span>
-              );
-            },
-          } as import("antd/es/table").ColumnType<RegistroIngenieria>,
         ]
       : []),
+    // Final: Obra, Inspección, Estado, Acciones
+    {
+      title: "Obra",
+      key: "obraNombre",
+      width: 160,
+      render: (_, r) => r.obraNombre || "Sin obra",
+    },
     columnaInspeccion,
     columnaEstado,
     columnaAcciones,
@@ -1403,14 +1470,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         onSave={handleGuardarDetalle}
         onDownloadPdf={handleDescargarPdf}
         showRendimientoSellos={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
-        rendimientoSellosEsperadoDiario={
-          registroDetalle?.rendimientoSellosEsperadoDiario ??
-          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoSellosEsperadoDiario
-        }
-        rendimientoReparacionEsperadoDiario={
-          registroDetalle?.rendimientoReparacionEsperadoDiario ??
-          obras.find((o) => o.id === registroDetalle?.obraId)?.rendimientoReparacionEsperadoDiario
-        }
+        rendimientoSellosEsperadoDiario={registroDetalle?.rendimientoSellosEsperadoDiario}
+        rendimientoReparacionEsperadoDiario={registroDetalle?.rendimientoReparacionEsperadoDiario}
       />
 
       <ControlInspeccionModal

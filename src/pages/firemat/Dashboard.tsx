@@ -122,8 +122,12 @@ type VentasMesState =
 
 const FirematDashboard: React.FC = () => {
   const { canView } = usePermisos();
-  // Show commercial KPIs only when the user can access ventas/cotizaciones modules
-  const esBodeguero = !canView("firemat_ventas");
+  // Comercial: tiene cotizaciones o funnel o ventas — bodeguero puro: solo inventario/movimientos
+  const esComercial =
+    canView("firemat_cotizaciones") || canView("firemat_funnel") || canView("firemat_ventas");
+  const esBodeguero = !esComercial;
+  const tieneInventario = canView("firemat_inventario");
+  const tieneMovimientos = canView("firemat_movimientos");
 
   /* inventario — todos los roles */
   const [inventarioData, setInventarioData] = useState<InventarioFirematItem[]>([]);
@@ -149,6 +153,10 @@ const FirematDashboard: React.FC = () => {
   /* ── efectos de carga ───────────────────────────────────── */
 
   useEffect(() => {
+    if (!tieneInventario) {
+      setInventarioLoading(false);
+      return;
+    }
     let cancelled = false;
     const cargar = async () => {
       try {
@@ -165,9 +173,10 @@ const FirematDashboard: React.FC = () => {
     };
     void cargar();
     return () => { cancelled = true; };
-  }, []);
+  }, [tieneInventario]);
 
   useEffect(() => {
+    if (!tieneMovimientos) return;
     let cancelled = false;
     const cargar = async () => {
       try {
@@ -183,7 +192,7 @@ const FirematDashboard: React.FC = () => {
     };
     void cargar();
     return () => { cancelled = true; };
-  }, []);
+  }, [tieneMovimientos]);
 
   useEffect(() => {
     let cancelled = false;

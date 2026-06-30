@@ -10,7 +10,6 @@ import {
   Empty,
   Form,
   Input,
-  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -18,6 +17,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -50,6 +50,7 @@ import {
 import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
+import ConfigurarItemizadosObraDrawer from "./ConfigurarItemizadosObraDrawer";
 
 type EstadoForm = ObraEstado;
 
@@ -65,8 +66,6 @@ type ObraFormValues = {
   funnelBeckId?: string;
   clienteBeckId?: string | null;
   tiposRegistro?: string[];
-  rendimientoSellosEsperadoDiario?: number | null;
-  rendimientoReparacionEsperadoDiario?: number | null;
 };
 
 type RegistroRoleBlock = {
@@ -85,6 +84,11 @@ const registroRoleBlocks: RegistroRoleBlock[] = [
     key: "trabajador",
     title: "Trabajador / Terreno",
     description: "Campos disponibles para trabajadores de terreno.",
+  },
+  {
+    key: "cliente",
+    title: "Cliente",
+    description: "Columnas visibles para usuarios cliente en la vista de registros de su empresa.",
   },
 ];
 
@@ -157,6 +161,21 @@ const matrixCampoLabels: Record<string, string> = {
   cantidad_sellos_aislacion: "Cantidad sellos aislación",
   cantidad_final: "Cantidad final",
   folio: "FOLIO",
+  itemizado_mandante: "Itemizado Mandante",
+  codigo_beck: "Código Beck",
+  itemizado_beck: "Itemizado Beck",
+  fecha_ejecucion_sello: "Fecha ejecución sello",
+  dia: "Día",
+  piso: "Piso",
+  nombre_sellador: "Nombre sellador",
+  foto: "Foto",
+  numero_sello: "Número sello",
+  cantidad_sellos: "Cantidad sellos",
+  separacion_cm: "Separación (cm)",
+  factor_separacion: "Factor separación",
+  accesibilidad_cielo_modular: "Accesibilidad / cielo modular",
+  aislacion: "Aislación",
+  reparacion_tabique: "Reparación tabique",
 };
 
 const jefeObraConfigurableCampos = new Set([
@@ -186,10 +205,37 @@ const trabajadorProhibidoMatrixCampos = new Set([
   "cantidad_final",
 ]);
 
-const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) =>
-  role === "trabajador"
-    ? [...trabajadorConfigurableCampos, ...trabajadorProhibidoMatrixCampos]
-    : [...jefeObraConfigurableCampos];
+const clienteConfigurableCampos = new Set([
+  "codigo_beck",
+  "itemizado_beck",
+  "itemizado_mandante",
+  "fecha_ejecucion_sello",
+  "dia",
+  "piso",
+  "eje_alfabetico",
+  "eje_numerico",
+  "nombre_sellador",
+  "foto",
+  "recinto",
+  "modulo",
+  "numero_sello",
+  "cantidad_sellos",
+  "separacion_cm",
+  "factor_separacion",
+  "accesibilidad_cielo_modular",
+  "cantidad_sellos_con_factores",
+  "aislacion",
+  "cantidad_sellos_aislacion",
+  "reparacion_tabique",
+  "cantidad_final",
+  "folio",
+]);
+
+const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
+  if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoMatrixCampos];
+  if (role === "cliente") return [...clienteConfigurableCampos];
+  return [...jefeObraConfigurableCampos];
+};
 
 const normalizeRegistroText = (value: unknown): string =>
   typeof value === "string"
@@ -274,6 +320,7 @@ const getRegistroCampoColor = (
   if (
     (role === "jefeobra" && jefeObraConfigurableCampos.has(campoKey)) ||
     (role === "trabajador" && trabajadorConfigurableCampos.has(campoKey)) ||
+    (role === "cliente" && clienteConfigurableCampos.has(campoKey)) ||
     configurableCatalogKeys.has(campoKey)
   ) {
     return "azul";
@@ -389,9 +436,11 @@ const getOportunidadObra = (obra: Obra) =>
   obra.funnelBeck ?? obra.oportunidad ?? null;
 
 const Obras: React.FC = () => {
-  const { canEdit } = usePermisos();
+  const { canEdit, canView } = usePermisos();
   const canManageObras = canEdit("beck_obras");
   const canManageItemizado = canEdit("beck_obras");
+  const canCambiarEmpresaBeck =
+    canView("beck_cambiar_empresa") || canEdit("beck_cambiar_empresa");
 
   const [obras, setObras] = useState<Obra[]>([]);
   const [loading, setLoading] = useState(true);
@@ -411,9 +460,11 @@ const Obras: React.FC = () => {
   const [obraRegistro, setObraRegistro] = useState<Obra | null>(null);
   const [itemizadoDrawerOpen, setItemizadoDrawerOpen] = useState(false);
   const [obraItemizado, setObraItemizado] = useState<Obra | null>(null);
+  const [configItemizadosOpen, setConfigItemizadosOpen] = useState(false);
+  const [obraConfigItemizados, setObraConfigItemizados] = useState<Obra | null>(null);
   const [registroConfig, setRegistroConfig] = useState<
     Record<RolConfiguracionCamposRegistro, CampoConfiguracionRegistro[]>
-  >({ jefeobra: [], trabajador: [] });
+  >({ jefeobra: [], trabajador: [], cliente: [] });
   const [registroLoading, setRegistroLoading] = useState(false);
   const [registroSaving, setRegistroSaving] = useState(false);
   const [registroError, setRegistroError] = useState<string | null>(null);
@@ -434,6 +485,7 @@ const Obras: React.FC = () => {
     () => ({
       jefeobra: withCatalogRegistroFields("jefeobra", registroConfig.jefeobra),
       trabajador: withCatalogRegistroFields("trabajador", registroConfig.trabajador),
+      cliente: withCatalogRegistroFields("cliente", registroConfig.cliente),
     }),
     [registroConfig]
   );
@@ -535,8 +587,6 @@ const Obras: React.FC = () => {
         estado: values.estado ?? "activa",
         funnelBeckId: values.funnelBeckId || undefined,
         clienteBeckId: values.clienteBeckId || undefined,
-        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
-        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
       });
       if (values.tiposRegistro !== undefined) {
         await obrasAPI.putTiposRegistro(obraCreada.id, values.tiposRegistro);
@@ -565,8 +615,6 @@ const Obras: React.FC = () => {
         cliente: values.cliente ?? "",
         estado: values.estado,
         activa: values.estado === "activa",
-        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
-        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
       };
 
       if (values.funnelBeckId) {
@@ -639,8 +687,6 @@ const Obras: React.FC = () => {
         estado: getObraEstado(obraDetalle),
         clienteBeckId: obraDetalle.clienteBeckId ?? undefined,
         tiposRegistro: obraDetalle.tiposRegistro ?? [],
-        rendimientoSellosEsperadoDiario: obraDetalle.rendimientoSellosEsperadoDiario ?? undefined,
-        rendimientoReparacionEsperadoDiario: obraDetalle.rendimientoReparacionEsperadoDiario ?? undefined,
       });
     } catch (error) {
       setModalOpen(false);
@@ -713,16 +759,17 @@ const Obras: React.FC = () => {
     setRegistroLoading(true);
     setRegistroError(null);
     try {
-      const [jefeobra, trabajador] = await Promise.all([
+      const [jefeobra, trabajador, cliente] = await Promise.all([
         configuracionCamposRegistroAPI.obtenerPorRol("jefeobra", obra.id),
         configuracionCamposRegistroAPI.obtenerPorRol("trabajador", obra.id),
+        configuracionCamposRegistroAPI.obtenerPorRol("cliente", obra.id),
       ]);
-      setRegistroConfig({ jefeobra, trabajador });
+      setRegistroConfig({ jefeobra, trabajador, cliente });
     } catch (error) {
       setRegistroError(
         getErrorMessage(error, "No se pudieron cargar las opciones de registro")
       );
-      setRegistroConfig({ jefeobra: [], trabajador: [] });
+      setRegistroConfig({ jefeobra: [], trabajador: [], cliente: [] });
     } finally {
       setRegistroLoading(false);
     }
@@ -970,28 +1017,6 @@ const Obras: React.FC = () => {
       },
     },
     {
-      title: "Rend. diario",
-      key: "rendimientoSellosEsperadoDiario",
-      width: 110,
-      render: (_: unknown, record: Obra) =>
-        record.rendimientoSellosEsperadoDiario != null ? (
-          <span className="text-xs text-slate-700">{record.rendimientoSellosEsperadoDiario}</span>
-        ) : (
-          <span className="text-xs text-slate-400">-</span>
-        ),
-    },
-    {
-      title: "Rend. reparación",
-      key: "rendimientoReparacionEsperadoDiario",
-      width: 130,
-      render: (_: unknown, record: Obra) =>
-        record.rendimientoReparacionEsperadoDiario != null ? (
-          <span className="text-xs text-slate-700">{record.rendimientoReparacionEsperadoDiario}</span>
-        ) : (
-          <span className="text-xs text-slate-400">-</span>
-        ),
-    },
-    {
       title: "Tipos de registro",
       key: "tiposRegistro",
       width: 240,
@@ -1091,6 +1116,17 @@ const Obras: React.FC = () => {
                       onClick={() => handleEliminar(record)}
                     >
                       Eliminar
+                    </Button>
+                    <Button
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => {
+                        setObraConfigItemizados(record);
+                        setConfigItemizadosOpen(true);
+                      }}
+                      className="col-span-2 w-full"
+                    >
+                      Configurar itemizados
                     </Button>
                   </>
                 ) : (
@@ -1236,6 +1272,16 @@ const Obras: React.FC = () => {
         }}
       />
 
+      <ConfigurarItemizadosObraDrawer
+        open={configItemizadosOpen}
+        obraId={obraConfigItemizados?.id}
+        obraNombre={obraConfigItemizados?.nombre}
+        onClose={() => {
+          setConfigItemizadosOpen(false);
+          setObraConfigItemizados(null);
+        }}
+      />
+
       {/* Modal: Importar itemizado Excel */}
       <Modal
         title="Importar itemizado Excel"
@@ -1356,17 +1402,22 @@ const Obras: React.FC = () => {
           </Form.Item>
 
           <Form.Item name="clienteBeckId" label="Cliente asociado">
-            <Select
-              allowClear
-              showSearch
-              loading={loadingClientesBeck}
-              placeholder="Seleccionar cliente asociado"
-              optionFilterProp="label"
-              options={clientesBeck.map((c) => ({
-                value: c.id,
-                label: `${c.razonSocial}${c.nombreEmpresa ? ` / ${c.nombreEmpresa}` : ""} — ${c.rut}`,
-              }))}
-            />
+            <Tooltip
+              title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+            >
+              <Select
+                allowClear
+                showSearch
+                loading={loadingClientesBeck}
+                placeholder="Seleccionar cliente asociado"
+                optionFilterProp="label"
+                disabled={!canCambiarEmpresaBeck}
+                options={clientesBeck.map((c) => ({
+                  value: c.id,
+                  label: `${c.razonSocial}${c.nombreEmpresa ? ` / ${c.nombreEmpresa}` : ""} — ${c.rut}`,
+                }))}
+              />
+            </Tooltip>
           </Form.Item>
 
           <Form.Item
@@ -1427,31 +1478,6 @@ const Obras: React.FC = () => {
 
           <Form.Item name="estado" label="Estado">
             <Select options={estadoOptions} />
-          </Form.Item>
-
-          <Form.Item
-            name="rendimientoSellosEsperadoDiario"
-            label="Rendimiento Sellos Esperado diario"
-          >
-            <InputNumber
-              min={0}
-              precision={0}
-              style={{ width: "100%" }}
-              placeholder="Ej: 20"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="rendimientoReparacionEsperadoDiario"
-            label="Rendimiento Reparación Esperado diario"
-            extra="Es ingresado manualmente por Ingeniería una vez que crea el proyecto. Será un número fijo para reparaciones."
-          >
-            <InputNumber
-              min={0}
-              precision={0}
-              style={{ width: "100%" }}
-              placeholder="Ej: 24"
-            />
           </Form.Item>
 
           <Form.Item

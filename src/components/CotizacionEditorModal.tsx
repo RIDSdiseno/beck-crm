@@ -9,8 +9,10 @@ import {
   DatePicker,
   Table,
   Switch,
+  Tooltip,
   message,
 } from "antd";
+import { usePermisos } from "../hooks/usePermisos";
 import type { ColumnsType } from "antd/es/table";
 import {
   PlusOutlined,
@@ -177,6 +179,10 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   lockFunnelSelection = false,
   canManageGanancia = false,
 }) => {
+  const { canView, canEdit: canEditPerm } = usePermisos();
+  const canCambiarEmpresaBeck =
+    canView("beck_cambiar_empresa") || canEditPerm("beck_cambiar_empresa");
+
   const [form] = Form.useForm<CotizacionEditorValues>();
   const [formEmpresa] = Form.useForm();
   const [formNuevoContacto] = Form.useForm<ContactoClienteBeckPayload>();
@@ -809,23 +815,27 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                   </span>
                 }
               >
-                <Select
-                  showSearch
-                  allowClear
-                  size="small"
-                  loading={clientesLoading}
-                  disabled={submitting}
-                  placeholder="Seleccionar cliente por RUT, razón social o nombre empresa"
-                  optionFilterProp="label"
-                  options={clientes.map((c) => ({
-                    label: `${c.nombreEmpresa || c.razonSocial} — ${c.rut}`,
-                    value: c.id,
-                  }))}
-                  onChange={(value) => handleClienteChange(value)}
-                  notFoundContent={
-                    clientesLoading ? "Cargando..." : "Sin resultados"
-                  }
-                />
+                <Tooltip
+                  title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+                >
+                  <Select
+                    showSearch
+                    allowClear
+                    size="small"
+                    loading={clientesLoading}
+                    disabled={submitting || !canCambiarEmpresaBeck}
+                    placeholder="Seleccionar cliente por RUT, razón social o nombre empresa"
+                    optionFilterProp="label"
+                    options={clientes.map((c) => ({
+                      label: `${c.nombreEmpresa || c.razonSocial} — ${c.rut}`,
+                      value: c.id,
+                    }))}
+                    onChange={(value) => handleClienteChange(value)}
+                    notFoundContent={
+                      clientesLoading ? "Cargando..." : "Sin resultados"
+                    }
+                  />
+                </Tooltip>
               </Form.Item>
 
               {/* Cliente / empresa no registrada — solo visible si no hay cliente registrado */}
@@ -857,11 +867,16 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                     },
                   ]}
                 >
-                  <Input
-                    size="small"
-                    prefix={<UserOutlined className="mr-1 text-slate-400" />}
-                    placeholder="Constructora XYZ, Cliente particular…"
-                  />
+                  <Tooltip
+                    title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+                  >
+                    <Input
+                      size="small"
+                      prefix={<UserOutlined className="mr-1 text-slate-400" />}
+                      placeholder="Constructora XYZ, Cliente particular…"
+                      disabled={!canCambiarEmpresaBeck}
+                    />
+                  </Tooltip>
                 </Form.Item>
               )}
 

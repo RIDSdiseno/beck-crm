@@ -10,12 +10,15 @@ import {
   Empty,
   Image,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
   Skeleton,
   Space,
+  Spin,
   Statistic,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -27,8 +30,8 @@ import {
   BuildOutlined,
   CalendarOutlined,
   FileSearchOutlined,
-  PictureOutlined,
   SearchOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import "dayjs/locale/es";
@@ -47,10 +50,13 @@ import {
 } from "recharts";
 import {
   clienteAPI,
+  vistaClienteConfigAPI,
   type ClienteBeckVistaCliente,
   type ClienteDashboardData,
   type ClienteObraResumen,
+  type ClienteRegistroColumna,
   type ClienteRegistroValidado,
+  type VistaClienteConfigItem,
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
 import { usePermisos } from "../../hooks/usePermisos";
@@ -62,29 +68,141 @@ const { RangePicker } = DatePicker;
 
 const CHART_COLORS = ["#d4a017", "#e07b54", "#5b8dd9", "#6abf69", "#9b59b6", "#e74c3c"];
 
-const estadoColor: Record<string, string> = {
-  activo: "green",
-  activa: "green",
-  inactivo: "default",
-  inactiva: "default",
-  terminado: "blue",
-  terminada: "blue",
-  "en ejecución": "processing",
+const CLAVES_DEFAULT: VistaClienteConfigItem[] = [
+  { clave: "total_obras", visible: true, tituloPersonalizado: null, orden: 1 },
+  { clave: "registros_validados", visible: true, tituloPersonalizado: null, orden: 2 },
+  { clave: "cantidad_final_total", visible: true, tituloPersonalizado: null, orden: 3 },
+  { clave: "registros_mes", visible: true, tituloPersonalizado: null, orden: 4 },
+  { clave: "registros_por_obra", visible: true, tituloPersonalizado: null, orden: 5 },
+  { clave: "registros_por_tipo", visible: true, tituloPersonalizado: null, orden: 6 },
+  { clave: "registros_por_piso", visible: true, tituloPersonalizado: null, orden: 7 },
+  { clave: "registros_por_fecha", visible: true, tituloPersonalizado: null, orden: 8 },
+  { clave: "obras", visible: true, tituloPersonalizado: null, orden: 9 },
+];
+
+const CLAVE_LABEL: Record<string, string> = {
+  total_obras: "Total obras",
+  registros_validados: "Registros validados",
+  cantidad_final_total: "Cantidad final total",
+  registros_mes: "Registros este mes",
+  registros_por_obra: "Gráfico: Registros por obra",
+  registros_por_tipo: "Gráfico: Registros por tipo",
+  registros_por_piso: "Gráfico: Registros por piso",
+  registros_por_fecha: "Gráfico: Registros por fecha",
+  obras: "Tabla de obras",
 };
 
-const getEstadoTag = (estado?: string | null) => {
-  if (!estado) return <Tag>-</Tag>;
-  const key = estado.toLowerCase();
-  return <Tag color={estadoColor[key] ?? "default"}>{estado}</Tag>;
+const getConfigItem = (
+  cfg: VistaClienteConfigItem[] | undefined,
+  clave: string
+): VistaClienteConfigItem => {
+  if (cfg) {
+    const found = cfg.find((c) => c.clave === clave);
+    if (found) return found;
+  }
+  return CLAVES_DEFAULT.find((c) => c.clave === clave) ?? { clave, visible: true, orden: 99 };
+};
+
+const normalizarConfiguracionVista = (
+  items: VistaClienteConfigItem[] | undefined | null
+): VistaClienteConfigItem[] => {
+  const itemsByClave = new Map((items ?? []).map((item) => [item.clave, item]));
+  const defaultsNormalizados = CLAVES_DEFAULT.map((defaultItem) => {
+    const item = itemsByClave.get(defaultItem.clave);
+    return {
+      ...defaultItem,
+      ...item,
+      visible: item?.visible ?? defaultItem.visible,
+      tituloPersonalizado: item?.tituloPersonalizado ?? defaultItem.tituloPersonalizado ?? null,
+      orden: item?.orden ?? defaultItem.orden,
+    };
+  });
+  const extras = (items ?? [])
+    .filter((item) => !CLAVES_DEFAULT.some((defaultItem) => defaultItem.clave === item.clave))
+    .map((item) => ({
+      ...item,
+      visible: item.visible ?? true,
+      tituloPersonalizado: item.tituloPersonalizado ?? null,
+      orden: item.orden ?? 99,
+    }));
+  return [...defaultsNormalizados, ...extras].sort((a, b) => a.orden - b.orden);
+};
+
+const isVisible = (cfg: VistaClienteConfigItem[] | undefined, clave: string): boolean =>
+  getConfigItem(cfg, clave).visible === true;
+
+const getTitle = (cfg: VistaClienteConfigItem[] | undefined, clave: string, fallback: string): string => {
+  const item = getConfigItem(cfg, clave);
+  return item.tituloPersonalizado?.trim() || fallback;
 };
 
 const getFotos = (r: ClienteRegistroValidado): string[] => {
+  const foto = r.foto ?? r.Foto ?? r.fotos;
+  if (Array.isArray(foto)) return foto.filter((url): url is string => typeof url === "string" && Boolean(url));
+  if (typeof foto === "string" && foto.trim()) return [foto];
   if (Array.isArray(r.fotosUrls) && r.fotosUrls.length > 0) return r.fotosUrls as string[];
   if (r.fotoUrl && typeof r.fotoUrl === "string") return [r.fotoUrl];
   if (Array.isArray(r.fotos_registro)) {
     return (r.fotos_registro as Array<{ url: string }>).map((f) => f.url).filter(Boolean);
   }
   return [];
+};
+
+const getRegistroValue = (record: ClienteRegistroValidado, key: string): unknown => {
+  if (key in record) return record[key];
+  const lowerKey = key.toLowerCase();
+  const foundKey = Object.keys(record).find((recordKey) => recordKey.toLowerCase() === lowerKey);
+  return foundKey ? record[foundKey] : undefined;
+};
+
+const getColumnaKey = (columna: ClienteRegistroColumna): string =>
+  columna.key ?? columna.clave ?? columna.dataIndex ?? columna.campo ?? "";
+
+const getColumnaTitle = (columna: ClienteRegistroColumna): string =>
+  columna.title ?? columna.titulo ?? columna.label ?? getColumnaKey(columna);
+
+const isFotoColumn = (key: string, title: string): boolean => {
+  const text = `${key} ${title}`.toLowerCase();
+  return text.includes("foto") || text.includes("imagen");
+};
+
+const renderRegistroValue = (
+  value: unknown,
+  record: ClienteRegistroValidado,
+  key: string,
+  title: string
+) => {
+  if (isFotoColumn(key, title)) {
+    const fotos = getFotos(record);
+    if (fotos.length === 0) return <Text type="secondary">-</Text>;
+    return (
+      <Image.PreviewGroup>
+        <Space size={6} wrap>
+          {fotos.slice(0, 3).map((url, index) => (
+            <Image
+              key={`${url}-${index}`}
+              src={url}
+              width={44}
+              height={34}
+              style={{ objectFit: "cover", borderRadius: 4 }}
+              fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABmJLR0QA/wD/AP+gvaeTAAAATElEQVRoge3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBxAABHgAAAABJRU5ErkJggg=="
+            />
+          ))}
+          {fotos.length > 3 && <Badge count={`+${fotos.length - 3}`} />}
+        </Space>
+      </Image.PreviewGroup>
+    );
+  }
+  if (value === null || value === undefined || value === "") return <Text type="secondary">-</Text>;
+  if (typeof value === "number") return value.toLocaleString("es-CL");
+  if (typeof value === "boolean") return value ? "Si" : "No";
+  if (typeof value === "string" && /fecha|date/i.test(`${key} ${title}`)) {
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.format("DD/MM/YYYY") : value;
+  }
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ") || <Text type="secondary">-</Text>;
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 };
 
 const getErrorMessage = (err: unknown): string => {
@@ -98,54 +216,225 @@ const getErrorMessage = (err: unknown): string => {
   return "Error desconocido.";
 };
 
+// ── Modal configuración vista cliente ─────────────────────────────────────────
+
+interface ConfigVistaModalProps {
+  open: boolean;
+  titulo: string;
+  onClose: () => void;
+  onGuardado: (items: VistaClienteConfigItem[]) => void;
+  fetchConfig: () => Promise<VistaClienteConfigItem[]>;
+  saveConfig: (items: VistaClienteConfigItem[]) => Promise<VistaClienteConfigItem[]>;
+}
+
+const ConfigVistaModal: React.FC<ConfigVistaModalProps> = ({
+  open,
+  titulo,
+  onClose,
+  onGuardado,
+  fetchConfig,
+  saveConfig,
+}) => {
+  const [items, setItems] = useState<VistaClienteConfigItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetchConfig()
+      .then((data) => {
+        console.log("GET configuracion vista modal", data);
+        const normalized = normalizarConfiguracionVista(data);
+        console.log("CONFIG MODAL STATE FINAL", normalized);
+        setItems(normalized);
+      })
+      .catch(() => {
+        void message.error("No se pudo cargar la configuración");
+        const normalized = normalizarConfiguracionVista(undefined);
+        console.log("CONFIG MODAL STATE FINAL", normalized);
+        setItems(normalized);
+      })
+      .finally(() => setLoading(false));
+  }, [open, fetchConfig]);
+
+  const updateItem = (clave: string, field: keyof VistaClienteConfigItem, value: unknown) => {
+    setItems((prev) =>
+      prev.map((item) => (item.clave === clave ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleGuardar = async () => {
+    setSaving(true);
+    try {
+      const payload = normalizarConfiguracionVista(items).map((item) => ({
+        clave: item.clave,
+        visible: item.visible === true,
+        tituloPersonalizado: item.tituloPersonalizado?.trim() ? item.tituloPersonalizado : null,
+        orden: item.orden,
+      }));
+      console.log("PUT configuracion vista payload", { items: payload });
+      const savedItems = await saveConfig(payload);
+      const normalizedSavedItems = normalizarConfiguracionVista(savedItems);
+      void message.success("Configuración guardada correctamente");
+      setItems(normalizedSavedItems);
+      onGuardado(normalizedSavedItems);
+      onClose();
+    } catch {
+      void message.error("No se pudo guardar la configuración");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const columns: ColumnsType<VistaClienteConfigItem> = [
+    {
+      title: "Elemento",
+      dataIndex: "clave",
+      key: "clave",
+      render: (v: string) => <Text style={{ fontSize: 12 }}>{CLAVE_LABEL[v] ?? v}</Text>,
+    },
+    {
+      title: "Visible",
+      dataIndex: "visible",
+      key: "visible",
+      align: "center",
+      width: 80,
+      render: (_v: boolean, row) => {
+        console.log("SWITCH ITEM", row.clave, row.visible);
+        return (
+          <Switch
+            size="small"
+            checked={row.visible === true}
+            disabled={saving}
+            onChange={(val) => updateItem(row.clave, "visible", val)}
+          />
+        );
+      },
+    },
+    {
+      title: "Título personalizado",
+      dataIndex: "tituloPersonalizado",
+      key: "tituloPersonalizado",
+      render: (v: string | null | undefined, row) => (
+        <Input
+          size="small"
+          value={v ?? ""}
+          disabled={saving}
+          placeholder={CLAVE_LABEL[row.clave] ?? row.clave}
+          onChange={(e) => updateItem(row.clave, "tituloPersonalizado", e.target.value || null)}
+          style={{ fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      title: "Orden",
+      dataIndex: "orden",
+      key: "orden",
+      align: "center",
+      width: 80,
+      render: (v: number, row) => (
+        <InputNumber
+          size="small"
+          value={v}
+          min={1}
+          max={99}
+          disabled={saving}
+          onChange={(val) => updateItem(row.clave, "orden", val ?? 1)}
+          style={{ width: 60 }}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <Modal
+      title={
+        <div className="flex items-center gap-2">
+          <SettingOutlined style={{ color: "#d4a017" }} />
+          <span>{titulo}</span>
+        </div>
+      }
+      open={open}
+      onCancel={onClose}
+      width={640}
+      footer={[
+        <Button key="cancel" onClick={onClose} disabled={saving}>
+          Cancelar
+        </Button>,
+        <Button
+          key="save"
+          type="primary"
+          loading={saving}
+          onClick={() => void handleGuardar()}
+          style={{ backgroundColor: "#d4a017", borderColor: "#d4a017" }}
+        >
+          Guardar
+        </Button>,
+      ]}
+    >
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Spin />
+        </div>
+      ) : (
+        <Table
+          rowKey="clave"
+          columns={columns}
+          dataSource={[...items].sort((a, b) => a.orden - b.orden)}
+          size="small"
+          pagination={false}
+        />
+      )}
+    </Modal>
+  );
+};
+
+// ── Componente principal ──────────────────────────────────────────────────────
+
 const RegistrosMiEmpresa: React.FC = () => {
   const { user } = useAuth();
   const { canView } = usePermisos();
 
   const isAdmin = user?.rol === "Administrador";
   const isCliente = user?.rol === "Cliente";
-  // Usuario interno con permiso beck_vista_cliente pero sin ser admin ni cliente real
   const isInterno = !isAdmin && !isCliente && canView("beck_vista_cliente");
-  // Cualquier rol que necesita selector para elegir cliente
   const necesitaSelector = isAdmin || isInterno;
 
-  // ── Estado admin: selector de cliente Beck ──
   const [clientesBeck, setClientesBeck] = useState<ClienteBeckVistaCliente[]>([]);
   const [loadingClientes, setLoadingClientes] = useState(false);
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string | undefined>();
 
-  // ── Estado compartido ──
   const [dashboard, setDashboard] = useState<ClienteDashboardData | null>(null);
   const [obras, setObras] = useState<ClienteObraResumen[]>([]);
   const [loadingDash, setLoadingDash] = useState(false);
   const [loadingObras, setLoadingObras] = useState(false);
   const [errorDatos, setErrorDatos] = useState<string | null>(null);
 
-  // ── Estado obra seleccionada ──
   const [obraSeleccionada, setObraSeleccionada] = useState<ClienteObraResumen | null>(null);
   const [registros, setRegistros] = useState<ClienteRegistroValidado[]>([]);
+  const [columnasRegistro, setColumnasRegistro] = useState<ClienteRegistroColumna[]>([]);
   const [loadingRegistros, setLoadingRegistros] = useState(false);
+  const [validandoRegistroId, setValidandoRegistroId] = useState<string | null>(null);
 
-  // ── Estado modal detalle ──
   const [detalle, setDetalle] = useState<ClienteRegistroValidado | null>(null);
 
-  // ── Filtros tabla de registros ──
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<string | undefined>();
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
   const [filtroFechas, setFiltroFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
-  // params que se pasan a la API — solo si admin/interno con cliente Beck seleccionado
+  // Modal configuración vista
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+
   const apiParams = necesitaSelector
     ? clienteSeleccionadoId
       ? { clienteBeckId: clienteSeleccionadoId }
       : undefined
     : undefined;
 
-  // Si admin/interno y no hay cliente seleccionado, no llamamos nada
   const listoParaCargar = !necesitaSelector || !!clienteSeleccionadoId;
 
-  // ── Carga clientes Beck (admin e internos con permiso) ──
   useEffect(() => {
     if (!necesitaSelector) return;
     setLoadingClientes(true);
@@ -156,7 +445,6 @@ const RegistrosMiEmpresa: React.FC = () => {
       .finally(() => setLoadingClientes(false));
   }, [necesitaSelector]);
 
-  // ── Carga dashboard + obras ──
   const cargarDatos = useCallback(
     async (params?: { clienteBeckId?: string }) => {
       setErrorDatos(null);
@@ -164,16 +452,17 @@ const RegistrosMiEmpresa: React.FC = () => {
       setLoadingObras(true);
       setObraSeleccionada(null);
       setRegistros([]);
+      setColumnasRegistro([]);
       try {
         const [dash, obrasData] = await Promise.all([
           clienteAPI.dashboard(params),
           clienteAPI.obras(params),
         ]);
-        if (import.meta.env.DEV) {
-          console.log("dashboard cliente", dash);
-          console.log("obras cliente", obrasData);
-        }
-        setDashboard(dash);
+        console.log("dashboard cliente configuracionVista", dash.configuracionVista);
+        setDashboard({
+          ...dash,
+          configuracionVista: normalizarConfiguracionVista(dash.configuracionVista),
+        });
         setObras(obrasData);
       } catch (err) {
         const msg = getErrorMessage(err);
@@ -189,14 +478,12 @@ const RegistrosMiEmpresa: React.FC = () => {
     []
   );
 
-  // Carga inicial solo para rol Cliente real; admin/internos esperan selección
   useEffect(() => {
     if (!necesitaSelector) {
       void cargarDatos(undefined);
     }
   }, [necesitaSelector, cargarDatos]);
 
-  // Re-carga cuando admin/interno cambia de cliente Beck
   useEffect(() => {
     if (necesitaSelector && clienteSeleccionadoId) {
       void cargarDatos({ clienteBeckId: clienteSeleccionadoId });
@@ -206,15 +493,16 @@ const RegistrosMiEmpresa: React.FC = () => {
       setObras([]);
       setObraSeleccionada(null);
       setRegistros([]);
+      setColumnasRegistro([]);
       setErrorDatos(null);
     }
   }, [necesitaSelector, clienteSeleccionadoId, cargarDatos]);
 
-  // ── Abrir obra ──
   const abrirObra = useCallback(
     async (obra: ClienteObraResumen) => {
       setObraSeleccionada(obra);
       setRegistros([]);
+      setColumnasRegistro([]);
       setBusqueda("");
       setFiltroTipo(undefined);
       setFiltroPiso(undefined);
@@ -222,7 +510,8 @@ const RegistrosMiEmpresa: React.FC = () => {
       setLoadingRegistros(true);
       try {
         const data = await clienteAPI.registrosPorObra(obra.id, apiParams);
-        setRegistros(data);
+        setRegistros(data.registros);
+        setColumnasRegistro(data.columnas ?? data.columnasConfigurables ?? []);
       } catch (err) {
         void message.error("No se pudieron cargar los registros: " + getErrorMessage(err));
       } finally {
@@ -233,12 +522,71 @@ const RegistrosMiEmpresa: React.FC = () => {
     [clienteSeleccionadoId]
   );
 
+  const validarRegistro = useCallback((registro: ClienteRegistroValidado) => {
+    Modal.confirm({
+      title: "Validar registro",
+      content: "¿Confirmas que deseas validar este registro?",
+      okText: "Validar",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        setValidandoRegistroId(registro.id);
+        try {
+          const updated = await clienteAPI.validarRegistro(registro.id);
+          setRegistros((prev) =>
+            prev.map((item) =>
+              item.id === registro.id
+                ? {
+                    ...item,
+                    ...updated,
+                    estado: updated.estado ?? "Validado",
+                    validadoCliente: updated.validadoCliente ?? true,
+                    acciones: {
+                      ...(item.acciones ?? {}),
+                      ...(updated.acciones ?? {}),
+                      puedeValidar: false,
+                    },
+                  }
+                : item
+            )
+          );
+          setDetalle((prev) =>
+            prev?.id === registro.id
+              ? {
+                  ...prev,
+                  ...updated,
+                  estado: updated.estado ?? "Validado",
+                  validadoCliente: updated.validadoCliente ?? true,
+                  acciones: {
+                    ...(prev.acciones ?? {}),
+                    ...(updated.acciones ?? {}),
+                    puedeValidar: false,
+                  },
+                }
+              : prev
+          );
+          void message.success("Registro validado correctamente");
+        } catch (err) {
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === 409) {
+            void message.error("Este registro ya fue validado.");
+          } else if (status === 403) {
+            void message.error("No tienes permiso para validar este registro.");
+          } else {
+            void message.error("No se pudo validar el registro: " + getErrorMessage(err));
+          }
+        } finally {
+          setValidandoRegistroId(null);
+        }
+      },
+    });
+  }, []);
+
   const volver = useCallback(() => {
     setObraSeleccionada(null);
     setRegistros([]);
+    setColumnasRegistro([]);
   }, []);
 
-  // ── Filtros dinámicos ──
   const tiposUnicos = useMemo(
     () => [...new Set(registros.map((r) => r.tipoRegistro).filter(Boolean) as string[])],
     [registros]
@@ -260,23 +608,18 @@ const RegistrosMiEmpresa: React.FC = () => {
       }
       if (busqueda.trim()) {
         const q = busqueda.toLowerCase();
-        return (
-          r.tipoRegistro?.toLowerCase().includes(q) ||
-          r.piso?.toLowerCase().includes(q) ||
-          r.modulo?.toLowerCase().includes(q) ||
-          r.recinto?.toLowerCase().includes(q) ||
-          r.eje?.toLowerCase().includes(q) ||
-          r.numeroSello?.toLowerCase().includes(q) ||
-          r.material?.toLowerCase().includes(q) ||
-          r.sellador?.toLowerCase().includes(q) ||
-          false
-        );
+        return Object.entries(r).some(([key, value]) => {
+          if (["acciones", "fotos_registro", "fotosUrls"].includes(key)) return false;
+          if (value === null || value === undefined) return false;
+          if (Array.isArray(value)) return value.some((item) => String(item ?? "").toLowerCase().includes(q));
+          if (typeof value === "object") return false;
+          return String(value).toLowerCase().includes(q);
+        });
       }
       return true;
     });
   }, [registros, filtroTipo, filtroPiso, filtroFechas, busqueda]);
 
-  // ── KPIs efectivos: usa dashboard si tiene datos, si no calcula desde obras ──
   const kpisEfectivos = useMemo((): ClienteDashboardData | null => {
     if (!listoParaCargar || loadingDash) return null;
     if (
@@ -295,12 +638,56 @@ const RegistrosMiEmpresa: React.FC = () => {
         registrosPorTipo: dashboard?.registrosPorTipo ?? [],
         registrosPorPiso: dashboard?.registrosPorPiso ?? [],
         registrosPorFecha: dashboard?.registrosPorFecha ?? [],
+        configuracionVista: dashboard?.configuracionVista,
       };
     }
     return dashboard;
   }, [dashboard, obras, listoParaCargar, loadingDash]);
 
-  // ── Columnas tabla obras ──
+  // Configuración vista efectiva (desde dashboard o defaults)
+  const cfg = kpisEfectivos?.configuracionVista;
+
+  // fetchConfig y saveConfig según contexto (general o por empresa)
+  const fetchConfig = useCallback(async (): Promise<VistaClienteConfigItem[]> => {
+    if (clienteSeleccionadoId) {
+      const result = await vistaClienteConfigAPI.getCliente(clienteSeleccionadoId);
+      return normalizarConfiguracionVista(result.items);
+    }
+    const result = await vistaClienteConfigAPI.getGeneral();
+    return normalizarConfiguracionVista(result.items);
+  }, [clienteSeleccionadoId]);
+
+  const saveConfig = useCallback(
+    async (items: VistaClienteConfigItem[]): Promise<VistaClienteConfigItem[]> => {
+      if (clienteSeleccionadoId) {
+        await vistaClienteConfigAPI.putCliente(clienteSeleccionadoId, { items });
+        const result = await vistaClienteConfigAPI.getCliente(clienteSeleccionadoId);
+        return normalizarConfiguracionVista(result.items);
+      } else {
+        await vistaClienteConfigAPI.putGeneral({ items });
+        const result = await vistaClienteConfigAPI.getGeneral();
+        return normalizarConfiguracionVista(result.items);
+      }
+    },
+    [clienteSeleccionadoId]
+  );
+
+  const handleConfigGuardado = useCallback(
+    (items: VistaClienteConfigItem[]) => {
+      // Actualiza la configuración en el dashboard local sin recargar todo
+      setDashboard((prev) =>
+        prev ? { ...prev, configuracionVista: items } : prev
+      );
+    },
+    []
+  );
+
+  // Título del botón y modal según contexto
+  const configBtnLabel = clienteSeleccionadoId
+    ? "Configurar vista de esta empresa"
+    : "Configurar vista general";
+
+  // ── Columnas tabla obras (simplificadas) ──
   const columnasObras: ColumnsType<ClienteObraResumen> = [
     {
       title: "Nombre",
@@ -309,40 +696,9 @@ const RegistrosMiEmpresa: React.FC = () => {
       render: (v: string) => <Text strong>{v}</Text>,
     },
     {
-      title: "Código",
-      dataIndex: "codigo",
-      key: "codigo",
-      render: (v?: string | null) => v ?? "-",
-    },
-    {
-      title: "Cliente",
-      dataIndex: "cliente",
-      key: "cliente",
-      render: (v?: string | null) => v ?? "-",
-    },
-    {
-      title: "Estado",
-      dataIndex: "estado",
-      key: "estado",
-      render: (v?: string | null) => getEstadoTag(v),
-    },
-    {
-      title: "Registros validados",
-      dataIndex: "totalRegistros",
-      key: "totalRegistros",
-      align: "right",
-      render: (v: number) => <Tag color="blue">{v}</Tag>,
-    },
-    {
-      title: "Cantidad final",
-      dataIndex: "cantidadFinalTotal",
-      key: "cantidadFinalTotal",
-      align: "right",
-      render: (v: number) => v?.toLocaleString("es-CL") ?? "-",
-    },
-    {
       title: "",
       key: "accion",
+      align: "right",
       render: (_: unknown, row: ClienteObraResumen) => (
         <Button
           type="primary"
@@ -357,62 +713,78 @@ const RegistrosMiEmpresa: React.FC = () => {
   ];
 
   // ── Columnas tabla registros ──
-  const columnasRegistros: ColumnsType<ClienteRegistroValidado> = [
-    {
-      title: "Fecha",
-      dataIndex: "fecha",
-      key: "fecha",
-      render: (v?: string | null) => (v ? dayjs(v).format("DD/MM/YYYY") : "-"),
-      sorter: (a, b) => (a.fecha ?? "").localeCompare(b.fecha ?? ""),
-    },
-    { title: "Tipo", dataIndex: "tipoRegistro", key: "tipoRegistro", render: (v?: string | null) => v ?? "-" },
-    { title: "Piso", dataIndex: "piso", key: "piso", render: (v?: string | null) => v ?? "-" },
-    { title: "Módulo", dataIndex: "modulo", key: "modulo", render: (v?: string | null) => v ?? "-" },
-    { title: "Recinto", dataIndex: "recinto", key: "recinto", render: (v?: string | null) => v ?? "-" },
-    { title: "Eje", dataIndex: "eje", key: "eje", render: (v?: string | null) => v ?? "-" },
-    { title: "N° Sello", dataIndex: "numeroSello", key: "numeroSello", render: (v?: string | null) => v ?? "-" },
-    {
-      title: "Cantidad",
-      dataIndex: "cantidad",
-      key: "cantidad",
-      align: "right",
-      render: (v?: number | null) => v?.toLocaleString("es-CL") ?? "-",
-    },
-    {
-      title: "Cantidad final",
-      dataIndex: "cantidadFinal",
-      key: "cantidadFinal",
-      align: "right",
-      render: (v?: number | null) => v?.toLocaleString("es-CL") ?? "-",
-    },
-    { title: "Material", dataIndex: "material", key: "material", render: (v?: string | null) => v ?? "-" },
-    { title: "Sellador", dataIndex: "sellador", key: "sellador", render: (v?: string | null) => v ?? "-" },
-    { title: "Itemizado Beck", dataIndex: "itemizadoBeck", key: "itemizadoBeck", render: (v?: string | null) => v ?? "-" },
-    { title: "Itemizado Mandante", dataIndex: "itemizadoMandante", key: "itemizadoMandante", render: (v?: string | null) => v ?? "-" },
-    {
-      title: "Fotos",
-      key: "fotos",
-      render: (_: unknown, row: ClienteRegistroValidado) => {
-        const fotos = getFotos(row);
-        return fotos.length > 0 ? (
-          <Badge count={fotos.length} size="small">
-            <PictureOutlined style={{ fontSize: 16, color: "#d4a017" }} />
-          </Badge>
-        ) : (
-          <Text type="secondary">-</Text>
-        );
-      },
-    },
-  ];
+  const columnasRegistrosDinamicas: ColumnsType<ClienteRegistroValidado> = useMemo(() => {
+    const configurables = columnasRegistro.reduce<ColumnsType<ClienteRegistroValidado>>((acc, columna) => {
+        if (columna.visible === false) return acc;
+        const key = getColumnaKey(columna);
+        if (!key) return acc;
+        const title = getColumnaTitle(columna);
+        acc.push({
+          title,
+          key,
+          dataIndex: key,
+          width: isFotoColumn(key, title) ? 110 : 150,
+          render: (_value: unknown, record: ClienteRegistroValidado) =>
+            renderRegistroValue(getRegistroValue(record, key), record, key, title),
+        });
+        return acc;
+      }, []);
 
-  // ── Encabezado de página con selector admin ──
+    return [
+      ...configurables,
+      {
+        title: "Estado",
+        key: "estado",
+        width: 130,
+        fixed: "right" as const,
+        render: (_value: unknown, record: ClienteRegistroValidado) => {
+          const estado = record.estado ?? (record.validadoCliente ? "Validado" : "No validado");
+          return <Tag color={estado === "Validado" ? "green" : "default"}>{estado}</Tag>;
+        },
+      },
+      {
+        title: "Acciones",
+        key: "acciones",
+        width: 130,
+        fixed: "right" as const,
+        render: (_value: unknown, record: ClienteRegistroValidado) =>
+          record.acciones?.puedeValidar ? (
+            <Button
+              size="small"
+              type="primary"
+              loading={validandoRegistroId === record.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                validarRegistro(record);
+              }}
+            >
+              Validar
+            </Button>
+          ) : (
+            <Text type="secondary">-</Text>
+          ),
+      },
+    ];
+  }, [columnasRegistro, validarRegistro, validandoRegistroId]);
+
   const encabezado = (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <BuildOutlined style={{ fontSize: 20, color: "#d4a017" }} />
-        <Title level={3} style={{ margin: 0 }}>
-          {necesitaSelector ? "Vista Cliente" : "Registros de mi empresa"}
-        </Title>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <BuildOutlined style={{ fontSize: 20, color: "#d4a017" }} />
+          <Title level={3} style={{ margin: 0 }}>
+            {necesitaSelector ? "Vista Cliente" : "Registros de mi empresa"}
+          </Title>
+        </div>
+        {necesitaSelector && (
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() => setConfigModalOpen(true)}
+            disabled={!listoParaCargar && !(!clienteSeleccionadoId)}
+          >
+            {configBtnLabel}
+          </Button>
+        )}
       </div>
 
       {necesitaSelector && (
@@ -522,7 +894,7 @@ const RegistrosMiEmpresa: React.FC = () => {
 
         <Table
           rowKey="id"
-          columns={columnasRegistros}
+          columns={columnasRegistrosDinamicas}
           dataSource={registrosFiltrados}
           loading={loadingRegistros}
           size="small"
@@ -592,6 +964,17 @@ const RegistrosMiEmpresa: React.FC = () => {
             </div>
           )}
         </Modal>
+
+        {necesitaSelector && (
+          <ConfigVistaModal
+            open={configModalOpen}
+            titulo={configBtnLabel}
+            onClose={() => setConfigModalOpen(false)}
+            onGuardado={handleConfigGuardado}
+            fetchConfig={fetchConfig}
+            saveConfig={saveConfig}
+          />
+        )}
       </div>
     );
   }
@@ -615,14 +998,13 @@ const RegistrosMiEmpresa: React.FC = () => {
         </Card>
       )}
 
-      {/* Error de carga */}
       {errorDatos && listoParaCargar && (
         <Alert type="error" message={errorDatos} showIcon closable onClose={() => setErrorDatos(null)} />
       )}
 
-      {/* KPIs */}
       {listoParaCargar && (
         <>
+          {/* KPIs */}
           {loadingDash ? (
             <Row gutter={[16, 16]}>
               {[0, 1, 2, 3].map((i) => (
@@ -633,151 +1015,180 @@ const RegistrosMiEmpresa: React.FC = () => {
             </Row>
           ) : kpisEfectivos ? (
             <Row gutter={[16, 16]}>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <Statistic
-                    title="Total obras"
-                    value={kpisEfectivos.totalObras}
-                    prefix={<BuildOutlined />}
-                    valueStyle={{ color: "#5b8dd9" }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <Statistic
-                    title="Registros validados"
-                    value={kpisEfectivos.totalRegistros}
-                    prefix={<FileSearchOutlined />}
-                    valueStyle={{ color: "#d4a017" }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <Statistic
-                    title="Cantidad final total"
-                    value={kpisEfectivos.cantidadFinalTotal}
-                    valueStyle={{ color: "#6abf69" }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <Statistic
-                    title="Registros este mes"
-                    value={kpisEfectivos.registrosEsteMes}
-                    prefix={<CalendarOutlined />}
-                    valueStyle={{ color: "#e07b54" }}
-                  />
-                </Card>
-              </Col>
+              {isVisible(cfg, "total_obras") && (
+                <Col xs={24} sm={12} lg={6}>
+                  <Card>
+                    <Statistic
+                      title={getTitle(cfg, "total_obras", "Total obras")}
+                      value={kpisEfectivos.totalObras}
+                      prefix={<BuildOutlined />}
+                      valueStyle={{ color: "#5b8dd9" }}
+                    />
+                  </Card>
+                </Col>
+              )}
+              {isVisible(cfg, "registros_validados") && (
+                <Col xs={24} sm={12} lg={6}>
+                  <Card>
+                    <Statistic
+                      title={getTitle(cfg, "registros_validados", "Registros validados")}
+                      value={kpisEfectivos.totalRegistros}
+                      prefix={<FileSearchOutlined />}
+                      valueStyle={{ color: "#d4a017" }}
+                    />
+                  </Card>
+                </Col>
+              )}
+              {isVisible(cfg, "cantidad_final_total") && (
+                <Col xs={24} sm={12} lg={6}>
+                  <Card>
+                    <Statistic
+                      title={getTitle(cfg, "cantidad_final_total", "Cantidad final total")}
+                      value={kpisEfectivos.cantidadFinalTotal}
+                      valueStyle={{ color: "#6abf69" }}
+                    />
+                  </Card>
+                </Col>
+              )}
+              {isVisible(cfg, "registros_mes") && (
+                <Col xs={24} sm={12} lg={6}>
+                  <Card>
+                    <Statistic
+                      title={getTitle(cfg, "registros_mes", "Registros este mes")}
+                      value={kpisEfectivos.registrosEsteMes}
+                      prefix={<CalendarOutlined />}
+                      valueStyle={{ color: "#e07b54" }}
+                    />
+                  </Card>
+                </Col>
+              )}
             </Row>
           ) : null}
 
           {/* Gráficos */}
           {kpisEfectivos && (
             <Row gutter={[16, 16]}>
-              <Col xs={24} lg={12}>
-                <Card title="Registros por obra" size="small">
-                  {kpisEfectivos.registrosPorObra.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={kpisEfectivos.registrosPorObra} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="nombre" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="total" name="Registros" fill="#5b8dd9" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Empty description="Sin datos" style={{ padding: "20px 0" }} />
-                  )}
-                </Card>
-              </Col>
+              {isVisible(cfg, "registros_por_obra") && (
+                <Col xs={24} lg={12}>
+                  <Card title={getTitle(cfg, "registros_por_obra", "Registros por obra")} size="small">
+                    {kpisEfectivos.registrosPorObra.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={kpisEfectivos.registrosPorObra} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="nombre" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="total" name="Registros" fill="#5b8dd9" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <Empty description="Sin datos" style={{ padding: "20px 0" }} />
+                    )}
+                  </Card>
+                </Col>
+              )}
 
-              <Col xs={24} lg={12}>
-                <Card title="Registros por tipo" size="small">
-                  {kpisEfectivos.registrosPorTipo.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie
-                          data={kpisEfectivos.registrosPorTipo}
-                          dataKey="total"
-                          nameKey="tipo"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ name, percent }) =>
-                            `${String(name)} ${((percent ?? 0) * 100).toFixed(0)}%`
-                          }
-                          labelLine={false}
-                        >
-                          {kpisEfectivos.registrosPorTipo.map((_entry, index) => (
-                            <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(v) => [v ?? 0, "Registros"]} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Empty description="Sin datos" style={{ padding: "20px 0" }} />
-                  )}
-                </Card>
-              </Col>
+              {isVisible(cfg, "registros_por_tipo") && (
+                <Col xs={24} lg={12}>
+                  <Card title={getTitle(cfg, "registros_por_tipo", "Registros por tipo")} size="small">
+                    {kpisEfectivos.registrosPorTipo.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <PieChart>
+                          <Pie
+                            data={kpisEfectivos.registrosPorTipo}
+                            dataKey="total"
+                            nameKey="tipo"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, percent }) =>
+                              `${String(name)} ${((percent ?? 0) * 100).toFixed(0)}%`
+                            }
+                            labelLine={false}
+                          >
+                            {kpisEfectivos.registrosPorTipo.map((_entry, index) => (
+                              <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(v) => [v ?? 0, "Registros"]} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <Empty description="Sin datos" style={{ padding: "20px 0" }} />
+                    )}
+                  </Card>
+                </Col>
+              )}
 
-              <Col xs={24} lg={12}>
-                <Card title="Registros por piso" size="small">
-                  {kpisEfectivos.registrosPorPiso.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={kpisEfectivos.registrosPorPiso} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="piso" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="total" name="Registros" fill="#e07b54" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Empty description="Sin datos" style={{ padding: "20px 0" }} />
-                  )}
-                </Card>
-              </Col>
+              {isVisible(cfg, "registros_por_piso") && (
+                <Col xs={24} lg={12}>
+                  <Card title={getTitle(cfg, "registros_por_piso", "Registros por piso")} size="small">
+                    {kpisEfectivos.registrosPorPiso.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={kpisEfectivos.registrosPorPiso} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="piso" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="total" name="Registros" fill="#e07b54" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <Empty description="Sin datos" style={{ padding: "20px 0" }} />
+                    )}
+                  </Card>
+                </Col>
+              )}
 
-              <Col xs={24} lg={12}>
-                <Card title="Registros por fecha" size="small">
-                  {kpisEfectivos.registrosPorFecha.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={kpisEfectivos.registrosPorFecha} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="total" name="Registros" fill="#6abf69" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Empty description="Sin datos" style={{ padding: "20px 0" }} />
-                  )}
-                </Card>
-              </Col>
+              {isVisible(cfg, "registros_por_fecha") && (
+                <Col xs={24} lg={12}>
+                  <Card title={getTitle(cfg, "registros_por_fecha", "Registros por fecha")} size="small">
+                    {kpisEfectivos.registrosPorFecha.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={kpisEfectivos.registrosPorFecha} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="fecha" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="total" name="Registros" fill="#6abf69" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <Empty description="Sin datos" style={{ padding: "20px 0" }} />
+                    )}
+                  </Card>
+                </Col>
+              )}
             </Row>
           )}
 
           {/* Lista de obras */}
-          <Card title="Obras" size="small">
-            <Table
-              rowKey="id"
-              columns={columnasObras}
-              dataSource={obras}
-              loading={loadingObras}
-              size="small"
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              locale={{ emptyText: <Empty description="Sin obras asignadas" /> }}
-            />
-          </Card>
+          {kpisEfectivos && isVisible(cfg, "obras") && (
+            <Card title={getTitle(cfg, "obras", "Obras")} size="small">
+              <Table
+                rowKey="id"
+                columns={columnasObras}
+                dataSource={obras}
+                loading={loadingObras}
+                size="small"
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                locale={{ emptyText: <Empty description="Sin obras asignadas" /> }}
+              />
+            </Card>
+          )}
         </>
+      )}
+
+      {necesitaSelector && (
+        <ConfigVistaModal
+          open={configModalOpen}
+          titulo={configBtnLabel}
+          onClose={() => setConfigModalOpen(false)}
+          onGuardado={handleConfigGuardado}
+          fetchConfig={fetchConfig}
+          saveConfig={saveConfig}
+        />
       )}
     </div>
   );

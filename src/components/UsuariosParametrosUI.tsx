@@ -8,6 +8,7 @@ import { useAuth } from "../context/useAuth";
 import { usePermisos } from "../hooks/usePermisos";
 import {
   clientesBeckAPI,
+  obrasAPI,
   permisosUsuarioAPI,
   usuariosParametrosAPI,
   usuariosAPI,
@@ -40,6 +41,12 @@ const MODULOS_BECK: Array<{ key: ModuloBeck; label: string }> = [
   { key: "beck_usuarios_parametros", label: "Usuarios y parámetros" },
   { key: "beck_reglas_validacion", label: "Reglas de Validación" },
 ];
+
+const MODULOS_BECK_CLIENTE = MODULOS_BECK.filter(
+  (modulo) => modulo.key === "beck_vista_cliente"
+);
+
+const isRolCliente = (rol?: string | null): boolean => rol?.toLowerCase() === "cliente";
 
 type Props = {
   empresa: EmpresaParam;
@@ -129,54 +136,51 @@ const formatClienteBeck = (cliente?: ClienteBeck): string => {
 const formatObra = (obra: ObraClienteBeckResumen): string =>
   [obra.nombre, obra.codigo].filter(Boolean).join(" - ");
 
-const formatTotalObras = (total: number): string =>
-  `${total} ${total === 1 ? "obra asignada" : "obras asignadas"}`;
+const filtrarObrasPorClienteBeck = (
+  obras: ObraClienteBeckResumen[],
+  clienteBeckId?: string
+): ObraClienteBeckResumen[] => {
+  if (!clienteBeckId) return [];
+  return obras.filter((obra) => obra.clienteBeckId === clienteBeckId);
+};
 
-const ObrasAsignadasReadonly: React.FC<{
+const ObrasClienteSelector: React.FC<{
   obras: ObraClienteBeckResumen[];
   loading: boolean;
   clienteBeckId?: string;
-}> = ({ obras, loading, clienteBeckId }) => {
-  if (!clienteBeckId) return null;
-
-  if (loading) {
-    return (
-      <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
-        Cargando obras asociadas...
-      </div>
-    );
-  }
-
-  if (obras.length === 0) {
-    return (
-      <Alert
-        className="mb-2"
-        type="info"
-        showIcon
-        message="Este cliente no tiene obras asociadas"
-      />
-    );
-  }
-
+  disabled?: boolean;
+}> = ({ obras, loading, clienteBeckId, disabled }) => {
+  const selectorDisabled = disabled || !clienteBeckId;
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-slate-700">
-          Obras asignadas autom&aacute;ticamente
-        </span>
-        <Tag color="green">{formatTotalObras(obras.length)}</Tag>
-      </div>
-      <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
-        {obras.map((obra) => (
-          <div
-            key={obra.id}
-            className="rounded border border-slate-100 bg-slate-50 px-2 py-1 text-sm text-slate-700"
-          >
-            {formatObra(obra)}
-          </div>
-        ))}
-      </div>
-    </div>
+    <>
+      <Form.Item
+        label="Obras visibles para el cliente"
+        name="obraIds"
+        extra="Este cliente solo podr&aacute; visualizar las obras seleccionadas."
+      >
+        <Select
+          mode="multiple"
+          allowClear
+          showSearch
+          placeholder={clienteBeckId ? "Selecciona 0, 1 o varias obras" : "Primero selecciona un Cliente Beck"}
+          loading={loading}
+          disabled={selectorDisabled}
+          optionFilterProp="label"
+          options={obras.map((obra) => ({
+            value: obra.id,
+            label: formatObra(obra),
+          }))}
+        />
+      </Form.Item>
+      {clienteBeckId && !loading && obras.length === 0 && (
+        <Alert
+          className="mb-2"
+          type="info"
+          showIcon
+          message="El Cliente Beck seleccionado no tiene obras disponibles"
+        />
+      )}
+    </>
   );
 };
 
@@ -191,7 +195,18 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 }) => {
   const { user: currentUser, refreshSession } = useAuth();
   const { canEdit } = usePermisos();
-  const canEditModulo = empresa === "beck" ? canEdit("beck_usuarios_parametros") : true;
+  const canEditModulo =
+    empresa === "beck"
+      ? canEdit("beck_usuarios_parametros")
+      : canEdit("firemat_usuarios_parametros");
+  const editPermissionMessage =
+    empresa === "firemat"
+      ? "No tienes permiso para editar usuarios y parámetros Firemat."
+      : "No tienes permisos para realizar esta accion";
+  const getWriteErrorMessage = (error: unknown, fallback: string) =>
+    isAxiosError(error) && error.response?.status === 403
+      ? editPermissionMessage
+      : getErrorMessage(error, fallback);
   const [usuarios, setUsuarios] = useState<UsuarioApi[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
@@ -268,34 +283,20 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     return () => { isMounted = false; };
   }, [empresa, currentUser?.rol]);
 
-  const cargarObrasClienteBeck = async (
-    clienteBeckId: string,
-    target: "create" | "edit",
-    options?: { preselectAll?: boolean }
-  ) => {
+  const cargarObrasDisponibles = async (target: "create" | "edit", clienteBeckId?: string) => {
     const setLoading = target === "create" ? setLoadingObrasCliente : setLoadingEditObrasCliente;
     const setObras = target === "create" ? setObrasCliente : setEditObrasCliente;
-    const targetForm = target === "create" ? form : editForm;
+    if (!clienteBeckId) {
+      setObras([]);
+      return;
+    }
     setLoading(true);
     try {
-      const response = await clientesBeckAPI.obras(clienteBeckId);
-      setObras(response);
-      if (options?.preselectAll) {
-        const currentClienteBeckId = targetForm.getFieldValue("clienteBeckId");
-        if (currentClienteBeckId === clienteBeckId) {
-          const obraIds = response.map((obra) => obra.id);
-          targetForm.setFieldValue("obraIds", obraIds);
-          if (obraIds.length === 0) {
-            message.info("Este cliente no tiene obras asociadas");
-          }
-        }
-      }
+      const response = await obrasAPI.listar({ activa: true });
+      setObras(filtrarObrasPorClienteBeck(response, clienteBeckId));
     } catch (error) {
       setObras([]);
-      if (options?.preselectAll) {
-        targetForm.setFieldValue("obraIds", []);
-      }
-      message.error(getErrorMessage(error, "No se pudieron cargar las obras del Cliente Beck"));
+      message.error(getErrorMessage(error, "No se pudieron cargar las obras disponibles"));
     } finally {
       setLoading(false);
     }
@@ -304,12 +305,38 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const handleClienteBeckChange = (clienteBeckId: string | undefined, target: "create" | "edit") => {
     const targetForm = target === "create" ? form : editForm;
     const setObras = target === "create" ? setObrasCliente : setEditObrasCliente;
+    targetForm.setFieldValue("clienteBeckId", clienteBeckId);
     targetForm.setFieldValue("obraIds", []);
     setObras([]);
-    if (clienteBeckId) {
-      void cargarObrasClienteBeck(clienteBeckId, target, { preselectAll: true });
-    }
   };
+
+  useEffect(() => {
+    if (empresa !== "beck" || !createOpen || createRol !== "cliente") {
+      setObrasCliente([]);
+      return;
+    }
+    if (!createClienteBeckId) {
+      setObrasCliente([]);
+      form.setFieldValue("obraIds", []);
+      return;
+    }
+    if (obrasCliente.length > 0 || loadingObrasCliente) return;
+    void cargarObrasDisponibles("create", createClienteBeckId);
+  }, [createClienteBeckId, createOpen, createRol, empresa, form, loadingObrasCliente, obrasCliente.length]);
+
+  useEffect(() => {
+    if (empresa !== "beck" || !editingUsuario || editRol !== "cliente") {
+      setEditObrasCliente([]);
+      return;
+    }
+    if (!editClienteBeckId) {
+      setEditObrasCliente([]);
+      editForm.setFieldValue("obraIds", []);
+      return;
+    }
+    if (editObrasCliente.length > 0 || loadingEditObrasCliente) return;
+    void cargarObrasDisponibles("edit", editClienteBeckId);
+  }, [editClienteBeckId, editForm, editObrasCliente.length, editRol, editingUsuario, empresa, loadingEditObrasCliente]);
 
   const setSavingState = (id: string, saving: boolean) => {
     setSavingById((prev) => {
@@ -335,6 +362,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const canEditUsuario = (record: UsuarioApi) =>
     canEditModulo && (!isCurrentIngenieriaBeck || record.rol !== "administrador");
   const canToggleUsuario = (record: UsuarioApi) => {
+    if (!canEditUsuario(record)) return false;
     if (!isCurrentIngenieriaBeck) return true;
     if (record.rol === "administrador") return false;
     if (currentUser?.id === record.id && record.activo) return false;
@@ -355,8 +383,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     try {
       const detalle = await permisosUsuarioAPI.obtenerDetallado(usuario.id);
       setPermisosDetalle(detalle);
-      const efectivos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
-      setPermisosData(Array.isArray(efectivos) ? [...efectivos] : []);
+      const permisosUsuarioExistentes =
+        detalle.permisosUsuario ?? detalle.permisos ?? detalle.permisosEfectivos ?? [];
+      setPermisosData(Array.isArray(permisosUsuarioExistentes) ? [...permisosUsuarioExistentes] : []);
     } catch {
       setPermisosDetalle(null);
       setPermisosData([]);
@@ -381,6 +410,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     return list.find((p) => p.modulo === modulo) ?? { modulo, puedeVer: true, puedeEditar: true };
   };
 
+  const modulosPermisosVisibles =
+    permisosUsuario && isRolCliente(permisosUsuario.rol) ? MODULOS_BECK_CLIENTE : MODULOS_BECK;
+
   const setPermisoModulo = (modulo: ModuloBeck, field: "puedeVer" | "puedeEditar", value: boolean) => {
     setPermisosData((prev) => {
       const existing = prev.find((p) => p.modulo === modulo);
@@ -401,23 +433,40 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
   const guardarPermisos = async () => {
     if (!permisosUsuario) return;
+    if (!canEditModulo) {
+      message.error(editPermissionMessage);
+      return;
+    }
     setSavingPermisos(true);
     try {
+      const esCliente = isRolCliente(permisosUsuario.rol);
+      const permisosBase =
+        permisosDetalle?.permisosUsuario ??
+        permisosDetalle?.permisos ??
+        permisosDetalle?.permisosEfectivos ??
+        permisosData;
+      const permisosBaseByModulo = new Map(permisosBase.map((permiso) => [permiso.modulo, permiso]));
       const payload: PermisoModuloInput[] = MODULOS_BECK.map(({ key }) => {
-        const p = getPermisoModulo(key);
+        const p = esCliente && key !== "beck_vista_cliente"
+          ? permisosBaseByModulo.get(key) ?? getPermisoModulo(key)
+          : getPermisoModulo(key);
         return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
       });
       await permisosUsuarioAPI.actualizar(permisosUsuario.id, payload);
       message.success("Permisos guardados correctamente");
       setPermisosUsuario(null);
-    } catch {
-      message.error("No se pudieron guardar los permisos");
+    } catch (error) {
+      message.error(getWriteErrorMessage(error, "No se pudieron guardar los permisos"));
     } finally {
       setSavingPermisos(false);
     }
   };
 
   const openCrearUsuario = () => {
+    if (!canEditModulo) {
+      message.error(editPermissionMessage);
+      return;
+    }
     setCreateClienteMode(false);
     setObrasCliente([]);
     form.setFieldsValue({
@@ -430,6 +479,10 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   };
 
   const openCrearUsuarioCliente = () => {
+    if (!canEditModulo) {
+      message.error(editPermissionMessage);
+      return;
+    }
     setCreateClienteMode(true);
     setObrasCliente([]);
     form.setFieldsValue({ rol: "cliente", activo: true, clienteBeckId: undefined, obraIds: [] });
@@ -437,6 +490,10 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   };
 
   const crearUsuario = async () => {
+    if (!canEditModulo) {
+      message.error(editPermissionMessage);
+      return;
+    }
     try {
       const values = await form.validateFields();
       if (values.rol === "cliente") {
@@ -450,7 +507,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         }
       }
       setCreating(true);
-      const obraIdsCliente = obrasCliente.map((obra) => obra.id);
+      const obraIdsCliente = values.rol === "cliente" ? values.obraIds ?? [] : undefined;
       const payload = {
         nombre: values.nombre,
         email: values.email,
@@ -459,7 +516,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         activo: values.activo,
         ...(values.rol === "cliente" && {
           clienteBeckId: values.clienteBeckId,
-          obraIds: obraIdsCliente,
+          obraIds: obraIdsCliente ?? [],
         }),
       };
       const nuevoUsuario = empresa === "beck"
@@ -471,14 +528,17 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       setCreateOpen(false);
       message.success("Usuario creado correctamente");
     } catch (error) {
-      message.error(getErrorMessage(error, "No se pudo crear el usuario"));
+      message.error(getWriteErrorMessage(error, "No se pudo crear el usuario"));
     } finally {
       setCreating(false);
     }
   };
 
   const openEditarUsuario = async (usuario: UsuarioApi) => {
-    if (!canEditUsuario(usuario)) return;
+    if (!canEditUsuario(usuario)) {
+      message.error(editPermissionMessage);
+      return;
+    }
     let usuarioDetalle = usuario;
     if (empresa === "beck" && usuario.rol === "cliente") {
       try {
@@ -488,9 +548,35 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       }
     }
     const clienteBeckId = usuarioDetalle.clienteBeckId ?? undefined;
-    const obraIds = usuarioDetalle.obraIds ?? usuarioDetalle.obras?.map((obra) => obra.id) ?? [];
+    let obraIds = usuarioDetalle.obraIds ?? usuarioDetalle.obras?.map((obra) => obra.id) ?? [];
+    if (usuarioDetalle.rol === "cliente") {
+      setLoadingEditObrasCliente(true);
+      try {
+        const [obrasDisponibles, obrasAsignadas] = await Promise.all([
+          obrasAPI.listar({ activa: true }),
+          usuariosAPI.obtenerObrasUsuario(usuarioDetalle.id),
+        ]);
+        const obrasDelCliente = filtrarObrasPorClienteBeck(obrasDisponibles, clienteBeckId);
+        const obrasPermitidas = new Set(obrasDelCliente.map((obra) => obra.id));
+        const obraIdsAsignadas = obrasAsignadas.map((obra) => obra.id);
+        obraIds = obraIdsAsignadas.filter((obraId) => obrasPermitidas.has(obraId));
+        setEditObrasCliente(obrasDelCliente);
+        if (obraIdsAsignadas.length !== obraIds.length) {
+          message.warning(
+            "Hay obras asignadas previamente que no pertenecen al Cliente Beck seleccionado y no se mostraran como seleccionables."
+          );
+        }
+      } catch (error) {
+        setEditObrasCliente([]);
+        obraIds = [];
+        message.error(getErrorMessage(error, "No se pudieron cargar las obras asignadas"));
+      } finally {
+        setLoadingEditObrasCliente(false);
+      }
+    } else {
+      setEditObrasCliente([]);
+    }
     setEditingUsuario(usuarioDetalle);
-    setEditObrasCliente(usuarioDetalle.obras ?? []);
     editForm.setFieldsValue({
       nombre: usuarioDetalle.nombre,
       email: usuarioDetalle.email,
@@ -499,9 +585,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       clienteBeckId,
       obraIds,
     });
-    if (clienteBeckId) {
-      void cargarObrasClienteBeck(clienteBeckId, "edit", { preselectAll: true });
-    }
     setEditPassword("");
     setEditConfirmPassword("");
     setEditPasswordError(null);
@@ -517,6 +600,10 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     patch: Partial<Pick<UsuarioApi, "nombre" | "email" | "rol" | "activo">>,
     successMsg: string
   ) => {
+    if (!canEditModulo) {
+      message.error(editPermissionMessage);
+      return;
+    }
     setSavingState(id, true);
     try {
       const updatedUsuario = empresa === "beck"
@@ -526,14 +613,18 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       await syncCurrentSessionIfNeeded(updatedUsuario);
       message.success(successMsg);
     } catch (error) {
-      message.error(getErrorMessage(error, "No se pudo actualizar el usuario"));
+      message.error(getWriteErrorMessage(error, "No se pudo actualizar el usuario"));
     } finally {
       setSavingState(id, false);
     }
   };
 
   const guardarEdicionUsuario = async () => {
-    if (!editingUsuario || !canEditUsuario(editingUsuario)) return;
+    if (!editingUsuario) return;
+    if (!canEditUsuario(editingUsuario)) {
+      message.error(editPermissionMessage);
+      return;
+    }
 
     try {
       const values = await editForm.validateFields();
@@ -575,7 +666,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       }
 
       setEditing(true);
-      const obraIdsCliente = editObrasCliente.map((obra) => obra.id);
+      const obraIdsCliente = values.rol === "cliente" ? values.obraIds ?? [] : undefined;
       const payload = {
         nombre: values.nombre,
         email: values.email,
@@ -583,7 +674,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         activo: values.activo,
         ...(values.rol === "cliente" && {
           clienteBeckId: values.clienteBeckId,
-          obraIds: obraIdsCliente,
+          obraIds: obraIdsCliente ?? [],
         }),
       };
       const updatedUsuario = empresa === "beck"
@@ -593,6 +684,10 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         prev.map((u) => (u.id === updatedUsuario.id ? updatedUsuario : u))
       );
       await syncCurrentSessionIfNeeded(updatedUsuario);
+
+      if (values.rol === "cliente") {
+        await usuariosAPI.actualizarObrasUsuario(editingUsuario.id, obraIdsCliente ?? []);
+      }
 
       if (hasPassword) {
         await usuariosAPI.cambiarPassword(editingUsuario.id, {
@@ -613,13 +708,15 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           : "Usuario actualizado correctamente"
       );
     } catch (error) {
-      message.error(getErrorMessage(error, "No se pudo actualizar el usuario"));
+      message.error(getWriteErrorMessage(error, "No se pudo actualizar el usuario"));
     } finally {
       setEditing(false);
     }
   };
 
   const safeUsuarios = Array.isArray(usuarios) ? usuarios : [];
+  const usuariosInternos = safeUsuarios.filter((usuario) => usuario.rol !== "cliente");
+  const usuariosCliente = safeUsuarios.filter((usuario) => usuario.rol === "cliente");
   const activos = safeUsuarios.filter((u) => u.activo).length;
   const inactivos = safeUsuarios.length - activos;
   const isFiremat = empresa === "firemat";
@@ -646,6 +743,162 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const activoBorderClass = isFiremat ? "border-[#f4c4ba]" : "border-amber-200";
   const buttonBg = isFiremat ? "#e05c3b" : undefined;
   const iconColorClass = isFiremat ? "text-[#e05c3b]" : "text-orange-600";
+
+  const nombreColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Nombre",
+    dataIndex: "nombre",
+    key: "nombre",
+    width: 190,
+    ellipsis: true,
+    render: (value: string) => (
+      <span className="block truncate text-xs font-medium text-slate-900" title={value}>
+        {value}
+      </span>
+    ),
+  };
+
+  const correoColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Correo",
+    dataIndex: "email",
+    key: "email",
+    width: 280,
+    ellipsis: true,
+    render: (_value: string, record) => (
+      <div className="leading-tight">
+        <span className="block truncate text-xs text-slate-700" title={record.email}>
+          {record.email}
+        </span>
+        <span
+          className="block max-w-[260px] truncate text-[11px] text-slate-400"
+          title={record.azureId ?? undefined}
+        >
+          {record.azureId ? `Azure ID: ${record.azureId}` : "Sin vinculo Microsoft"}
+        </span>
+      </div>
+    ),
+  };
+
+  const rolColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Rol",
+    dataIndex: "rol",
+    key: "rol",
+    width: 260,
+    render: (_value: UsuarioApiRol, record) => (
+      <div className="flex min-w-0 items-center gap-2">
+        <Tag color={getTagColor(record.rol)} style={{ marginInlineEnd: 0 }}>
+          {getRoleLabel(record.rol)}
+        </Tag>
+        <Select<UsuarioApiRol>
+          size="small"
+          value={record.rol}
+          options={rolesForCurrentUser}
+          disabled={isSaving(record.id) || !canEditUsuario(record)}
+          onChange={(rol) => {
+            if (rol === record.rol) return;
+            if (!canEditUsuario(record)) return;
+            void updateUsuario(record.id, { rol }, "Rol actualizado");
+          }}
+          style={{ width: 160 }}
+        />
+      </div>
+    ),
+  };
+
+  const clienteBeckColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Cliente Beck",
+    key: "clienteBeck",
+    width: 260,
+    ellipsis: true,
+    render: (_value: unknown, record: UsuarioApi) => {
+      if (!record.clienteBeckId) {
+        return <span className="text-xs text-slate-400">Sin Cliente Beck</span>;
+      }
+      const embedded = record.clienteBeck;
+      const fromMap = clientesBeckById.get(record.clienteBeckId);
+      const label = embedded
+        ? [embedded.razonSocial, embedded.nombreEmpresa, embedded.rut].filter(Boolean).join(" - ")
+        : fromMap
+          ? formatClienteBeck(fromMap)
+          : record.clienteBeckId;
+      return (
+        <span className="block truncate text-xs text-slate-700" title={label}>
+          {label}
+        </span>
+      );
+    },
+  };
+
+  const cantidadObrasColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Cantidad obras",
+    key: "cantidadObrasAsignadas",
+    width: 130,
+    align: "center" as const,
+    render: (_value: unknown, record: UsuarioApi) => {
+      const total = record.cantidadObrasAsignadas ?? record.obras?.length ?? 0;
+      return <Tag color={total > 0 ? "green" : "default"}>{total}</Tag>;
+    },
+  };
+
+  const activoColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Activo",
+    dataIndex: "activo",
+    key: "activo",
+    width: 100,
+    align: "center",
+    render: (_value: boolean, record) => (
+      canToggleUsuario(record) ? (
+        <Switch
+          size="small"
+          checked={record.activo}
+          loading={isSaving(record.id)}
+          onChange={(activo) => {
+            if (activo === record.activo) return;
+            void updateUsuario(
+              record.id,
+              { activo },
+              activo ? "Usuario activado" : "Usuario desactivado"
+            );
+          }}
+        />
+      ) : (
+        <Tag color={record.activo ? "green" : "default"}>
+          {record.activo ? "Activo" : "Inactivo"}
+        </Tag>
+      )
+    ),
+  };
+
+  const accionesColumn: ColumnsType<UsuarioApi>[number] = {
+    title: "Acciones",
+    key: "acciones",
+    width: empresa === "beck" && currentUser?.rol === "Administrador" ? 190 : 130,
+    align: "center",
+    render: (_value: unknown, record) => (
+      <div className="flex items-center justify-center gap-1">
+        {canEditUsuario(record) && (
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => void openEditarUsuario(record)}
+            disabled={isSaving(record.id)}
+          >
+            Editar
+          </Button>
+        )}
+        {empresa === "beck" && currentUser?.rol === "Administrador" && (
+          <Tooltip title="Configurar permisos de módulos">
+            <Button
+              size="small"
+              icon={<KeyOutlined />}
+              onClick={() => void openPermisosModal(record)}
+            >
+              Permisos
+            </Button>
+          </Tooltip>
+        )}
+      </div>
+    ),
+  };
 
   const columns: ColumnsType<UsuarioApi> = [
     {
@@ -822,6 +1075,23 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     },
   ];
 
+  const usuariosInternosColumns: ColumnsType<UsuarioApi> = [
+    nombreColumn,
+    correoColumn,
+    rolColumn,
+    activoColumn,
+    accionesColumn,
+  ];
+
+  const usuariosClienteColumns: ColumnsType<UsuarioApi> = [
+    nombreColumn,
+    correoColumn,
+    clienteBeckColumn,
+    cantidadObrasColumn,
+    activoColumn,
+    accionesColumn,
+  ];
+
   return (
     <div className="space-y-6 pb-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -909,6 +1179,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               <p className="mb-3">
                 Crea usuarios para que puedan ingresar a la app móvil con correo y contraseña.
               </p>
+              {canEditModulo && (
               <div className="flex flex-col gap-2">
                 <Button
                   type="primary"
@@ -929,45 +1200,122 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                   </Button>
                 )}
               </div>
+              )}
             </div>
           </div>
         </Card>
 
-        <Card
-          className="min-w-0 border border-slate-200 bg-white"
-          title={
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span>Usuarios</span>
-              <span className="text-xs text-slate-500">{safeUsuarios.length}</span>
-            </div>
-          }
-          styles={{
-            header: {
-              backgroundColor: "#ffffff",
-              color: "#020617",
-              borderBottom: "1px solid #e2e8f0",
-              fontSize: 13,
-            },
-            body: { padding: 0 },
-          }}
-        >
-          <div className="overflow-x-auto">
-          <Table<UsuarioApi>
-            rowKey="id"
-            columns={columns}
-            dataSource={safeUsuarios}
-            loading={loadingUsuarios}
-            size="small"
-            pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: empresa === "beck" ? 1460 : 1110 }}
-            tableLayout="fixed"
-            rowClassName={(record) => (record.activo ? "" : "opacity-70")}
-            locale={{
-              emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios para mostrar",
-            }}
-          />
+        {empresa === "beck" ? (
+          <div className="min-w-0 space-y-4">
+            <Card
+              className="min-w-0 border border-slate-200 bg-white"
+              title={
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>Usuarios internos</span>
+                  <span className="text-xs text-slate-500">{usuariosInternos.length}</span>
+                </div>
+              }
+              styles={{
+                header: {
+                  backgroundColor: "#ffffff",
+                  color: "#020617",
+                  borderBottom: "1px solid #e2e8f0",
+                  fontSize: 13,
+                },
+                body: { padding: 0 },
+              }}
+            >
+              <div className="overflow-x-auto">
+                <Table<UsuarioApi>
+                  rowKey="id"
+                  columns={usuariosInternosColumns}
+                  dataSource={usuariosInternos}
+                  loading={loadingUsuarios}
+                  size="small"
+                  pagination={{ pageSize: 8, showSizeChanger: false }}
+                  scroll={{ x: 960 }}
+                  tableLayout="fixed"
+                  rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+                  locale={{
+                    emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios internos para mostrar",
+                  }}
+                />
+              </div>
+            </Card>
+
+            <Card
+              className="min-w-0 border border-slate-200 bg-white"
+              title={
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>Usuarios cliente</span>
+                  <span className="text-xs text-slate-500">{usuariosCliente.length}</span>
+                </div>
+              }
+              styles={{
+                header: {
+                  backgroundColor: "#ffffff",
+                  color: "#020617",
+                  borderBottom: "1px solid #e2e8f0",
+                  fontSize: 13,
+                },
+                body: { padding: 0 },
+              }}
+            >
+              <div className="overflow-x-auto">
+                <Table<UsuarioApi>
+                  rowKey="id"
+                  columns={usuariosClienteColumns}
+                  dataSource={usuariosCliente}
+                  loading={loadingUsuarios}
+                  size="small"
+                  pagination={{ pageSize: 8, showSizeChanger: false }}
+                  scroll={{ x: 1060 }}
+                  tableLayout="fixed"
+                  rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+                  locale={{
+                    emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios cliente para mostrar",
+                  }}
+                />
+              </div>
+            </Card>
           </div>
-        </Card>
+        ) : (
+          <Card
+            className="min-w-0 border border-slate-200 bg-white"
+            title={
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span>Usuarios</span>
+                <span className="text-xs text-slate-500">{safeUsuarios.length}</span>
+              </div>
+            }
+            styles={{
+              header: {
+                backgroundColor: "#ffffff",
+                color: "#020617",
+                borderBottom: "1px solid #e2e8f0",
+                fontSize: 13,
+              },
+              body: { padding: 0 },
+            }}
+          >
+            <div className="overflow-x-auto">
+              <Table<UsuarioApi>
+                rowKey="id"
+                columns={columns}
+                dataSource={safeUsuarios}
+                loading={loadingUsuarios}
+                size="small"
+                pagination={{ pageSize: 8, showSizeChanger: false }}
+                scroll={{ x: 1110 }}
+                tableLayout="fixed"
+                rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+                locale={{
+                  emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios para mostrar",
+                }}
+              />
+            </div>
+          </Card>
+        )}
       </div>
 
       <Modal
@@ -978,21 +1326,23 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               ? "Crear usuario Firemat"
               : "Crear usuario app"
         }
-        open={createOpen}
+        open={createOpen && canEditModulo}
         onCancel={() => {
           setCreateOpen(false);
           setCreateClienteMode(false);
           setObrasCliente([]);
           form.resetFields();
         }}
-        onOk={crearUsuario}
+        onOk={canEditModulo ? crearUsuario : undefined}
         confirmLoading={creating}
         okText={createClienteMode ? labelCrearCliente ?? labelCrear : labelCrear}
         cancelText="Cancelar"
+        okButtonProps={{ style: canEditModulo ? undefined : { display: "none" } }}
       >
         <Form
           form={form}
           layout="vertical"
+          disabled={!canEditModulo}
           initialValues={{ rol: defaultRol, activo: true }}
         >
           <Form.Item
@@ -1045,11 +1395,11 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                   onChange={(clienteBeckId) => handleClienteBeckChange(clienteBeckId, "create")}
                 />
               </Form.Item>
-              <Form.Item name="obraIds" hidden />
-              <ObrasAsignadasReadonly
+              <ObrasClienteSelector
                 obras={obrasCliente}
                 loading={loadingObrasCliente}
                 clienteBeckId={createClienteBeckId}
+                disabled={!canEditModulo}
               />
             </div>
           )}
@@ -1061,7 +1411,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
       <Modal
         title="Editar usuario"
-        open={Boolean(editingUsuario)}
+        open={Boolean(editingUsuario) && canEditModulo}
         onCancel={() => {
           if (editing) return;
           setEditingUsuario(null);
@@ -1071,12 +1421,13 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           setEditConfirmPassword("");
           setEditPasswordError(null);
         }}
-        onOk={() => void guardarEdicionUsuario()}
+        onOk={canEditModulo ? () => void guardarEdicionUsuario() : undefined}
         confirmLoading={editing}
         okText="Guardar cambios"
         cancelText="Cancelar"
+        okButtonProps={{ style: canEditModulo ? undefined : { display: "none" } }}
       >
-        <Form form={editForm} layout="vertical">
+        <Form form={editForm} layout="vertical" disabled={!canEditModulo}>
           <Form.Item
             label="Nombre"
             name="nombre"
@@ -1117,11 +1468,11 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                   onChange={(clienteBeckId) => handleClienteBeckChange(clienteBeckId, "edit")}
                 />
               </Form.Item>
-              <Form.Item name="obraIds" hidden />
-              <ObrasAsignadasReadonly
+              <ObrasClienteSelector
                 obras={editObrasCliente}
                 loading={loadingEditObrasCliente}
                 clienteBeckId={editClienteBeckId}
+                disabled={!canEditModulo}
               />
             </div>
           )}
@@ -1232,15 +1583,15 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                   <tr className="border-b border-slate-200 text-[10px] text-slate-400">
                     <th />
                     <th className="pb-1.5 text-center">Ver</th>
-                    <th className="pb-1.5 text-center">Edit</th>
+                    <th className="pb-1.5 text-center">Editar</th>
                     <th className="pb-1.5 text-center">Ver</th>
-                    <th className="pb-1.5 text-center">Edit</th>
+                    <th className="pb-1.5 text-center">Editar</th>
                     <th className="pb-1.5 text-center">Ver</th>
-                    <th className="pb-1.5 text-center">Edit</th>
+                    <th className="pb-1.5 text-center">Editar</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {MODULOS_BECK.map(({ key, label }) => {
+                  {modulosPermisosVisibles.map(({ key, label }) => {
                     const pRol = getPermisoRol(key);
                     const pUsuario = getPermisoModulo(key);
                     const pEfectivo = getPermisoEfectivo(key);

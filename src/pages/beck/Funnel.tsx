@@ -1421,6 +1421,10 @@
     onSaveOpportunityDraft,
     onSolicitudOficinaCreated,
   }) => {
+    const { canView: canViewFunnel, canEdit: canEditFunnelPerm } = usePermisos();
+    const canCambiarEmpresaBeck =
+      canViewFunnel("beck_cambiar_empresa") || canEditFunnelPerm("beck_cambiar_empresa");
+
     const [oficinaTecnicaModalOpen, setOficinaTecnicaModalOpen] = useState(false);
     const [solicitudOficinaSaving, setSolicitudOficinaSaving] = useState(false);
 
@@ -1966,7 +1970,7 @@
                 showSearch
                 allowClear
                 value={draft.clienteBeckId || null}
-                placeholder="Seleccionar cliente"
+                placeholder={canCambiarEmpresaBeck ? "Seleccionar cliente" : "No tienes permiso para cambiar empresa"}
                 optionFilterProp="label"
                 filterOption={(input, option) =>
                   String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())
@@ -1986,7 +1990,7 @@
                   if (cliente) onSelectClienteBeck(cliente);
                 }}
                 loading={clientesLoading || clienteBeckSearching}
-                disabled={submitting}
+                disabled={submitting || !canCambiarEmpresaBeck}
                 style={{ width: "100%" }}
                 notFoundContent={
                   clientesLoading ? "Cargando clientes..." : "Sin resultados"
@@ -2004,7 +2008,7 @@
                       value={draft.contactoBeckId || null}
                       placeholder="Seleccionar contacto del cliente"
                       allowClear
-                      disabled={submitting}
+                      disabled={submitting || !canCambiarEmpresaBeck}
                       onChange={(value) => {
                         if (!value) {
                           onSelectContactoBeck(null);
@@ -2068,7 +2072,8 @@
                   type="text"
                   value={draft.empresa}
                   onChange={(event) => onFieldChange("empresa", event.target.value)}
-                  disabled={submitting}
+                  disabled={submitting || !canCambiarEmpresaBeck}
+                  title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
                   className={getFieldClassName("empresa")}
                   placeholder="Nombre de la empresa"
                   aria-invalid={Boolean(fieldErrors.empresa)}

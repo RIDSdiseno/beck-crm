@@ -129,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
 }) => {
   void themeMode;
-  const { canView, refreshingPermisos, loadingPermisos, permisosReady } = usePermisos();
+  const { permisos, refreshingPermisos, loadingPermisos, permisosReady } = usePermisos();
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -138,6 +138,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const isFiremat = location.pathname.startsWith("/firemat");
   const activeCompany: Company = isFiremat ? "firemat" : "beck";
+  const isCliente = user?.rol?.toLowerCase() === "cliente";
+  const permisosLoading = refreshingPermisos || loadingPermisos || !permisosReady;
 
   const isBeck = activeCompany === "beck";
   const logoSrc = isFiremat ? "/Firemat_logo.png" : "/logo.png";
@@ -157,13 +159,22 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [isFiremat]);
 
-  const puedeCambiarEmpresa = user?.rol === "Administrador";
+  const isAdmin = user?.rol === "Administrador";
+  const hasViewPermission = (modulo: ModuloBeck): boolean =>
+    permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeVer);
+  const hasEditPermission = (modulo: ModuloBeck): boolean =>
+    permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeEditar);
+  const canCambiarEmpresaBeck =
+    !isCliente && (isAdmin || hasViewPermission("beck_cambiar_empresa") || hasEditPermission("beck_cambiar_empresa"));
+  const canCambiarEmpresaFiremat =
+    !isCliente && (isAdmin || hasViewPermission("firemat_cambiar_empresa") || hasEditPermission("firemat_cambiar_empresa"));
+  const puedeCambiarEmpresa = canCambiarEmpresaBeck || canCambiarEmpresaFiremat;
 
   const handleCompanySwitch = (company: Company) => {
-    if (user?.rol !== "Administrador") return;
+    if (company === "beck" && !canCambiarEmpresaBeck) return;
+    if (company === "firemat" && !canCambiarEmpresaFiremat) return;
     setSelectorOpen(false);
     if (company === activeCompany) return;
-    if (company === "firemat" && !access.firemat) return;
 
     const map = ROUTE_MAP[activeCompany];
     const equivalent = map[location.pathname];
@@ -223,8 +234,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "reportes", to: "/firemat/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.firematReportes },
   ];
 
-  const isCliente = user?.rol === "Cliente";
-
   const clienteNav = [
     {
       key: "registros-mi-empresa",
@@ -236,7 +245,31 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const navItems = isCliente ? clienteNav : isBeck ? beckNav : firematNav;
-  const companyOptions: Company[] = access.firemat ? ["beck", "firemat"] : ["beck"];
+  const visibleNavItems = isCliente
+    ? clienteNav
+    : permisosLoading
+      ? []
+      : navItems.filter((item) => {
+          if (isBeck) {
+            const modulo = BECK_NAV_MODULO[item.key];
+            if (modulo) return hasViewPermission(modulo);
+          } else {
+            const modulo = FIREMAT_NAV_MODULO[item.key];
+            if (modulo) return hasViewPermission(modulo);
+          }
+          return item.access === true;
+        });
+  const showConfigSection =
+    !isCliente &&
+    permisosReady &&
+    (isBeck
+      ? hasViewPermission("beck_usuarios_parametros") ||
+        hasViewPermission("beck_reglas_validacion")
+      : hasViewPermission("firemat_usuarios_parametros"));
+  const companyOptions: Company[] = [
+    ...(canCambiarEmpresaBeck ? (["beck"] as Company[]) : []),
+    ...(canCambiarEmpresaFiremat ? (["firemat"] as Company[]) : []),
+  ];
 
   return (
     <aside
@@ -345,7 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 space-y-6 overflow-y-auto px-2 py-4">
         {!collapsed && <p className={sectionTitleCls}>Módulos</p>}
 
-        {refreshingPermisos || loadingPermisos || (!isBeck && !permisosReady) ? (
+        {!isCliente && permisosLoading ? (
           <div className={`flex flex-col gap-2 ${collapsed ? "items-center" : ""}`}>
             {[1, 2, 3, 4].map((i) => (
               <div
@@ -358,18 +391,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ) : (
           <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-            {navItems.filter((item) => {
-              if (isBeck) {
-                const modulo = BECK_NAV_MODULO[item.key];
-                if (modulo) return canView(modulo);
-              } else {
-                const modulo = FIREMAT_NAV_MODULO[item.key];
-                if (modulo) return canView(modulo);
-              }
-              // No permission mapping: fall back to role-based access flag
-              if (!item.access) return false;
-              return true;
-            }).map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={item.key}
                 to={item.to}
@@ -389,18 +411,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           </nav>
         )}
 
-        {/* Configuración — Firemat hides this section until permisosReady to prevent
-            canView() fallback-true flash exposing restricted links on F5 */}
-        {(isBeck || permisosReady) && (isBeck
-          ? canView("beck_usuarios_parametros") || canView("beck_reglas_validacion")
-          : canView("firemat_usuarios_parametros")
-        ) && (
+        {/* Configuración */}
+        {showConfigSection && (
           <div className="border-t border-inherit pt-4">
             {!collapsed && (
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
             <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-              {(isBeck ? canView("beck_usuarios_parametros") : canView("firemat_usuarios_parametros")) && (
+              {(isBeck ? hasViewPermission("beck_usuarios_parametros") : hasViewPermission("firemat_usuarios_parametros")) && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : "/firemat/usuarios-parametros"}
                 className={({ isActive }) =>
@@ -430,7 +448,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Permisos</span>}
               </NavLink>
               )}
-              {!isBeck && canView("firemat_usuarios_parametros") && (
+              {!isBeck && hasViewPermission("firemat_usuarios_parametros") && (
               <NavLink
                 to="/firemat/permisos"
                 className={({ isActive }) =>
@@ -445,7 +463,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Permisos</span>}
               </NavLink>
               )}
-              {isBeck && canView("beck_reglas_validacion") && (
+              {isBeck && hasViewPermission("beck_reglas_validacion") && (
               <NavLink
                 to="/beck/configuracion-validacion"
                 className={({ isActive }) =>

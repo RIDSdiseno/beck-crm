@@ -33,7 +33,27 @@ import {
   type ProductoFiremat,
   type ProductoFirematPayload,
 } from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
 import ImportarPdfModal from "./ImportarPdfModal";
+
+const EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE =
+  "No tienes permiso para editar productos Firemat.";
+
+const getProductosErrorMessage = (err: unknown, fallback: string): string => {
+  const apiErr = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    message?: string;
+  } | null;
+  if (apiErr?.response?.status === 403) {
+    return EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE;
+  }
+  return (
+    apiErr?.response?.data?.error ||
+    apiErr?.response?.data?.message ||
+    apiErr?.message ||
+    fallback
+  );
+};
 
 const formatCLP = (value: number | null | undefined): string => {
   if (value == null) return "-";
@@ -96,9 +116,10 @@ const ModalProducto: React.FC<{
   mode: ModalMode;
   producto: ProductoFiremat | null;
   open: boolean;
+  canEditProductos: boolean;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ mode, producto, open, onClose, onSaved }) => {
+}> = ({ mode, producto, open, canEditProductos, onClose, onSaved }) => {
   const [form] = Form.useForm<FormValues>();
   const [saving, setSaving] = useState(false);
   const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
@@ -109,6 +130,7 @@ const ModalProducto: React.FC<{
   const isView = mode === "ver";
   const isEdit = mode === "editar";
   const isCreate = mode === "crear";
+  const readOnly = isView || !canEditProductos;
 
   useEffect(() => {
     if (!open) return;
@@ -156,6 +178,11 @@ const ModalProducto: React.FC<{
   const sinCategorias = !loadingCats && categorias.length === 0;
 
   const handleImagenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -175,6 +202,10 @@ const ModalProducto: React.FC<{
 
   const handleOk = async () => {
     if (isView) { onClose(); return; }
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     if (sinCategorias) return;
     try {
       const values = await form.validateFields();
@@ -207,7 +238,7 @@ const ModalProducto: React.FC<{
       onClose();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "errorFields" in err) return;
-      void message.error("No se pudo guardar el producto");
+      void message.error(getProductosErrorMessage(err, "No se pudo guardar el producto"));
     } finally {
       setSaving(false);
     }
@@ -222,7 +253,10 @@ const ModalProducto: React.FC<{
       onCancel={onClose}
       onOk={handleOk}
       okText={isView ? "Cerrar" : "Guardar"}
-      okButtonProps={{ className: "firemat-action-button" }}
+      okButtonProps={{
+        className: "firemat-action-button",
+        style: !isView && !canEditProductos ? { display: "none" } : undefined,
+      }}
       cancelButtonProps={isView ? { style: { display: "none" } } : undefined}
       confirmLoading={saving}
       width={760}
@@ -231,7 +265,7 @@ const ModalProducto: React.FC<{
       <Form
         form={form}
         layout="vertical"
-        disabled={isView}
+        disabled={readOnly}
         size="middle"
       >
         <div className="grid grid-cols-2 gap-x-4">
@@ -389,7 +423,7 @@ const ModalProducto: React.FC<{
           <div className="col-span-2 mt-1">
             <p className="text-sm font-medium text-beck-ink mb-2">Imagen del producto</p>
             <div className="flex items-start gap-3 flex-wrap">
-              {!isView && (
+              {!readOnly && (
                 <>
                   <input
                     ref={fileInputRef}
@@ -468,9 +502,10 @@ const ResultadoImportProductos: React.FC<{ result: ImportarPdfProductosResult }>
 const ModalAsignarCategorias: React.FC<{
   open: boolean;
   productos: ProductoFiremat[];
+  canEditProductos: boolean;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ open, productos, onClose, onSaved }) => {
+}> = ({ open, productos, canEditProductos, onClose, onSaved }) => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
@@ -502,6 +537,10 @@ const ModalAsignarCategorias: React.FC<{
   });
 
   const handleAsignar = async () => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     if (!categoriaId || selectedRowKeys.length === 0) return;
     try {
       setAsignando(true);
@@ -513,6 +552,10 @@ const ModalAsignarCategorias: React.FC<{
       onSaved();
       onClose();
     } catch (err: unknown) {
+      if ((err as { response?: { status?: number } })?.response?.status === 403) {
+        void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+        return;
+      }
       const apiErr = err as { response?: { data?: { error?: string; message?: string } } };
       void message.error(
         apiErr.response?.data?.error ||
@@ -625,7 +668,7 @@ const ModalAsignarCategorias: React.FC<{
               type="primary"
               icon={<TagsOutlined />}
               loading={asignando}
-              disabled={selectedRowKeys.length === 0 || !categoriaId}
+              disabled={!canEditProductos || selectedRowKeys.length === 0 || !categoriaId}
               onClick={() => {
                 if (selectedRowKeys.length === 0) {
                   void message.warning("Selecciona al menos un producto");
@@ -649,6 +692,9 @@ const ModalAsignarCategorias: React.FC<{
 
 /* ────────────── Componente principal ────────────── */
 const FirematProductos: React.FC = () => {
+  const { canEdit } = usePermisos();
+  const canEditProductos = canEdit("firemat_productos");
+
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -700,11 +746,19 @@ const FirematProductos: React.FC = () => {
   };
 
   const abrirCrear = () => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setSeleccionado(null);
     setModalMode("crear");
   };
 
   const abrirEditar = (row: ProductoFiremat) => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setSeleccionado(row);
     setModalMode("editar");
   };
@@ -719,13 +773,47 @@ const FirematProductos: React.FC = () => {
     setSeleccionado(null);
   };
 
+  const abrirImportarPdf = () => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
+    setPdfModalOpen(true);
+  };
+
+  const abrirAsignarCategoria = () => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
+    setModalAsignarOpen(true);
+  };
+
   const handleToggleEstado = async (row: ProductoFiremat) => {
+    if (!canEditProductos) {
+      void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     try {
       await firematProductosAPI.toggleEstado(row.id, !row.activo);
       void message.success(`Producto ${!row.activo ? "activado" : "desactivado"}`);
       void cargar();
-    } catch {
-      void message.error("No se pudo cambiar el estado");
+    } catch (err: unknown) {
+      void message.error(getProductosErrorMessage(err, "No se pudo cambiar el estado"));
+    }
+  };
+
+  const importarListaPreciosPdf = async (file: File): Promise<ImportarPdfProductosResult> => {
+    if (!canEditProductos) {
+      throw new Error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+    }
+    try {
+      return await firematProductosAPI.importarListaPreciosPdf(file);
+    } catch (err: unknown) {
+      if ((err as { response?: { status?: number } })?.response?.status === 403) {
+        throw new Error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
+      }
+      throw err;
     }
   };
 
@@ -896,6 +984,8 @@ const FirematProductos: React.FC = () => {
             onClick={() => abrirVer(row)}
             title="Ver detalle"
           />
+          {canEditProductos && (
+            <>
           <Button
             size="small"
             type="link"
@@ -914,6 +1004,8 @@ const FirematProductos: React.FC = () => {
               {row.activo ? "Desactivar" : "Activar"}
             </Button>
           </Popconfirm>
+            </>
+          )}
         </div>
       ),
     },
@@ -927,13 +1019,15 @@ const FirematProductos: React.FC = () => {
           <div>
             <div className="firemat-badge">
               <AppstoreOutlined style={{ fontSize: 10 }} />
-              <span>Maestro editable</span>
+              <span>{canEditProductos ? "Maestro editable" : "Maestro de lectura"}</span>
             </div>
             <h1 className="mt-2 text-lg font-semibold tracking-wide text-beck-ink">
               Maestro de productos Firemat
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canEditProductos && (
+              <>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -943,17 +1037,19 @@ const FirematProductos: React.FC = () => {
             </Button>
             <Button
               icon={<FilePdfOutlined />}
-              onClick={() => setPdfModalOpen(true)}
+              onClick={abrirImportarPdf}
             >
               Importar lista de precios PDF
             </Button>
             <Button
               className="firemat-action-button"
               icon={<TagsOutlined />}
-              onClick={() => setModalAsignarOpen(true)}
+              onClick={abrirAsignarCategoria}
             >
               Asignar categoría
             </Button>
+              </>
+            )}
             <Button
               className="firemat-action-button"
               icon={<ReloadOutlined />}
@@ -1037,22 +1133,24 @@ const FirematProductos: React.FC = () => {
         mode={modalMode}
         producto={seleccionado}
         open={modalMode !== null}
+        canEditProductos={canEditProductos}
         onClose={cerrarModal}
         onSaved={() => void cargar()}
       />
 
       <ImportarPdfModal<ImportarPdfProductosResult>
-        open={pdfModalOpen}
+        open={pdfModalOpen && canEditProductos}
         titulo="Importar lista de precios PDF"
         onClose={() => setPdfModalOpen(false)}
         onImportado={() => void cargar()}
-        importar={firematProductosAPI.importarListaPreciosPdf}
+        importar={importarListaPreciosPdf}
         renderResultado={(result) => <ResultadoImportProductos result={result} />}
       />
 
       <ModalAsignarCategorias
-        open={modalAsignarOpen}
+        open={modalAsignarOpen && canEditProductos}
         productos={productos}
+        canEditProductos={canEditProductos}
         onClose={() => setModalAsignarOpen(false)}
         onSaved={() => void cargar()}
       />

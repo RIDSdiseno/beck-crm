@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { usePermisos } from "../../hooks/usePermisos";
 import {
   Alert,
   Button,
@@ -673,6 +674,9 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   const location = useLocation();
   const pendingOportunidadId = useRef<string | null>(null);
   const lastOpenedAlertTs = useRef<number | null>(null);
+  const { canView: canViewFunnel, canEdit: canEditFunnelPerm } = usePermisos();
+  const canCambiarEmpresaFiremat =
+    canViewFunnel("firemat_cambiar_empresa") || canEditFunnelPerm("firemat_cambiar_empresa");
 
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
@@ -725,6 +729,13 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
   const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
   const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
   const [bloqueoAdvertencias, setBloqueoAdvertencias] = useState<string[]>([]);
+  const [bloqueoObservacion, setBloqueoObservacion] = useState("");
+  const [bloqueoRetrying, setBloqueoRetrying] = useState(false);
+  const [bloqueoEtapaPendiente, setBloqueoEtapaPendiente] = useState<{
+    record: FirematFunnelOportunidad;
+    nextEtapa: FirematFunnelEtapa;
+    etapaOrigen: FirematFunnelEtapa;
+  } | null>(null);
   const [advertenciaSuccessOpen, setAdvertenciaSuccessOpen] = useState(false);
   const [advertenciaSuccessItems, setAdvertenciaSuccessItems] = useState<string[]>([]);
 
@@ -851,17 +862,22 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       if (tipoCliente) params.tipoCliente = tipoCliente;
       if (productoId) params.productoId = productoId;
 
-      const [funnelResponse, productosResponse, cotizacionesResponse] =
-        await Promise.all([
-          firematFunnelAPI.listar(params),
-          firematProductosAPI.listar({ activo: true }),
-          firematCotizacionesAPI.listar({}),
-        ]);
+      const [funnelResponse, cotizacionesResponse] = await Promise.all([
+        firematFunnelAPI.listar(params),
+        firematCotizacionesAPI.listar({}),
+      ]);
 
       setOportunidades(funnelResponse.data);
       setResumen(funnelResponse.resumen);
-      setProductos(productosResponse.data);
       setCotizaciones(cotizacionesResponse.data);
+
+      // Productos son auxiliares: si fallan (ej. sin permiso firemat_productos) no bloquear el funnel
+      try {
+        const productosResponse = await firematProductosAPI.listar({ activo: true });
+        setProductos(productosResponse.data);
+      } catch {
+        setProductos([]);
+      }
     } catch {
       void message.error("No se pudo cargar el funnel Firemat");
       setOportunidades([]);
@@ -1477,9 +1493,14 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
     return e?.response?.status === 409;
   };
 
-  const openBloqueoModal = (data: FirematBloqueoError) => {
+  const openBloqueoModal = (
+    data: FirematBloqueoError,
+    pendiente?: { record: FirematFunnelOportunidad; nextEtapa: FirematFunnelEtapa; etapaOrigen: FirematFunnelEtapa }
+  ) => {
     setBloqueoBloqueos(data.bloqueos ?? []);
     setBloqueoAdvertencias(data.advertencias ?? []);
+    setBloqueoObservacion("");
+    setBloqueoEtapaPendiente(pendiente ?? null);
     setBloqueoModalOpen(true);
   };
 
@@ -1519,8 +1540,8 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         void message.error("Ingresa el documento de respaldo");
         return false;
       }
-      if (!values.montoEstimado || Number(values.montoEstimado) <= 0) {
-        void message.error("Ingresa el monto final");
+      if (!values.flujoPosterior?.trim()) {
+        void message.error("Ingresa el flujo posterior (despacho, facturación, etc.)");
         return false;
       }
       if (!values.responsable?.trim()) {
@@ -1634,10 +1655,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
         current?.id === record.id ? { ...current, etapa: etapaOrigen } : current
       );
       if (isBloqueoError(error)) {
-        openBloqueoModal(error.response.data);
+        openBloqueoModal(error.response.data, { record, nextEtapa, etapaOrigen });
       } else if (is409(error)) {
         setBloqueoBloqueos(["No se puede cambiar la etapa. Verifica los campos requeridos."]);
         setBloqueoAdvertencias([]);
+        setBloqueoObservacion("");
+        setBloqueoEtapaPendiente({ record, nextEtapa, etapaOrigen });
         setBloqueoModalOpen(true);
       } else {
         void message.error("No se pudo cambiar la etapa");
@@ -2183,6 +2206,8 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
               size="small"
               type="link"
               onClick={() => setShowClienteSelector(true)}
+              disabled={!canCambiarEmpresaFiremat}
+              title={!canCambiarEmpresaFiremat ? "No tienes permiso para cambiar empresa" : undefined}
               className="!px-0 text-xs"
             >
               Cambiar cliente
@@ -2246,6 +2271,8 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
               <Button
                 size="small"
                 type="link"
+                disabled={!canCambiarEmpresaFiremat}
+                title={!canCambiarEmpresaFiremat ? "No tienes permiso para cambiar empresa" : undefined}
                 onClick={() => setShowClienteSelector(false)}
                 className="!px-0 text-xs"
               >
@@ -2262,7 +2289,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
                 value={selectedClienteId ?? undefined}
                 options={clienteOptions}
                 optionFilterProp="label"
-                placeholder="Seleccionar cliente por RUT, nombre o razon social"
+                placeholder={
+                  canCambiarEmpresaFiremat
+                    ? "Seleccionar cliente por RUT, nombre o razon social"
+                    : "No tienes permiso para cambiar empresa"
+                }
+                disabled={!canCambiarEmpresaFiremat}
                 onClear={() => {
                   limpiarClienteFirematSeleccionado();
                   form.setFieldValue("cliente", "");
@@ -2305,8 +2337,12 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
             ]}
           >
             <Input
-              placeholder="Nombre cliente no registrado"
-              disabled={Boolean(selectedClienteId)}
+              placeholder={
+                !canCambiarEmpresaFiremat
+                  ? "No tienes permiso para cambiar empresa"
+                  : "Nombre cliente no registrado"
+              }
+              disabled={Boolean(selectedClienteId) || !canCambiarEmpresaFiremat}
             />
           </Form.Item>
         )}
@@ -3889,7 +3925,11 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
               >
                 <Input placeholder="OC, contrato, comprobante o documento" />
               </Form.Item>
-              <Form.Item name="flujoPosterior" label="Flujo posterior">
+              <Form.Item
+                name="flujoPosterior"
+                label="Flujo posterior"
+                rules={[{ required: true, message: "Selecciona el flujo posterior" }]}
+              >
                 <Select
                   allowClear
                   placeholder="Seleccionar flujo posterior"
@@ -4417,16 +4457,87 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
       <Modal
         title="No se puede avanzar"
         open={bloqueoModalOpen}
-        onCancel={() => setBloqueoModalOpen(false)}
+        onCancel={() => {
+          setBloqueoModalOpen(false);
+          setBloqueoEtapaPendiente(null);
+          setBloqueoObservacion("");
+        }}
         destroyOnClose
         footer={[
           <Button
-            key="entendido"
-            className="firemat-action-button"
-            onClick={() => setBloqueoModalOpen(false)}
+            key="cancelar"
+            onClick={() => {
+              setBloqueoModalOpen(false);
+              setBloqueoEtapaPendiente(null);
+              setBloqueoObservacion("");
+            }}
           >
-            Entendido
+            Cancelar
           </Button>,
+          ...(bloqueoEtapaPendiente
+            ? [
+                <Button
+                  key="avanzar"
+                  className="firemat-action-button"
+                  disabled={!bloqueoObservacion.trim() || bloqueoRetrying}
+                  loading={bloqueoRetrying}
+                  onClick={async () => {
+                    if (!bloqueoEtapaPendiente || !bloqueoObservacion.trim()) return;
+                    const { record, nextEtapa, etapaOrigen } = bloqueoEtapaPendiente;
+                    setBloqueoRetrying(true);
+                    const optimisticRecord: FirematFunnelOportunidad = { ...record, etapa: nextEtapa };
+                    setOportunidades((current) =>
+                      current.map((item) => (item.id === record.id ? optimisticRecord : item))
+                    );
+                    setSelected((current) =>
+                      current?.id === record.id ? { ...current, etapa: nextEtapa } : current
+                    );
+                    try {
+                      const updated = await firematFunnelAPI.cambiarEtapa(
+                        record.id,
+                        nextEtapa,
+                        bloqueoObservacion.trim()
+                      );
+                      setOportunidades((current) =>
+                        current.map((item) => (item.id === record.id ? { ...item, ...updated } : item))
+                      );
+                      setSelected((current) => (current?.id === record.id ? updated : current));
+                      setBloqueoModalOpen(false);
+                      setBloqueoEtapaPendiente(null);
+                      setBloqueoObservacion("");
+                      if (updated?.advertencias?.length) {
+                        setAdvertenciaSuccessItems(updated.advertencias);
+                        setAdvertenciaSuccessOpen(true);
+                      } else {
+                        void message.success("Etapa actualizada con observación");
+                      }
+                    } catch {
+                      setOportunidades((current) =>
+                        current.map((item) =>
+                          item.id === record.id ? { ...item, etapa: etapaOrigen } : item
+                        )
+                      );
+                      setSelected((current) =>
+                        current?.id === record.id ? { ...current, etapa: etapaOrigen } : current
+                      );
+                      void message.error("No se pudo avanzar la etapa");
+                    } finally {
+                      setBloqueoRetrying(false);
+                    }
+                  }}
+                >
+                  Avanzar con observación
+                </Button>,
+              ]
+            : [
+                <Button
+                  key="entendido"
+                  className="firemat-action-button"
+                  onClick={() => setBloqueoModalOpen(false)}
+                >
+                  Entendido
+                </Button>,
+              ]),
         ]}
       >
         <div className="space-y-4">
@@ -4448,6 +4559,21 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
                   <li key={i}>{a}</li>
                 ))}
               </ul>
+            </div>
+          )}
+          {bloqueoEtapaPendiente && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-beck-ink">
+                Puedes avanzar de todos modos ingresando una observación:
+              </p>
+              <Input.TextArea
+                rows={3}
+                placeholder="Describe el motivo para avanzar con campos faltantes..."
+                value={bloqueoObservacion}
+                onChange={(e) => setBloqueoObservacion(e.target.value)}
+                maxLength={500}
+                showCount
+              />
             </div>
           )}
         </div>

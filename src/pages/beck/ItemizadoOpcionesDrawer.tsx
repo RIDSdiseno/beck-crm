@@ -6,6 +6,7 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -38,6 +39,8 @@ type FormValues = {
   elementoPenetra?: string;
   materialidad?: string;
   visible: boolean;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -77,6 +80,9 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
   const [filterVisible, setFilterVisible] = useState<VisibleFilter>("todos");
 
   const [updatingVisibleId, setUpdatingVisibleId] = useState<string | null>(null);
+  const [updatingMasivo, setUpdatingMasivo] = useState(false);
+
+  const todoVisibles = opciones.length > 0 && opciones.every((o) => o.visible);
 
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [editingOpcion, setEditingOpcion] = useState<ItemizadoOpcion | null>(null);
@@ -157,6 +163,29 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
     }
   };
 
+  const handleToggleVisibleMasivo = (checked: boolean) => {
+    Modal.confirm({
+      title: checked ? "Activar todas las opciones" : "Desactivar todas las opciones",
+      content: checked
+        ? "¿Desea activar todas las opciones de itemizado para esta obra?"
+        : "¿Desea desactivar todas las opciones de itemizado para esta obra?",
+      okText: "Aceptar",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        setUpdatingMasivo(true);
+        try {
+          await itemizadoOpcionesAPI.actualizarVisibleMasivoObra(obraId!, checked);
+          void message.success(checked ? "Todas las opciones activadas" : "Todas las opciones desactivadas");
+          void cargar();
+        } catch (err) {
+          void message.error(getErrorMessage(err, "No se pudo actualizar la visibilidad"));
+        } finally {
+          setUpdatingMasivo(false);
+        }
+      },
+    });
+  };
+
   const handleEliminar = (opcion: ItemizadoOpcion) => {
     Modal.confirm({
       title: "Eliminar opción de itemizado",
@@ -179,7 +208,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
   const openCrear = () => {
     setEditingOpcion(null);
     form.resetFields();
-    form.setFieldsValue({ visible: true });
+    form.setFieldsValue({ visible: false });
     setFormModalOpen(true);
   };
 
@@ -192,6 +221,8 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       elementoPenetra: opcion.elementoPenetra ?? "",
       materialidad: opcion.materialidad ?? "",
       visible: opcion.visible,
+      rendimientoSellosEsperadoDiario: opcion.rendimientoSellosEsperadoDiario ?? null,
+      rendimientoReparacionEsperadoDiario: opcion.rendimientoReparacionEsperadoDiario ?? null,
     });
     setFormModalOpen(true);
   };
@@ -205,7 +236,9 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
         elementoPasante: values.elementoPasante?.trim() || null,
         elementoPenetra: values.elementoPenetra?.trim() || null,
         materialidad: values.materialidad?.trim() || null,
-        visible: values.visible ?? true,
+        visible: values.visible ?? false,
+        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
+        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
       };
 
       if (editingOpcion) {
@@ -263,6 +296,30 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       render: (v: string | null) => v || <span className="text-slate-400">—</span>,
     },
     {
+      title: "Rend. Sellos/día",
+      dataIndex: "rendimientoSellosEsperadoDiario",
+      key: "rendimientoSellosEsperadoDiario",
+      width: 120,
+      render: (v: number | null) =>
+        v != null ? (
+          <span className="text-xs text-slate-700">{v}</span>
+        ) : (
+          <span className="text-slate-400">—</span>
+        ),
+    },
+    {
+      title: "Rend. Reparación/día",
+      dataIndex: "rendimientoReparacionEsperadoDiario",
+      key: "rendimientoReparacionEsperadoDiario",
+      width: 140,
+      render: (v: number | null) =>
+        v != null ? (
+          <span className="text-xs text-slate-700">{v}</span>
+        ) : (
+          <span className="text-slate-400">—</span>
+        ),
+    },
+    {
       title: "Visible",
       dataIndex: "visible",
       key: "visible",
@@ -274,7 +331,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
           checkedChildren="Sí"
           unCheckedChildren="No"
           loading={updatingVisibleId === record.id}
-          disabled={updatingVisibleId !== null && updatingVisibleId !== record.id}
+          disabled={updatingMasivo || (updatingVisibleId !== null && updatingVisibleId !== record.id)}
           onChange={(checked) => void handleToggleVisible(record, checked)}
         />
       ),
@@ -322,7 +379,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
         width="min(1100px, 97vw)"
         title={obraNombre ? `Opciones de itemizado — ${obraNombre}` : "Opciones de itemizado"}
         extra={
-          <Space wrap>
+          <Space wrap align="center">
             <Button
               icon={<ReloadOutlined />}
               onClick={() => void cargar()}
@@ -330,6 +387,20 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
             >
               Recargar
             </Button>
+            {obraId && (
+              <Space size={6} align="center">
+                <Typography.Text style={{ fontSize: 13 }}>Activar todos:</Typography.Text>
+                <Switch
+                  size="small"
+                  checked={todoVisibles}
+                  checkedChildren="Sí"
+                  unCheckedChildren="No"
+                  loading={updatingMasivo}
+                  disabled={updatingMasivo || updatingVisibleId !== null}
+                  onChange={handleToggleVisibleMasivo}
+                />
+              </Space>
+            )}
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -444,7 +515,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
                 dataSource={Array.isArray(filtered) ? filtered : []}
                 size="small"
                 pagination={{ pageSize: 20, showSizeChanger: false }}
-                scroll={{ x: 900 }}
+                scroll={{ x: 1200 }}
                 rowClassName={(record) =>
                   record.visible ? "" : "opacity-60"
                 }
@@ -474,7 +545,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
           form={form}
           layout="vertical"
           onFinish={(values) => void handleFormSubmit(values)}
-          initialValues={{ visible: true }}
+          initialValues={{ visible: false }}
           className="mt-4"
         >
           <Form.Item name="codigoBeck" label="Código BECK">
@@ -491,6 +562,22 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
           </Form.Item>
           <Form.Item name="materialidad" label="Materialidad">
             <Input placeholder="Materialidad" />
+          </Form.Item>
+          <Form.Item name="rendimientoSellosEsperadoDiario" label="Rendimiento Sellos Esperado diario">
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              placeholder="Ej: 20"
+            />
+          </Form.Item>
+          <Form.Item name="rendimientoReparacionEsperadoDiario" label="Rendimiento Reparación Esperado diario">
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              placeholder="Ej: 24"
+            />
           </Form.Item>
           <Form.Item name="visible" label="Visible" valuePropName="checked">
             <Switch checkedChildren="Visible" unCheckedChildren="Oculto" />

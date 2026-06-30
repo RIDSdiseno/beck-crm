@@ -31,8 +31,27 @@ import {
   type VentaFiremat,
   type VentasFirematResumen,
 } from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
 
 const { RangePicker } = DatePicker;
+const EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE =
+  "No tienes permiso para editar ventas Firemat.";
+
+const getVentasErrorMessage = (err: unknown, fallback: string): string => {
+  const apiErr = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    message?: string;
+  } | null;
+  if (apiErr?.response?.status === 403) {
+    return EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE;
+  }
+  return (
+    apiErr?.response?.data?.error ||
+    apiErr?.response?.data?.message ||
+    apiErr?.message ||
+    fallback
+  );
+};
 
 const formatCLP = (v: number) =>
   new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(v);
@@ -175,6 +194,9 @@ type LineaDetalle = {
 };
 
 const FirematVentas: React.FC = () => {
+  const { canEdit } = usePermisos();
+  const canEditVentas = canEdit("firemat_ventas");
+
   const [ventas, setVentas] = useState<VentaFiremat[]>([]);
   const [resumen, setResumen] = useState<VentasFirematResumen>(RESUMEN_VACIO);
   const [loading, setLoading] = useState(true);
@@ -235,6 +257,10 @@ const FirematVentas: React.FC = () => {
   const hayFiltros = q !== "" || estado !== "" || rango[0] !== null || rango[1] !== null;
 
   const abrirModal = async () => {
+    if (!canEditVentas) {
+      void message.error(EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setModalAbierto(true);
     if (productos.length === 0) {
       try {
@@ -260,14 +286,23 @@ const FirematVentas: React.FC = () => {
   };
 
   const agregarLinea = () => {
+    if (!canEditVentas) {
+      void message.error(EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setLineas((prev) => [...prev, nuevaLinea()]);
   };
 
   const quitarLinea = (key: number) => {
+    if (!canEditVentas) {
+      void message.error(EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     setLineas((prev) => prev.filter((l) => l._key !== key));
   };
 
   const actualizarLinea = (key: number, campo: Partial<Omit<LineaDetalle, "_key">>) => {
+    if (!canEditVentas) return;
     setLineas((prev) =>
       prev.map((l) => {
         if (l._key !== key) return l;
@@ -311,6 +346,10 @@ const FirematVentas: React.FC = () => {
   };
 
   const guardar = async () => {
+    if (!canEditVentas) {
+      void message.error(EDIT_VENTAS_FIREMAT_PERMISSION_MESSAGE);
+      return;
+    }
     const errs = validar();
     if (errs.length > 0) {
       setErroresForm(errs);
@@ -335,10 +374,7 @@ const FirematVentas: React.FC = () => {
       cerrarModal();
       void cargar();
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { error?: string; message?: string } } })
-        ?.response?.data;
-      const msg = errData?.error ?? errData?.message ?? "No se pudo crear la venta";
-      void message.error(msg);
+      void message.error(getVentasErrorMessage(err, "No se pudo crear la venta"));
     } finally {
       setGuardando(false);
     }
@@ -368,13 +404,15 @@ const FirematVentas: React.FC = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => void abrirModal()}
-            >
-              Nueva venta
-            </Button>
+            {canEditVentas && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => void abrirModal()}
+              >
+                Nueva venta
+              </Button>
+            )}
             <Button
               className="firemat-action-button"
               icon={<ReloadOutlined />}
@@ -507,21 +545,25 @@ const FirematVentas: React.FC = () => {
             <span>Nueva venta</span>
           </div>
         }
-        open={modalAbierto}
+        open={modalAbierto && canEditVentas}
         onCancel={cerrarModal}
         width={800}
         footer={[
           <Button key="cancel" onClick={cerrarModal} disabled={guardando}>
             Cancelar
           </Button>,
-          <Button
-            key="save"
-            type="primary"
-            onClick={() => void guardar()}
-            loading={guardando}
-          >
-            Guardar venta
-          </Button>,
+          ...(canEditVentas
+            ? [
+                <Button
+                  key="save"
+                  type="primary"
+                  onClick={() => void guardar()}
+                  loading={guardando}
+                >
+                  Guardar venta
+                </Button>,
+              ]
+            : []),
         ]}
         destroyOnClose
       >
@@ -547,6 +589,7 @@ const FirematVentas: React.FC = () => {
                 value={cliente}
                 onChange={(e) => setCliente(e.target.value)}
                 placeholder="Nombre del cliente"
+                disabled={!canEditVentas}
                 status={erroresForm.some((e) => e.includes("cliente")) ? "error" : undefined}
               />
             </div>
@@ -558,6 +601,7 @@ const FirematVentas: React.FC = () => {
                 value={contacto}
                 onChange={(e) => setContacto(e.target.value)}
                 placeholder="Nombre del contacto"
+                disabled={!canEditVentas}
               />
             </div>
             <div>
@@ -568,6 +612,7 @@ const FirematVentas: React.FC = () => {
                 value={responsable}
                 onChange={(e) => setResponsable(e.target.value)}
                 placeholder="Responsable de la venta"
+                disabled={!canEditVentas}
               />
             </div>
           </div>
@@ -578,9 +623,11 @@ const FirematVentas: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-beck-ink">Detalle de productos</h3>
-              <Button size="small" icon={<PlusOutlined />} onClick={agregarLinea} type="dashed">
-                Agregar producto
-              </Button>
+              {canEditVentas && (
+                <Button size="small" icon={<PlusOutlined />} onClick={agregarLinea} type="dashed">
+                  Agregar producto
+                </Button>
+              )}
             </div>
 
             {loadingProductos ? (
@@ -634,6 +681,7 @@ const FirematVentas: React.FC = () => {
                                 .includes(input.toLowerCase())
                             }
                             status={tieneErrorProducto ? "error" : undefined}
+                            disabled={!canEditVentas}
                             notFoundContent="Sin productos activos"
                           />
                           {stockDisp !== null && (
@@ -653,6 +701,7 @@ const FirematVentas: React.FC = () => {
                             }
                             className="w-full"
                             status={tieneErrorCantidad ? "error" : undefined}
+                            disabled={!canEditVentas}
                           />
                         </div>
                         <div>
@@ -665,6 +714,7 @@ const FirematVentas: React.FC = () => {
                             }
                             className="w-full"
                             status={tieneErrorPrecio ? "error" : undefined}
+                            disabled={!canEditVentas}
                           />
                         </div>
                         <div>
@@ -680,7 +730,7 @@ const FirematVentas: React.FC = () => {
                             size="small"
                             icon={<DeleteOutlined />}
                             onClick={() => quitarLinea(linea._key)}
-                            disabled={lineas.length === 1}
+                            disabled={!canEditVentas || lineas.length === 1}
                           />
                         </div>
                       </div>

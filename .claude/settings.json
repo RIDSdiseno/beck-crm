@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "C:\\Users\\RIDS\\Desktop\\back_beck_crm\\prisma",
+      "C:\\Users\\RIDS\\Desktop\\back_beck_crm\\src\\controllers",
+      "C:\\Users\\RIDS\\Desktop\\back_beck_crm\\src\\routes"
+    ],
+    "allow": [
+      "Bash(grep -E \"\\\\.ts$\")"
+    ]
+  }
+}

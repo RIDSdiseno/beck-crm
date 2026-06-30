@@ -244,13 +244,15 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
 );
 
 const FirematCotizaciones: React.FC = () => {
-  const { canEdit: canEditPerm } = usePermisos();
+  const { canEdit: canEditPerm, canView: canViewPerm } = usePermisos();
   const [form] = Form.useForm<CotizacionFormValues>();
   const lineasWatch = Form.useWatch("lineas", form) ?? [];
 
   const canCreate = canEditPerm("firemat_cotizaciones");
   const canEdit = canCreate;
   const canDelete = canEditPerm("firemat_cotizaciones");
+  const canCambiarEmpresaFiremat =
+    canViewPerm("firemat_cambiar_empresa") || canEditPerm("firemat_cambiar_empresa");
 
   const [cotizaciones, setCotizaciones] = useState<FirematCotizacion[]>([]);
   const [resumen, setResumen] =
@@ -373,14 +375,17 @@ const FirematCotizaciones: React.FC = () => {
       if (rango[0]) params.desde = rango[0].format("YYYY-MM-DD");
       if (rango[1]) params.hasta = rango[1].format("YYYY-MM-DD");
 
-      const [cotizacionesResponse, productosResponse] = await Promise.all([
-        firematCotizacionesAPI.listar(params),
-        firematProductosAPI.listar({ activo: true }),
-      ]);
-
+      const cotizacionesResponse = await firematCotizacionesAPI.listar(params);
       setCotizaciones(cotizacionesResponse.data);
       setResumen(cotizacionesResponse.resumen);
-      setProductos(productosResponse.data);
+
+      // Productos son auxiliares para las líneas de cotización; si fallan no bloquear la lista
+      try {
+        const productosResponse = await firematProductosAPI.listar({ activo: true });
+        setProductos(productosResponse.data);
+      } catch {
+        setProductos([]);
+      }
     } catch {
       void message.error("No se pudieron cargar las cotizaciones Firemat");
       setCotizaciones([]);
@@ -959,7 +964,12 @@ const FirematCotizaciones: React.FC = () => {
                   value={selectedClienteId ?? undefined}
                   options={clienteOptions}
                   optionFilterProp="label"
-                  placeholder="Seleccionar cliente por RUT, nombre o razón social"
+                  placeholder={
+                    canCambiarEmpresaFiremat
+                      ? "Seleccionar cliente por RUT, nombre o razón social"
+                      : "No tienes permiso para cambiar empresa"
+                  }
+                  disabled={!canCambiarEmpresaFiremat}
                   onClear={() => {
                     limpiarClienteFirematSeleccionado();
                     form.setFieldValue("cliente", "");
@@ -996,8 +1006,12 @@ const FirematCotizaciones: React.FC = () => {
               ]}
             >
               <Input
-                placeholder="Nombre cliente no registrado"
-                disabled={Boolean(selectedClienteId)}
+                placeholder={
+                  !canCambiarEmpresaFiremat
+                    ? "No tienes permiso para cambiar empresa"
+                    : "Nombre cliente no registrado"
+                }
+                disabled={Boolean(selectedClienteId) || !canCambiarEmpresaFiremat}
               />
             </Form.Item>
             <Form.Item name="contacto" label="Contacto">

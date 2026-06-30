@@ -975,8 +975,6 @@ export interface Obra {
   } | null;
   activa: boolean;
   estado?: "activa" | "inactiva" | "pausada" | "finalizada";
-  rendimientoSellosEsperadoDiario?: number | null;
-  rendimientoReparacionEsperadoDiario?: number | null;
   tiposRegistro?: string[];
   usuarios?: Array<{
     id: string;
@@ -1009,8 +1007,6 @@ export interface CrearObraInput {
   usuariosIds?: string[];
   funnelBeckId?: string;
   clienteBeckId?: string | null;
-  rendimientoSellosEsperadoDiario?: number | null;
-  rendimientoReparacionEsperadoDiario?: number | null;
 }
 
 export const obrasAPI = {
@@ -1284,6 +1280,21 @@ export const usuariosAPI = {
   actualizar: async (id: string, data: ActualizarUsuarioInput) => {
     const response = await api.put<UsuarioApi>(`/usuarios/${id}`, data);
     return response.data;
+  },
+
+  obtenerObrasUsuario: async (id: string): Promise<ObraClienteBeckResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<ObraClienteBeckResumen[]> | ObraClienteBeckResumen[]>(
+      `/usuarios/${id}/obras`
+    );
+    return unwrapArray(response.data);
+  },
+
+  actualizarObrasUsuario: async (id: string, obraIds: string[]): Promise<ObraClienteBeckResumen[]> => {
+    const response = await api.put<ApiResponseEnvelope<ObraClienteBeckResumen[]> | ObraClienteBeckResumen[]>(
+      `/usuarios/${id}/obras`,
+      { obraIds }
+    );
+    return unwrapArray(response.data);
   },
 
   eliminar: async (id: string) => {
@@ -3143,7 +3154,7 @@ export const clientesBeckAPI = {
 
 // ── Configuracion campos registro ─────────────────────────────────────────────
 
-export type RolConfiguracionCamposRegistro = "jefeobra" | "trabajador";
+export type RolConfiguracionCamposRegistro = "jefeobra" | "trabajador" | "cliente";
 export type ColorConfiguracionCampoRegistro = "verde" | "azul" | "rojo";
 
 export interface CampoConfiguracionRegistro {
@@ -3360,6 +3371,8 @@ export type ItemizadoOpcion = {
   elementoPenetra?: string | null;
   materialidad?: string | null;
   visible: boolean;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -3371,6 +3384,8 @@ export type ItemizadoOpcionPayload = {
   elementoPenetra?: string | null;
   materialidad?: string | null;
   visible?: boolean;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
 };
 
 export type ItemizadoImportarResult = {
@@ -3379,6 +3394,32 @@ export type ItemizadoImportarResult = {
   omitidas: number;
   duplicadas: number;
   errores: string[];
+};
+
+export type ItemizadoOpcionConfigItem = {
+  id?: string;
+  obraId?: string;
+  itemizadoOpcionId: string;
+  orden?: number | null;
+  nombrePersonalizado?: string | null;
+  nombreMostrar?: string | null;
+  itemizadoOpcion?: {
+    codigoBeck?: string | null;
+    tipo?: string | null;
+    elementoPasante?: string | null;
+    elementoPenetra?: string | null;
+    materialidad?: string | null;
+    rendimientoSellosEsperadoDiario?: number | null;
+    rendimientoReparacionEsperadoDiario?: number | null;
+  };
+};
+
+export type ItemizadoConfiguracionObraPayload = {
+  items: Array<{
+    itemizadoOpcionId: string;
+    orden?: number | null;
+    nombrePersonalizado?: string | null;
+  }>;
 };
 
 export const itemizadoOpcionesAPI = {
@@ -3434,6 +3475,31 @@ export const itemizadoOpcionesAPI = {
     const response = await api.post<ItemizadoImportarResult>(url, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
+    return response.data;
+  },
+
+  obtenerConfiguracionObra: async (obraId: string): Promise<ItemizadoOpcionConfigItem[]> => {
+    const response = await api.get<ApiResponseEnvelope<ItemizadoOpcionConfigItem[]> | ItemizadoOpcionConfigItem[]>(
+      `/itemizado-opciones/obra/${obraId}/configuracion`
+    );
+    return unwrapArray(response.data);
+  },
+
+  guardarConfiguracionObra: async (
+    obraId: string,
+    payload: ItemizadoConfiguracionObraPayload
+  ): Promise<void> => {
+    await api.put(`/itemizado-opciones/obra/${obraId}/configuracion`, payload);
+  },
+
+  actualizarVisibleMasivoObra: async (
+    obraId: string,
+    visible: boolean
+  ): Promise<{ success: boolean; actualizados: number; visible: boolean }> => {
+    const response = await api.patch<{ success: boolean; actualizados: number; visible: boolean }>(
+      `/itemizado-opciones/obra/${obraId}/visible`,
+      { visible }
+    );
     return response.data;
   },
 };
@@ -3522,6 +3588,13 @@ export interface ClienteObraResumen {
 
 export interface ClienteRegistroValidado {
   id: string;
+  estado?: "Validado" | "No validado" | string;
+  acciones?: {
+    puedeValidar?: boolean;
+  } | null;
+  validadoCliente?: boolean | null;
+  validadoClienteAt?: string | null;
+  validadoClientePor?: string | null;
   fecha?: string | null;
   tipoRegistro?: string | null;
   piso?: string | null;
@@ -3541,6 +3614,72 @@ export interface ClienteRegistroValidado {
   [key: string]: unknown;
 }
 
+export interface ClienteRegistroColumna {
+  key?: string;
+  clave?: string;
+  dataIndex?: string;
+  campo?: string;
+  title?: string;
+  titulo?: string;
+  label?: string;
+  visible?: boolean;
+  orden?: number;
+}
+
+export interface ClienteRegistrosObraResponse {
+  registros: ClienteRegistroValidado[];
+  columnas?: ClienteRegistroColumna[];
+  columnasConfigurables?: ClienteRegistroColumna[];
+  columnasFijas?: ClienteRegistroColumna[];
+}
+
+const unwrapClienteRegistrosObra = (
+  payload: ApiResponseEnvelope<ClienteRegistrosObraResponse | ClienteRegistroValidado[]> |
+    ClienteRegistrosObraResponse |
+    ClienteRegistroValidado[]
+): ClienteRegistrosObraResponse => {
+  const raw = Array.isArray(payload)
+    ? payload
+    : "success" in payload
+      ? unwrapApiResponse(payload)
+      : payload;
+
+  if (Array.isArray(raw)) {
+    return { registros: raw, columnas: [], columnasFijas: [] };
+  }
+
+  return {
+    ...raw,
+    registros: Array.isArray(raw.registros) ? raw.registros : [],
+    columnas: raw.columnas ?? raw.columnasConfigurables ?? [],
+    columnasFijas: raw.columnasFijas ?? [],
+  };
+};
+
+export interface VistaClienteConfigItem {
+  clave: string;
+  visible: boolean;
+  tituloPersonalizado?: string | null;
+  orden: number;
+}
+
+export interface VistaClienteConfig {
+  items: VistaClienteConfigItem[];
+}
+
+type VistaClienteConfigBackendResponse = VistaClienteConfig | {
+  configuracionVista?: VistaClienteConfigItem[];
+};
+
+const unwrapVistaClienteConfig = (
+  payload: ApiResponseEnvelope<VistaClienteConfigBackendResponse> | VistaClienteConfigBackendResponse
+): VistaClienteConfig => {
+  const raw = "success" in payload ? unwrapApiResponse(payload) : payload;
+  return {
+    items: "items" in raw ? raw.items : raw.configuracionVista ?? [],
+  };
+};
+
 export interface ClienteDashboardData {
   totalObras: number;
   totalRegistros: number;
@@ -3550,6 +3689,7 @@ export interface ClienteDashboardData {
   registrosPorTipo: Array<{ tipo: string; total: number }>;
   registrosPorPiso: Array<{ piso: string; total: number }>;
   registrosPorFecha: Array<{ fecha: string; total: number }>;
+  configuracionVista?: VistaClienteConfigItem[];
 }
 
 export interface ClienteUsuario {
@@ -3603,7 +3743,9 @@ export type ModuloBeck =
   | "firemat_ventas"
   | "firemat_movimientos"
   | "firemat_reportes"
-  | "firemat_usuarios_parametros";
+  | "firemat_usuarios_parametros"
+  | "beck_cambiar_empresa"
+  | "firemat_cambiar_empresa";
 
 export interface PermisoModulo {
   modulo: ModuloBeck;
@@ -3840,12 +3982,23 @@ export const clienteAPI = {
     return unwrapApiResponse(response.data);
   },
 
-  registrosPorObra: async (obraId: string, params?: ClienteParams): Promise<ClienteRegistroValidado[]> => {
-    const response = await api.get<ApiResponseEnvelope<ClienteRegistroValidado[]>>(
+  registrosPorObra: async (obraId: string, params?: ClienteParams): Promise<ClienteRegistrosObraResponse> => {
+    const response = await api.get<
+      ApiResponseEnvelope<ClienteRegistrosObraResponse | ClienteRegistroValidado[]> |
+        ClienteRegistrosObraResponse |
+        ClienteRegistroValidado[]
+    >(
       `/cliente/obras/${obraId}/registros`,
       { params }
     );
-    return unwrapApiResponse(response.data);
+    return unwrapClienteRegistrosObra(response.data);
+  },
+
+  validarRegistro: async (registroId: string): Promise<ClienteRegistroValidado> => {
+    const response = await api.patch<ApiResponseEnvelope<ClienteRegistroValidado> | ClienteRegistroValidado>(
+      `/cliente/registros/${registroId}/validar`
+    );
+    return unwrapItem(response.data);
   },
 
   dashboard: async (params?: ClienteParams): Promise<ClienteDashboardData> => {
@@ -3860,6 +4013,7 @@ export const clienteAPI = {
       registrosPorTipo?: Array<{ tipo: string; cantidad: number }>;
       registrosPorPiso?: Array<{ piso: string; cantidad: number }>;
       registrosPorFecha?: Array<{ fecha: string; cantidad: number }>;
+      configuracionVista?: VistaClienteConfigItem[];
     }>>("/cliente/dashboard", { params });
     const raw = unwrapApiResponse(response.data);
     if (import.meta.env.DEV) {
@@ -3874,6 +4028,39 @@ export const clienteAPI = {
       registrosPorTipo: (raw.registrosPorTipo ?? []).map((t) => ({ tipo: t.tipo, total: t.cantidad })),
       registrosPorPiso: (raw.registrosPorPiso ?? []).map((p) => ({ piso: p.piso, total: p.cantidad })),
       registrosPorFecha: (raw.registrosPorFecha ?? []).map((f) => ({ fecha: f.fecha, total: f.cantidad })),
+      configuracionVista: raw.configuracionVista,
     };
+  },
+};
+
+export const vistaClienteConfigAPI = {
+  getGeneral: async (): Promise<VistaClienteConfig> => {
+    const response = await api.get<ApiResponseEnvelope<VistaClienteConfigBackendResponse> | VistaClienteConfigBackendResponse>(
+      "/vista-cliente/configuracion/general"
+    );
+    return unwrapVistaClienteConfig(response.data);
+  },
+
+  putGeneral: async (config: VistaClienteConfig): Promise<VistaClienteConfig> => {
+    const response = await api.put<ApiResponseEnvelope<VistaClienteConfigBackendResponse> | VistaClienteConfigBackendResponse>(
+      "/vista-cliente/configuracion/general",
+      config
+    );
+    return unwrapVistaClienteConfig(response.data);
+  },
+
+  getCliente: async (clienteBeckId: string): Promise<VistaClienteConfig> => {
+    const response = await api.get<ApiResponseEnvelope<VistaClienteConfigBackendResponse> | VistaClienteConfigBackendResponse>(
+      `/vista-cliente/configuracion/cliente/${clienteBeckId}`
+    );
+    return unwrapVistaClienteConfig(response.data);
+  },
+
+  putCliente: async (clienteBeckId: string, config: VistaClienteConfig): Promise<VistaClienteConfig> => {
+    const response = await api.put<ApiResponseEnvelope<VistaClienteConfigBackendResponse> | VistaClienteConfigBackendResponse>(
+      `/vista-cliente/configuracion/cliente/${clienteBeckId}`,
+      config
+    );
+    return unwrapVistaClienteConfig(response.data);
   },
 };
