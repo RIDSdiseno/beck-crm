@@ -715,6 +715,22 @@ export const funnelBeckAPI = {
     });
     return response.data;
   },
+
+  actualizarEstadoCierre: async (
+    id: string,
+    payload: {
+      estadoCierre: "PERDIDA" | "POSTERGADA";
+      motivoCierre: string;
+      observacionCierre: string;
+      fechaReactivacion?: string;
+    }
+  ): Promise<FunnelBeckOpportunity> => {
+    const response = await api.patch<ApiResponseEnvelope<FunnelBeckOpportunity>>(
+      `/funnel-beck/${id}/estado-cierre`,
+      payload
+    );
+    return unwrapApiResponse(response.data);
+  },
 };
 
 export const authAPI = {
@@ -1270,6 +1286,16 @@ export const usuariosAPI = {
       params: { rol: "jefeobra", activo: true },
     });
     return response.data;
+  },
+
+  listarComerciales: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
+      "/usuarios/comerciales"
+    );
+    console.log("RAW usuarios comerciales", response.data);
+    const data = unwrapApiResponse(response.data);
+    console.log("UNWRAPPED usuarios comerciales", data);
+    return data;
   },
 
   crear: async (data: CrearUsuarioInput) => {

@@ -115,7 +115,9 @@ export type FunnelDeal = {
   motivoPerdida?: string;
   etapaPerdida?: string;
   motivoPostergacion?: string;
+  observacionCierre?: string | null;
   fechaReactivacion?: string;
+  etapaTablero?: FunnelStage | null;
   documentoRespaldo?: string;
   flujoPosterior?: string;
   montoFinalGanado?: number;

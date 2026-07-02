@@ -35,6 +35,12 @@
   import dayjs, { Dayjs } from "dayjs";
   import { useLocation, useNavigate } from "react-router-dom";
   import CierreDeProyecto from "../../components/Cierredeproyecto";
+  import {
+    MOTIVOS_PERDIDA,
+    MOTIVOS_POSTERGACION,
+    normalizarMotivoSubmit,
+    parseMotivoSelect,
+  } from "../../constants/motivosCierre";
   import FunnelCalendario from "../../components/FunnelCalendario";
   import FunnelBeckDashboard from "./FunnelBeckDashboard";
   import CotizacionEditorModal, {
@@ -281,6 +287,8 @@
     archivosPorTipo: ArchivosFunnelPorTipo;
     jefesObra: UsuarioResumen[];
     jefesObraLoading: boolean;
+    usuariosComerciales: UsuarioResumen[];
+    usuariosComercialesLoading: boolean;
     onClienteBeckSearchChange: (q: string) => void;
     onSelectClienteBeck: (cliente: ClienteBeck | null) => void;
     onSelectContactoBeck: (contacto: ContactoClienteBeck | null) => void;
@@ -1077,9 +1085,13 @@
         ref={setNodeRef}
         {...(canEditFunnel ? listeners : {})}
         {...(canEditFunnel ? attributes : {})}
-        className={`group cursor-pointer rounded-lg border border-beck-border-light bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:border-yellow-400 hover:z-20 ${
-          isDragging ? "opacity-30" : ""
-        }`}
+        className={`group cursor-pointer rounded-lg border bg-white text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:z-20 overflow-hidden ${
+          deal.estadoCierre === "perdida"
+            ? "border-red-400 hover:border-red-500"
+            : deal.estadoCierre === "postergada"
+            ? "border-orange-400 hover:border-orange-500"
+            : "border-beck-border-light hover:border-yellow-400"
+        } ${isDragging ? "opacity-30" : ""}`}
         style={{
           transform: transform
             ? `translate(${transform.x}px, ${transform.y}px)`
@@ -1087,6 +1099,17 @@
         }}
         onClick={() => void onViewDetail(deal)}
       >
+        {deal.estadoCierre === "perdida" && (
+          <div className="bg-red-600 px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-widest text-white select-none">
+            ━━━ PERDIDA ━━━
+          </div>
+        )}
+        {deal.estadoCierre === "postergada" && (
+          <div className="bg-orange-500 px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-widest text-white select-none">
+            ━━━ POSTERGADA ━━━
+          </div>
+        )}
+        <div className="p-2">
         <h4 className="font-semibold leading-tight text-beck-ink">
           {deal.nombreProyecto}
         </h4>
@@ -1161,6 +1184,7 @@
         <p className="mt-1 hidden text-[11px] text-beck-muted group-hover:block">
           Click para ver detalle
         </p>
+        </div>
       </article>
     );
   };
@@ -1413,6 +1437,8 @@
     archivosPorTipo,
     jefesObra,
     jefesObraLoading,
+    usuariosComerciales,
+    usuariosComercialesLoading,
     onClienteBeckSearchChange,
     onSelectClienteBeck,
     onSelectContactoBeck,
@@ -1626,6 +1652,52 @@
             optionFilterProp="label"
             options={options}
           />
+        </div>
+      );
+    };
+
+    const renderVendedorSelect = () => {
+      const comercialOptions = usuariosComerciales
+        .filter((u) => u.nombre || u.email)
+        .map((u) => ({
+          value: u.nombre || u.email,
+          label: u.nombre ? `${u.nombre} — ${u.email}` : u.email,
+        }));
+      const hasCurrentValue =
+        !draft.vendedor ||
+        comercialOptions.some((opt) => opt.value === draft.vendedor);
+      const options = hasCurrentValue
+        ? comercialOptions
+        : [{ value: draft.vendedor, label: draft.vendedor }, ...comercialOptions];
+
+      return (
+        <div>
+          <label
+            htmlFor="funnel-vendedor"
+            className="mb-1.5 block text-xs font-medium text-slate-600"
+          >
+            Vendedor
+            <span className="ml-1 text-red-500">*</span>
+          </label>
+          <Select
+            id="funnel-vendedor"
+            showSearch
+            allowClear
+            value={draft.vendedor || undefined}
+            onChange={(value) => onFieldChange("vendedor", value ?? "")}
+            disabled={submitting || usuariosComercialesLoading}
+            loading={usuariosComercialesLoading}
+            className="w-full"
+            placeholder="Selecciona un vendedor"
+            filterOption={(input, option) => {
+              if (!option) return false;
+              const label = typeof option.label === "string" ? option.label : String(option.label ?? "");
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            options={options}
+            status={fieldErrors.vendedor ? "error" : undefined}
+          />
+          {renderFieldError("vendedor")}
         </div>
       );
     };
@@ -2157,29 +2229,7 @@
                 {renderFieldError("fechaProbableCierre")}
               </div>
 
-              <div>
-                <label
-                  htmlFor="funnel-vendedor"
-                  className="mb-1.5 block text-xs font-medium text-slate-600"
-                >
-                  Vendedor
-                  <span className="ml-1 text-red-500">*</span>
-                </label>
-                <input
-                  id="funnel-vendedor"
-                  type="text"
-                  value={draft.vendedor}
-                  onChange={(event) => onFieldChange("vendedor", event.target.value)}
-                  disabled={submitting}
-                  className={getFieldClassName("vendedor")}
-                  placeholder="Responsable comercial"
-                  aria-invalid={Boolean(fieldErrors.vendedor)}
-                  aria-describedby={
-                    fieldErrors.vendedor ? "funnel-vendedor-error" : undefined
-                  }
-                />
-                {renderFieldError("vendedor")}
-              </div>
+              {renderVendedorSelect()}
 
               <div>
                 <label
@@ -2312,7 +2362,7 @@
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {renderTextInput("direccionProyecto", "Dirección / ubicación del proyecto")}
-                {renderSimpleSelect("unidadNegocio", "Unidad de negocio *", ["Beck", "Firemat", "Mixto"])}
+                {renderSimpleSelect("unidadNegocio", "Unidad de negocio *", ["Beck", "Firemat"])}
                 {renderTextarea("observaciones", "Observaciones generales", "Comentarios u observaciones sobre la oportunidad")}
               </div>
             </div>
@@ -3116,6 +3166,13 @@
       Record<string, FunnelCotizacionItem[]>
     >({});
     const [updatingStage, setUpdatingStage] = useState(false);
+    const [cierreEstadoOpen, setCierreEstadoOpen] = useState(false);
+    const [cierreEstadoStep, setCierreEstadoStep] = useState<"select" | "perdida" | "postergada">("select");
+    const [cierreEstadoSelectMotivo, setCierreEstadoSelectMotivo] = useState("");
+    const [cierreEstadoDetalleOtro, setCierreEstadoDetalleOtro] = useState("");
+    const [cierreEstadoObservacion, setCierreEstadoObservacion] = useState("");
+    const [cierreEstadoFechaReactivacion, setCierreEstadoFechaReactivacion] = useState("");
+    const [cierreEstadoSaving, setCierreEstadoSaving] = useState(false);
     const [clienteBeckSearch, setClienteBeckSearch] = useState("");
     const [clienteBeckResults, setClienteBeckResults] = useState<ClienteBeck[]>([]);
     const [clienteBeckSearching, setClienteBeckSearching] = useState(false);
@@ -3124,18 +3181,38 @@
     const [clientesLoading, setClientesLoading] = useState(false);
     const [jefesObra, setJefesObra] = useState<UsuarioResumen[]>([]);
     const [jefesObraLoading, setJefesObraLoading] = useState(false);
+    const [usuariosComerciales, setUsuariosComerciales] = useState<UsuarioResumen[]>([]);
+    const [usuariosComercialesLoading, setUsuariosComercialesLoading] = useState(false);
     const [asignarJefeModalOpen, setAsignarJefeModalOpen] = useState(false);
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
     const [exportandoExcel, setExportandoExcel] = useState(false);
     const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<string>("");
+    const [filterEstadoCierre, setFilterEstadoCierre] = useState<string>("");
 
     const visibleDeals = useMemo(() => {
-      if (!filterUnidadNegocio) return deals;
-      if (filterUnidadNegocio === "__sin_unidad__")
-        return deals.filter((d) => !d.unidadNegocio);
-      return deals.filter((d) => d.unidadNegocio === filterUnidadNegocio);
-    }, [deals, filterUnidadNegocio]);
+      let result = deals;
+
+      if (filterUnidadNegocio) {
+        if (filterUnidadNegocio === "__sin_unidad__") {
+          result = result.filter((d) => !d.unidadNegocio);
+        } else {
+          result = result.filter((d) => d.unidadNegocio === filterUnidadNegocio);
+        }
+      }
+
+      if (filterEstadoCierre === "activas") {
+        result = result.filter(
+          (d) => !d.estadoCierre || (d.estadoCierre !== "perdida" && d.estadoCierre !== "postergada")
+        );
+      } else if (filterEstadoCierre === "perdidas") {
+        result = result.filter((d) => d.estadoCierre === "perdida");
+      } else if (filterEstadoCierre === "postergadas") {
+        result = result.filter((d) => d.estadoCierre === "postergada");
+      }
+
+      return result;
+    }, [deals, filterUnidadNegocio, filterEstadoCierre]);
 
     // Modal bloqueante (nuevo formato 409 con bloqueos + puedeAvanzar: false)
     const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
@@ -3290,13 +3367,18 @@
       const fechaProbableCierre = toText(item.fechaProbableCierre, "");
 
       const probCierre = toNumber(item.probabilidadCierre);
-      const estadoCierreRaw = toText(item.estadoCierre, "");
+      const estadoCierreRaw = toText(item.estadoCierre, "").toLowerCase();
       const estadoCierre: FunnelEstadoCierre | undefined =
         estadoCierreRaw === "ganada" ||
         estadoCierreRaw === "perdida" ||
         estadoCierreRaw === "postergada"
           ? estadoCierreRaw
           : undefined;
+
+      const etapaTableroRaw = toText(item.etapaTablero, "");
+      const etapaTablero: FunnelStage | undefined = etapaTableroRaw
+        ? (etapaBackendMap[etapaTableroRaw] ?? undefined)
+        : undefined;
 
       return {
         id: toText(item.id),
@@ -3415,9 +3497,11 @@
         observacionesTraspasoAdministracion:
           toText(item.observacionesTraspasoAdministracion, "") || undefined,
         estadoCierre,
+        etapaTablero: etapaTablero ?? undefined,
         motivoPerdida: toText(item.motivoPerdida, "") || undefined,
         etapaPerdida: toText(item.etapaPerdida, "") || undefined,
         motivoPostergacion: toText(item.motivoPostergacion, "") || undefined,
+        observacionCierre: toText(item.observacionCierre, "") || undefined,
         fechaReactivacion: toText(item.fechaReactivacion, "")
           ? toText(item.fechaReactivacion, "").slice(0, 10)
           : undefined,
@@ -3989,6 +4073,22 @@
       }
     };
 
+    const loadUsuariosComerciales = async () => {
+      try {
+        setUsuariosComercialesLoading(true);
+        const usuarios = await usuariosAPI.listarComerciales();
+        console.log("usuariosComerciales state", usuarios);
+        console.log("usuariosComercialesLoading", false);
+        setUsuariosComerciales(usuarios);
+      } catch (error) {
+        console.error("Error al cargar usuarios comerciales:", error);
+        message.error(getErrorMessage(error, "No se pudo cargar la lista de vendedores"));
+        setUsuariosComerciales([]);
+      } finally {
+        setUsuariosComercialesLoading(false);
+      }
+    };
+
     useEffect(() => {
       const q = clienteBeckSearch.trim();
       if (!q) {
@@ -4015,6 +4115,7 @@
       void loadUfActual();
       void loadDolarActual();
       void loadJefesObra();
+      void loadUsuariosComerciales();
     }, []);
 
     // Reacciona a cada navegación desde una alerta (funciona tanto al montar como estando ya en funnel)
@@ -4144,6 +4245,9 @@
       resetClienteBeckState();
       setIsModalOpen(true);
       void loadClientesDisponibles();
+      if (usuariosComerciales.length === 0 && !usuariosComercialesLoading) {
+        void loadUsuariosComerciales();
+      }
     };
 
     const handleEditDeal = async (
@@ -4406,8 +4510,6 @@
 
       const cerradaSubcolumnMap: Record<string, FunnelEstadoCierre> = {
         cerrada_ganada: "ganada",
-        cerrada_perdida: "perdida",
-        cerrada_postergada: "postergada",
       };
 
       const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw] as FunnelEstadoCierre | undefined;
@@ -4419,13 +4521,11 @@
         return;
       }
 
-      // Calcular la columna actual del deal para evitar mover a la misma
+      // Calcular la columna actual del deal usando etapaTablero cuando está disponible
       const currentColumnKey =
-        deal.etapa !== "cerrada" ? deal.etapa :
-        deal.estadoCierre === "ganada" ? "cerrada_ganada" :
-        deal.estadoCierre === "perdida" ? "cerrada_perdida" :
-        deal.estadoCierre === "postergada" ? "cerrada_postergada" :
-        "cerrada";
+        deal.estadoCierre === "ganada"
+          ? "cerrada_ganada"
+          : (deal.etapaTablero ?? deal.etapa);
 
       if (columnKeyRaw === currentColumnKey) {
         setActiveDragDeal(null);
@@ -4511,6 +4611,75 @@
             message.error(getErrorMessage(error, "No se pudo actualizar el cierre"));
           }
         }
+      }
+    };
+
+    const handleAbrirCierreEstado = (deal: FunnelDeal) => {
+      const tipoPrevio = deal.estadoCierre === "perdida"
+        ? "perdida"
+        : deal.estadoCierre === "postergada"
+        ? "postergada"
+        : "select";
+
+      setCierreEstadoStep(tipoPrevio as "select" | "perdida" | "postergada");
+
+      if (tipoPrevio === "perdida" || tipoPrevio === "postergada") {
+        const motivoField = tipoPrevio === "perdida" ? deal.motivoPerdida : deal.motivoPostergacion;
+        const parsed = parseMotivoSelect(motivoField);
+        setCierreEstadoSelectMotivo(parsed.select);
+        setCierreEstadoDetalleOtro(parsed.detalle);
+        setCierreEstadoObservacion(deal.observacionCierre ?? "");
+        setCierreEstadoFechaReactivacion(
+          tipoPrevio === "postergada" ? (deal.fechaReactivacion ?? "") : ""
+        );
+      } else {
+        setCierreEstadoSelectMotivo("");
+        setCierreEstadoDetalleOtro("");
+        setCierreEstadoObservacion("");
+        setCierreEstadoFechaReactivacion("");
+      }
+
+      setCierreEstadoOpen(true);
+    };
+
+    const handleGuardarEstadoCierre = async () => {
+      if (!selectedDeal) return;
+      const tipo = cierreEstadoStep;
+      if (tipo !== "perdida" && tipo !== "postergada") return;
+
+      const motivoFinal = normalizarMotivoSubmit(cierreEstadoSelectMotivo, cierreEstadoDetalleOtro);
+      if (!motivoFinal.trim()) {
+        message.error("Debes seleccionar un motivo.");
+        return;
+      }
+      if (cierreEstadoSelectMotivo === "Otro" && !cierreEstadoDetalleOtro.trim()) {
+        message.error("Debes especificar el detalle del motivo.");
+        return;
+      }
+      if (tipo === "postergada" && !cierreEstadoFechaReactivacion.trim()) {
+        message.error("Debes indicar la fecha de reactivación.");
+        return;
+      }
+
+      try {
+        setCierreEstadoSaving(true);
+        await funnelBeckAPI.actualizarEstadoCierre(selectedDeal.id, {
+          estadoCierre: tipo === "perdida" ? "PERDIDA" : "POSTERGADA",
+          motivoCierre: motivoFinal.trim(),
+          observacionCierre: cierreEstadoObservacion.trim(),
+          ...(tipo === "postergada" ? { fechaReactivacion: cierreEstadoFechaReactivacion } : {}),
+        });
+        message.success(
+          tipo === "perdida"
+            ? "Oportunidad marcada como perdida."
+            : "Oportunidad marcada como postergada."
+        );
+        setCierreEstadoOpen(false);
+        await loadDeals();
+      } catch (error) {
+        message.error(getErrorMessage(error, "No se pudo actualizar el estado de cierre"));
+      } finally {
+        setCierreEstadoSaving(false);
       }
     };
 
@@ -5393,7 +5562,23 @@
                   { value: "__sin_unidad__", label: "Sin unidad" },
                 ]}
               />
-              {filterUnidadNegocio && (
+              <span className="text-xs font-medium text-slate-500">
+                Estado de oportunidad:
+              </span>
+              <Select
+                size="small"
+                style={{ minWidth: 170 }}
+                value={filterEstadoCierre || undefined}
+                onChange={(v) => setFilterEstadoCierre(v ?? "")}
+                allowClear
+                placeholder="Todas"
+                options={[
+                  { value: "activas", label: "Activas" },
+                  { value: "perdidas", label: "Perdidas" },
+                  { value: "postergadas", label: "Postergadas" },
+                ]}
+              />
+              {(filterUnidadNegocio || filterEstadoCierre) && (
                 <span className="text-xs text-slate-400">
                   {visibleDeals.length} oportunidad
                   {visibleDeals.length !== 1 ? "es" : ""}
@@ -5434,24 +5619,16 @@
                     .map((e) => ({
                       key: e as string,
                       label: etapasLabel[e],
-                      colDeals: visibleDeals.filter((d) => d.etapa === e),
+                      colDeals: visibleDeals.filter(
+                        (d) => d.estadoCierre !== "ganada" && (d.etapaTablero ?? d.etapa) === e
+                      ),
                     }));
 
                   const closedColumns = [
                     {
                       key: "cerrada_ganada",
                       label: "Ganada",
-                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "ganada"),
-                    },
-                    {
-                      key: "cerrada_perdida",
-                      label: "Perdida",
-                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "perdida"),
-                    },
-                    {
-                      key: "cerrada_postergada",
-                      label: "Postergada",
-                      colDeals: visibleDeals.filter((d) => d.etapa === "cerrada" && d.estadoCierre === "postergada"),
+                      colDeals: visibleDeals.filter((d) => d.estadoCierre === "ganada"),
                     },
                   ];
 
@@ -5527,6 +5704,8 @@
           archivosPorTipo={groupArchivosFunnel(archivosFunnel)}
           jefesObra={jefesObra}
           jefesObraLoading={jefesObraLoading}
+          usuariosComerciales={usuariosComerciales}
+          usuariosComercialesLoading={usuariosComercialesLoading}
           onClienteBeckSearchChange={handleClienteBeckSearchChange}
           onSelectClienteBeck={handleSelectClienteBeck}
           onSelectContactoBeck={handleSelectContactoBeck}
@@ -5546,6 +5725,59 @@
         >
           {selectedDeal && (
             <div className="space-y-5">
+              {(selectedDeal.estadoCierre === "perdida" || selectedDeal.estadoCierre === "postergada") && (
+                <div className={`rounded-xl border-2 overflow-hidden ${
+                  selectedDeal.estadoCierre === "perdida"
+                    ? "border-red-400"
+                    : "border-orange-400"
+                }`}>
+                  <div className={`py-2.5 text-center text-sm font-black uppercase tracking-[0.2em] text-white ${
+                    selectedDeal.estadoCierre === "perdida" ? "bg-red-600" : "bg-orange-500"
+                  }`}>
+                    ━━━━━━━━ {selectedDeal.estadoCierre === "perdida" ? "PERDIDA" : "POSTERGADA"} ━━━━━━━━
+                  </div>
+                  <div className={`px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm ${
+                    selectedDeal.estadoCierre === "perdida" ? "bg-red-50" : "bg-orange-50"
+                  }`}>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Estado</p>
+                      <p className={`font-bold uppercase ${
+                        selectedDeal.estadoCierre === "perdida" ? "text-red-700" : "text-orange-700"
+                      }`}>{selectedDeal.estadoCierre}</p>
+                    </div>
+                    {selectedDeal.estadoCierre === "perdida" && selectedDeal.motivoPerdida && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Motivo</p>
+                        <p className="text-slate-800">{selectedDeal.motivoPerdida}</p>
+                      </div>
+                    )}
+                    {selectedDeal.estadoCierre === "postergada" && selectedDeal.motivoPostergacion && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Motivo</p>
+                        <p className="text-slate-800">{selectedDeal.motivoPostergacion}</p>
+                      </div>
+                    )}
+                    {selectedDeal.observacionCierre && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Observación</p>
+                        <p className="text-slate-800">{selectedDeal.observacionCierre}</p>
+                      </div>
+                    )}
+                    {selectedDeal.estadoCierre === "perdida" && selectedDeal.fechaCierre && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Fecha</p>
+                        <p className="text-slate-800">{formatDisplayDate(selectedDeal.fechaCierre)}</p>
+                      </div>
+                    )}
+                    {selectedDeal.estadoCierre === "postergada" && selectedDeal.fechaReactivacion && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Fecha reactivación</p>
+                        <p className="text-slate-800">{formatDisplayDate(selectedDeal.fechaReactivacion)}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <Descriptions size="small" column={2} bordered>
                 <Descriptions.Item label="Empresa">
                   {selectedDeal.empresa || "-"}
@@ -5753,6 +5985,16 @@
                       >
                         Eliminar
                       </Button>
+                      {selectedDeal.estadoCierre !== "ganada" && (
+                        <Button
+                          danger
+                          onClick={() => handleAbrirCierreEstado(selectedDeal)}
+                        >
+                          {selectedDeal.estadoCierre === "perdida" || selectedDeal.estadoCierre === "postergada"
+                            ? "Modificar estado de cierre"
+                            : "Cerrar oportunidad"}
+                        </Button>
+                      )}
                       <Button
                         type="primary"
                         icon={<FileTextOutlined />}
@@ -6328,6 +6570,176 @@
           }}
           onCancel={handleCloseCierreModal}
         />
+
+        <AntdModal
+          open={cierreEstadoOpen}
+          onCancel={() => setCierreEstadoOpen(false)}
+          footer={null}
+          width="min(560px, 95vw)"
+          title={
+            cierreEstadoStep === "select"
+              ? "Cerrar oportunidad"
+              : cierreEstadoStep === "perdida"
+              ? "Marcar como Perdida"
+              : "Marcar como Postergada"
+          }
+          destroyOnClose
+        >
+          {cierreEstadoStep === "select" ? (
+            <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
+              <button
+                type="button"
+                className="flex flex-col items-center gap-3 rounded-xl border-2 border-red-200 bg-red-50 p-6 text-left transition hover:border-red-400 hover:bg-red-100 focus:outline-none"
+                onClick={() => {
+                  setCierreEstadoStep("perdida");
+                  setCierreEstadoSelectMotivo("");
+                  setCierreEstadoDetalleOtro("");
+                  setCierreEstadoObservacion("");
+                }}
+              >
+                <div>
+                  <p className="font-bold text-red-700">Marcar como Perdida</p>
+                  <p className="mt-1 text-xs text-red-500">
+                    La oportunidad no prosperó.
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="flex flex-col items-center gap-3 rounded-xl border-2 border-orange-200 bg-orange-50 p-6 text-left transition hover:border-orange-400 hover:bg-orange-100 focus:outline-none"
+                onClick={() => {
+                  setCierreEstadoStep("postergada");
+                  setCierreEstadoSelectMotivo("");
+                  setCierreEstadoDetalleOtro("");
+                  setCierreEstadoObservacion("");
+                  setCierreEstadoFechaReactivacion("");
+                }}
+              >
+                <div>
+                  <p className="font-bold text-orange-700">Marcar como Postergada</p>
+                  <p className="mt-1 text-xs text-orange-500">
+                    La oportunidad se retomará más adelante.
+                  </p>
+                </div>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {cierreEstadoStep === "perdida" && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                      Motivo de pérdida <span className="text-red-500">*</span>
+                    </label>
+                    <Select
+                      className="w-full"
+                      placeholder="Selecciona un motivo"
+                      value={cierreEstadoSelectMotivo || undefined}
+                      onChange={(value) => {
+                        setCierreEstadoSelectMotivo(value ?? "");
+                        setCierreEstadoDetalleOtro("");
+                      }}
+                      options={MOTIVOS_PERDIDA}
+                    />
+                  </div>
+                  {cierreEstadoSelectMotivo === "Otro" && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                        Especifica el motivo <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={cierreEstadoDetalleOtro}
+                        onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
+                        placeholder="Describe el motivo..."
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {cierreEstadoStep === "postergada" && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                      Motivo de postergación <span className="text-red-500">*</span>
+                    </label>
+                    <Select
+                      className="w-full"
+                      placeholder="Selecciona un motivo"
+                      value={cierreEstadoSelectMotivo || undefined}
+                      onChange={(value) => {
+                        setCierreEstadoSelectMotivo(value ?? "");
+                        setCierreEstadoDetalleOtro("");
+                      }}
+                      options={MOTIVOS_POSTERGACION}
+                    />
+                  </div>
+                  {cierreEstadoSelectMotivo === "Otro" && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                        Especifica el motivo <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={cierreEstadoDetalleOtro}
+                        onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
+                        placeholder="Describe el motivo..."
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                      Fecha de reactivación <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full rounded-xl border border-beck-border-light bg-white px-3 py-2.5 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]"
+                      value={cierreEstadoFechaReactivacion}
+                      onChange={(e) => setCierreEstadoFechaReactivacion(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Observación
+                </label>
+                <textarea
+                  className="w-full rounded-xl border border-beck-border-light bg-white px-3 py-2.5 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]"
+                  rows={3}
+                  placeholder="Observaciones adicionales..."
+                  value={cierreEstadoObservacion}
+                  onChange={(e) => setCierreEstadoObservacion(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  onClick={() => {
+                    setCierreEstadoStep("select");
+                    setCierreEstadoSelectMotivo("");
+                    setCierreEstadoDetalleOtro("");
+                    setCierreEstadoObservacion("");
+                    setCierreEstadoFechaReactivacion("");
+                  }}
+                >
+                  Volver
+                </Button>
+                <Button
+                  type="primary"
+                  danger={cierreEstadoStep === "perdida"}
+                  loading={cierreEstadoSaving}
+                  onClick={() => void handleGuardarEstadoCierre()}
+                  className={cierreEstadoStep === "postergada" ? "!bg-orange-500 !border-orange-500 hover:!bg-orange-600" : ""}
+                >
+                  {cierreEstadoStep === "perdida"
+                    ? "Marcar como perdida"
+                    : "Marcar como postergada"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </AntdModal>
       </div>
     );
   };
