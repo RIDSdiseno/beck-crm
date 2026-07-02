@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
+  Collapse,
   Empty,
   Skeleton,
   Space,
@@ -93,16 +94,49 @@ const matrixCampoLabels: Record<string, string> = {
   itemizado_beck: "Itemizado Beck",
   fecha_ejecucion_sello: "Fecha ejecución sello",
   dia: "Día",
+  diaSemana: "Día",
   piso: "Piso",
   nombre_sellador: "Nombre sellador",
   foto: "Foto",
   numero_sello: "Número sello",
   cantidad_sellos: "Cantidad sellos",
-  separacion_cm: "Separación (cm)",
-  factor_separacion: "Factor separación",
+  accesibilidad: "Accesibilidad / cielo modular",
   accesibilidad_cielo_modular: "Accesibilidad / cielo modular",
   aislacion: "Aislación",
   reparacion_tabique: "Reparación tabique",
+};
+
+const MASTER_CAMPO_ORDER: string[] = [
+  "codigo_beck",
+  "itemizado_beck",
+  "itemizado_mandante",
+  "fecha_ejecucion_sello",
+  "diaSemana",
+  "piso",
+  "eje_alfabetico",
+  "eje_numerico",
+  "nombre_sellador",
+  "foto",
+  "recinto",
+  "modulo",
+  "numero_sello",
+  "cantidad_sellos",
+  "accesibilidad",
+  "holgura",
+  "factor_por_holguras",
+  "cantidad_sellos_con_factores",
+  "aislacion",
+  "cantidad_sellos_aislacion",
+  "reparacion_tabique",
+  "cantidad_final",
+  "folio",
+];
+const masterCampoIndex = new Map(MASTER_CAMPO_ORDER.map((k, i) => [k, i]));
+
+// Label overrides applied only when role === "cliente"
+const clienteCampoLabels: Record<string, string> = {
+  holgura: "Separación (cm)",
+  factor_por_holguras: "Factor por separación",
 };
 
 const jefeObraConfigurableCampos = new Set([
@@ -138,7 +172,7 @@ const clienteConfigurableCampos = new Set([
   "itemizado_beck",
   "itemizado_mandante",
   "fecha_ejecucion_sello",
-  "dia",
+  "diaSemana",
   "piso",
   "eje_alfabetico",
   "eje_numerico",
@@ -148,9 +182,9 @@ const clienteConfigurableCampos = new Set([
   "modulo",
   "numero_sello",
   "cantidad_sellos",
-  "separacion_cm",
-  "factor_separacion",
-  "accesibilidad_cielo_modular",
+  "accesibilidad",
+  "holgura",
+  "factor_por_holguras",
   "cantidad_sellos_con_factores",
   "aislacion",
   "cantidad_sellos_aislacion",
@@ -168,6 +202,35 @@ const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+// Maps stripped keys (lowercase, no underscores/spaces/special chars) to canonical snake_case.
+// Handles both camelCase (codigoBeck) and snake_case (codigo_beck) since stripping "_" yields
+// the same key for both variants.
+const CAMPO_ALIAS_MAP: Record<string, string> = {
+  codigobeck: "codigo_beck",
+  itemizadobeck: "itemizado_beck",
+  itemizadomandante: "itemizado_mandante",
+  fechaejecucionsello: "fecha_ejecucion_sello",
+  // dia / dia_semana / diaSemana all canonicalize to "diaSemana"
+  dia: "diaSemana",
+  diasemana: "diaSemana",
+  ejealfabetico: "eje_alfabetico",
+  ejenumerico: "eje_numerico",
+  nombresellador: "nombre_sellador",
+  numerosello: "numero_sello",
+  cantidadsellos: "cantidad_sellos",
+  // separacion_cm / separacionCm are aliases for holgura (same concept, different name)
+  separacioncm: "holgura",
+  // factor_separacion / factorSeparacion are aliases for factor_por_holguras
+  factorseparacion: "factor_por_holguras",
+  // accesibilidad_cielo_modular variants all canonicalize to "accesibilidad"
+  accesibilidadcielomodular: "accesibilidad",
+  cantidadsellosconfactores: "cantidad_sellos_con_factores",
+  cantidadsellosaislacion: "cantidad_sellos_aislacion",
+  reparaciontabique: "reparacion_tabique",
+  cantidadfinal: "cantidad_final",
+  factorporholguras: "factor_por_holguras",
+};
+
 const normalizeCampoText = (value: unknown): string =>
   textFrom(value)
     .toLowerCase()
@@ -178,6 +241,11 @@ const normalizeCampoText = (value: unknown): string =>
     .trim();
 
 const normalizeCampoKey = (value: unknown): string => {
+  const raw = textFrom(value);
+  if (!raw) return "";
+  // Alias lookup covers camelCase and snake_case variants via stripped key
+  const fromAlias = CAMPO_ALIAS_MAP[raw.toLowerCase().replace(/[^a-z0-9]/g, "")];
+  if (fromAlias) return fromAlias;
   const normalized = normalizeCampoText(value);
   if (!normalized) return "";
   if (normalized === "supervisor") return "jefeobra";
@@ -244,6 +312,7 @@ const normalizeFieldForRole = (
     ...field,
     campo,
     label:
+      (role === "cliente" ? clienteCampoLabels[campo] : undefined) ||
       matrixCampoLabels[campo] ||
       textFrom(field.label) ||
       textFrom(field.nombre) ||
@@ -270,14 +339,14 @@ const withCatalogFields = (
 ): CampoConfiguracionRegistro[] => {
   const normalized = fields.map((field) => normalizeFieldForRole(role, field));
   const existing = new Set(normalized.map((field) => field.campo));
-  return [
+  const merged = [
     ...normalized,
     ...getCatalogKeysForRole(role)
       .filter((campo) => !existing.has(campo))
       .map((campo) =>
         normalizeFieldForRole(role, {
           campo,
-          label: matrixCampoLabels[campo] || campo,
+          label: (role === "cliente" ? clienteCampoLabels[campo] : undefined) || matrixCampoLabels[campo] || campo,
           color:
             role === "trabajador" && trabajadorProhibidoCampos.has(campo)
               ? "rojo"
@@ -286,6 +355,18 @@ const withCatalogFields = (
         })
       ),
   ];
+  // Dedup by normalized campo key — keeps first occurrence (backend state wins over catalog default)
+  const seen = new Set<string>();
+  const deduped = merged.filter((field) => {
+    if (seen.has(field.campo)) return false;
+    seen.add(field.campo);
+    return true;
+  });
+  return deduped.sort((a, b) => {
+    const ia = masterCampoIndex.get(a.campo) ?? Infinity;
+    const ib = masterCampoIndex.get(b.campo) ?? Infinity;
+    return ia - ib;
+  });
 };
 
 const isFieldLocked = (
@@ -305,6 +386,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     trabajador: [],
     cliente: [],
   });
+  const [openPanels, setOpenPanels] = useState<string | string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -452,31 +534,6 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     );
   };
 
-  const renderRoleBlock = (block: RoleBlock) => {
-    const fields = getFieldsForRole(block.key);
-
-    return (
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4">
-          <Typography.Title level={4} className="!mb-1">
-            {block.title}
-          </Typography.Title>
-          <Typography.Text type="secondary">{block.description}</Typography.Text>
-        </div>
-        {fields.length ? (
-          <div className="space-y-3">
-            {fields.map((field) => renderField(block.key, field))}
-          </div>
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="El backend no devolvió campos para este rol."
-          />
-        )}
-      </section>
-    );
-  };
-
   return (
     <div className="space-y-4 md:space-y-6">
       <section className="beck-panel-soft">
@@ -528,7 +585,46 @@ const ConfiguracionCamposRegistro: React.FC = () => {
           <Skeleton active paragraph={{ rows: 8 }} />
         </section>
       ) : (
-        roleBlocks.map(renderRoleBlock)
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <Collapse
+            activeKey={openPanels}
+            onChange={setOpenPanels}
+            bordered={false}
+            style={{ background: "transparent" }}
+            items={roleBlocks.map((block) => {
+              const fields = getFieldsForRole(block.key);
+              const visibles = fields.filter((f) => f.visible).length;
+              const ocultos = fields.length - visibles;
+              return {
+                key: block.key,
+                label: (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <Typography.Text strong style={{ fontSize: 14 }}>
+                      {block.title}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {block.description}
+                    </Typography.Text>
+                    <Space size={4} style={{ marginLeft: "auto" }}>
+                      <Tag color="green" style={{ margin: 0 }}>{visibles} visibles</Tag>
+                      <Tag color="default" style={{ margin: 0 }}>{ocultos} ocultos</Tag>
+                    </Space>
+                  </div>
+                ),
+                children: fields.length ? (
+                  <div className="space-y-3 px-2 pb-2">
+                    {fields.map((field) => renderField(block.key, field))}
+                  </div>
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="El backend no devolvió campos para este rol."
+                  />
+                ),
+              };
+            })}
+          />
+        </section>
       )}
     </div>
   );

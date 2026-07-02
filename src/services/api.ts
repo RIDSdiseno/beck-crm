@@ -3633,27 +3633,78 @@ export interface ClienteRegistrosObraResponse {
   columnasFijas?: ClienteRegistroColumna[];
 }
 
-const unwrapClienteRegistrosObra = (
-  payload: ApiResponseEnvelope<ClienteRegistrosObraResponse | ClienteRegistroValidado[]> |
-    ClienteRegistrosObraResponse |
-    ClienteRegistroValidado[]
-): ClienteRegistrosObraResponse => {
-  const raw = Array.isArray(payload)
-    ? payload
-    : "success" in payload
-      ? unwrapApiResponse(payload)
-      : payload;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const unwrapClienteRegistrosObra = (payload: any): ClienteRegistrosObraResponse => {
+  console.log("RAW REGISTROS OBRA API (payload completo)", JSON.stringify(payload).slice(0, 400));
 
-  if (Array.isArray(raw)) {
-    return { registros: raw, columnas: [], columnasFijas: [] };
+  // Case 1: payload ya es un array de registros (sin envelope)
+  if (Array.isArray(payload)) {
+    console.log("UNWRAPPED REGISTROS OBRA API (case: array-direct)", { registrosLen: (payload as unknown[]).length });
+    return {
+      registros: payload as ClienteRegistroValidado[],
+      columnas: [],
+      columnasConfigurables: [],
+      columnasFijas: [],
+    };
   }
 
-  return {
-    ...raw,
-    registros: Array.isArray(raw.registros) ? raw.registros : [],
-    columnas: raw.columnas ?? raw.columnasConfigurables ?? [],
-    columnasFijas: raw.columnasFijas ?? [],
-  };
+  // Case 2: { success, data: [...registros], columnas, columnasConfigurables, columnasFijas }
+  // El backend devuelve data como el array de registros y las columnas en la raíz del payload.
+  if (Array.isArray(payload?.data)) {
+    const registros = payload.data as ClienteRegistroValidado[];
+    const columnasConfigurables: ClienteRegistroColumna[] =
+      Array.isArray(payload.columnasConfigurables) ? payload.columnasConfigurables as ClienteRegistroColumna[] : [];
+    const columnasFijas: ClienteRegistroColumna[] =
+      Array.isArray(payload.columnasFijas) ? payload.columnasFijas as ClienteRegistroColumna[] : [];
+    const columnas: ClienteRegistroColumna[] =
+      Array.isArray(payload.columnas) && (payload.columnas as unknown[]).length > 0
+        ? payload.columnas as ClienteRegistroColumna[]
+        : columnasConfigurables;
+
+    const unwrapped: ClienteRegistrosObraResponse = { registros, columnas, columnasConfigurables, columnasFijas };
+
+    console.log("UNWRAPPED REGISTROS OBRA API (case: data=array, columnas en raíz)", {
+      registrosLen: registros.length,
+      columnasLen: columnas.length,
+      columnasConfigLen: columnasConfigurables.length,
+      columnasFijasLen: columnasFijas.length,
+      primeraColumna: columnas[0],
+      primeraConfigurable: columnasConfigurables[0],
+    });
+
+    return unwrapped;
+  }
+
+  // Case 3: { success, data: { registros, columnas, columnasConfigurables, columnasFijas } }
+  // O directo sin envelope.
+  const inner: Record<string, unknown> =
+    payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+      ? payload.data as Record<string, unknown>
+      : payload as Record<string, unknown>;
+
+  const registros: ClienteRegistroValidado[] =
+    Array.isArray(inner.registros) ? inner.registros as ClienteRegistroValidado[] : [];
+  const columnasConfigurables: ClienteRegistroColumna[] =
+    Array.isArray(inner.columnasConfigurables) ? inner.columnasConfigurables as ClienteRegistroColumna[] : [];
+  const columnasFijas: ClienteRegistroColumna[] =
+    Array.isArray(inner.columnasFijas) ? inner.columnasFijas as ClienteRegistroColumna[] : [];
+  const columnas: ClienteRegistroColumna[] =
+    Array.isArray(inner.columnas) && (inner.columnas as unknown[]).length > 0
+      ? inner.columnas as ClienteRegistroColumna[]
+      : columnasConfigurables;
+
+  const unwrapped: ClienteRegistrosObraResponse = { registros, columnas, columnasConfigurables, columnasFijas };
+
+  console.log("UNWRAPPED REGISTROS OBRA API (case: data=object)", {
+    registrosLen: registros.length,
+    columnasLen: columnas.length,
+    columnasConfigLen: columnasConfigurables.length,
+    columnasFijasLen: columnasFijas.length,
+    primeraColumna: columnas[0],
+    primeraConfigurable: columnasConfigurables[0],
+  });
+
+  return unwrapped;
 };
 
 export interface VistaClienteConfigItem {
@@ -3983,14 +4034,8 @@ export const clienteAPI = {
   },
 
   registrosPorObra: async (obraId: string, params?: ClienteParams): Promise<ClienteRegistrosObraResponse> => {
-    const response = await api.get<
-      ApiResponseEnvelope<ClienteRegistrosObraResponse | ClienteRegistroValidado[]> |
-        ClienteRegistrosObraResponse |
-        ClienteRegistroValidado[]
-    >(
-      `/cliente/obras/${obraId}/registros`,
-      { params }
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = await api.get<any>(`/cliente/obras/${obraId}/registros`, { params });
     return unwrapClienteRegistrosObra(response.data);
   },
 

@@ -148,10 +148,17 @@ const getFotos = (r: ClienteRegistroValidado): string[] => {
   return [];
 };
 
+const snakeToCamel = (s: string): string =>
+  s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+
+const COLUMNAS_FIJAS_KEYS = new Set(["estado", "acciones"]);
+
 const getRegistroValue = (record: ClienteRegistroValidado, key: string): unknown => {
   if (key in record) return record[key];
-  const lowerKey = key.toLowerCase();
-  const foundKey = Object.keys(record).find((recordKey) => recordKey.toLowerCase() === lowerKey);
+  const camelKey = snakeToCamel(key);
+  if (camelKey in record) return record[camelKey];
+  const lowerKey = key.toLowerCase().replace(/_/g, "");
+  const foundKey = Object.keys(record).find((k) => k.toLowerCase().replace(/_/g, "") === lowerKey);
   return foundKey ? record[foundKey] : undefined;
 };
 
@@ -510,8 +517,18 @@ const RegistrosMiEmpresa: React.FC = () => {
       setLoadingRegistros(true);
       try {
         const data = await clienteAPI.registrosPorObra(obra.id, apiParams);
+        console.log("REGISTROS CLIENTE RESPONSE FINAL", data);
+        console.log("COLUMNAS CONFIGURABLES FINAL", data.columnasConfigurables);
+        console.log("REGISTROS FINAL primer registro", data.registros?.[0]);
         setRegistros(data.registros);
-        setColumnasRegistro(data.columnas ?? data.columnasConfigurables ?? []);
+        // Estado/Acciones always hardcoded at the end — filter them from dynamic columns regardless of source.
+        const esFija = (c: ClienteRegistroColumna) =>
+          COLUMNAS_FIJAS_KEYS.has(getColumnaKey(c).toLowerCase());
+        const colsToUse = (
+          data.columnasConfigurables?.length ? data.columnasConfigurables : (data.columnas ?? [])
+        ).filter((c) => !esFija(c));
+        console.log("COLUMNAS A USAR (colsToUse)", colsToUse);
+        setColumnasRegistro(colsToUse);
       } catch (err) {
         void message.error("No se pudieron cargar los registros: " + getErrorMessage(err));
       } finally {
@@ -714,15 +731,17 @@ const RegistrosMiEmpresa: React.FC = () => {
 
   // ── Columnas tabla registros ──
   const columnasRegistrosDinamicas: ColumnsType<ClienteRegistroValidado> = useMemo(() => {
+    console.log("COLUMNAS DINAMICAS RENDER - columnasRegistro state", columnasRegistro);
     const configurables = columnasRegistro.reduce<ColumnsType<ClienteRegistroValidado>>((acc, columna) => {
         if (columna.visible === false) return acc;
         const key = getColumnaKey(columna);
-        if (!key) return acc;
+        if (!key || COLUMNAS_FIJAS_KEYS.has(key.toLowerCase())) return acc;
         const title = getColumnaTitle(columna);
+        const camelKey = snakeToCamel(key);
         acc.push({
           title,
           key,
-          dataIndex: key,
+          dataIndex: camelKey,
           width: isFotoColumn(key, title) ? 110 : 150,
           render: (_value: unknown, record: ClienteRegistroValidado) =>
             renderRegistroValue(getRegistroValue(record, key), record, key, title),
@@ -736,7 +755,6 @@ const RegistrosMiEmpresa: React.FC = () => {
         title: "Estado",
         key: "estado",
         width: 130,
-        fixed: "right" as const,
         render: (_value: unknown, record: ClienteRegistroValidado) => {
           const estado = record.estado ?? (record.validadoCliente ? "Validado" : "No validado");
           return <Tag color={estado === "Validado" ? "green" : "default"}>{estado}</Tag>;
@@ -746,7 +764,6 @@ const RegistrosMiEmpresa: React.FC = () => {
         title: "Acciones",
         key: "acciones",
         width: 130,
-        fixed: "right" as const,
         render: (_value: unknown, record: ClienteRegistroValidado) =>
           record.acciones?.puedeValidar ? (
             <Button

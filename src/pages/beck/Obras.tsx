@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Descriptions,
   Drawer,
   Empty,
@@ -166,16 +167,22 @@ const matrixCampoLabels: Record<string, string> = {
   itemizado_beck: "Itemizado Beck",
   fecha_ejecucion_sello: "Fecha ejecución sello",
   dia: "Día",
+  diaSemana: "Día",
   piso: "Piso",
   nombre_sellador: "Nombre sellador",
   foto: "Foto",
   numero_sello: "Número sello",
   cantidad_sellos: "Cantidad sellos",
-  separacion_cm: "Separación (cm)",
-  factor_separacion: "Factor separación",
+  accesibilidad: "Accesibilidad / cielo modular",
   accesibilidad_cielo_modular: "Accesibilidad / cielo modular",
   aislacion: "Aislación",
   reparacion_tabique: "Reparación tabique",
+};
+
+// Label overrides applied only when role === "cliente"
+const clienteCampoLabels: Record<string, string> = {
+  holgura: "Separación (cm)",
+  factor_por_holguras: "Factor por separación",
 };
 
 const jefeObraConfigurableCampos = new Set([
@@ -210,7 +217,7 @@ const clienteConfigurableCampos = new Set([
   "itemizado_beck",
   "itemizado_mandante",
   "fecha_ejecucion_sello",
-  "dia",
+  "diaSemana",
   "piso",
   "eje_alfabetico",
   "eje_numerico",
@@ -220,9 +227,9 @@ const clienteConfigurableCampos = new Set([
   "modulo",
   "numero_sello",
   "cantidad_sellos",
-  "separacion_cm",
-  "factor_separacion",
-  "accesibilidad_cielo_modular",
+  "accesibilidad",
+  "holgura",
+  "factor_por_holguras",
   "cantidad_sellos_con_factores",
   "aislacion",
   "cantidad_sellos_aislacion",
@@ -249,7 +256,41 @@ const normalizeRegistroText = (value: unknown): string =>
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+// Maps stripped keys (lowercase, no underscores/spaces) to canonical snake_case.
+// Covers both camelCase (codigoBeck) and snake_case (codigo_beck) since stripping "_" yields
+// the same key for both variants.
+const CAMPO_ALIAS_MAP: Record<string, string> = {
+  codigobeck: "codigo_beck",
+  itemizadobeck: "itemizado_beck",
+  itemizadomandante: "itemizado_mandante",
+  fechaejecucionsello: "fecha_ejecucion_sello",
+  // dia / dia_semana / diaSemana all canonicalize to "diaSemana"
+  dia: "diaSemana",
+  diasemana: "diaSemana",
+  ejealfabetico: "eje_alfabetico",
+  ejenumerico: "eje_numerico",
+  nombresellador: "nombre_sellador",
+  numerosello: "numero_sello",
+  cantidadsellos: "cantidad_sellos",
+  // separacion_cm / separacionCm are aliases for holgura (same concept, different name)
+  separacioncm: "holgura",
+  // factor_separacion / factorSeparacion are aliases for factor_por_holguras
+  factorseparacion: "factor_por_holguras",
+  // accesibilidad_cielo_modular variants all canonicalize to "accesibilidad"
+  accesibilidadcielomodular: "accesibilidad",
+  cantidadsellosconfactores: "cantidad_sellos_con_factores",
+  cantidadsellosaislacion: "cantidad_sellos_aislacion",
+  reparaciontabique: "reparacion_tabique",
+  cantidadfinal: "cantidad_final",
+  factorporholguras: "factor_por_holguras",
+};
+
 const normalizeRegistroCampoKey = (value: unknown): string => {
+  const raw = textFrom(value);
+  if (!raw) return "";
+  // Alias lookup covers camelCase and snake_case variants via stripped key
+  const fromAlias = CAMPO_ALIAS_MAP[raw.toLowerCase().replace(/[^a-z0-9]/g, "")];
+  if (fromAlias) return fromAlias;
   const normalized = normalizeRegistroText(value)
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")
@@ -347,7 +388,7 @@ const normalizeRegistroField = (
   const normalized: CampoConfiguracionRegistro = {
     ...field,
     campo: getRegistroCampoId(field),
-    label: matrixCampoLabels[getRegistroCampoId(field)] || getRegistroCampoLabel(field),
+    label: (role === "cliente" ? clienteCampoLabels[getRegistroCampoId(field)] : undefined) || matrixCampoLabels[getRegistroCampoId(field)] || getRegistroCampoLabel(field),
     color,
     visible: Boolean(field.visible),
   };
@@ -365,14 +406,14 @@ const withCatalogRegistroFields = (
 ): CampoConfiguracionRegistro[] => {
   const normalized = fields.map((field) => normalizeRegistroField(role, field));
   const existing = new Set(normalized.map((field) => field.campo));
-  return [
+  const merged = [
     ...normalized,
     ...getCatalogKeysForRole(role)
       .filter((campo) => !existing.has(campo))
       .map((campo) =>
         normalizeRegistroField(role, {
           campo,
-          label: matrixCampoLabels[campo] || campo,
+          label: (role === "cliente" ? clienteCampoLabels[campo] : undefined) || matrixCampoLabels[campo] || campo,
           color:
             role === "trabajador" && trabajadorProhibidoMatrixCampos.has(campo)
               ? "rojo"
@@ -381,6 +422,13 @@ const withCatalogRegistroFields = (
         })
       ),
   ];
+  // Dedup by normalized campo key — keeps first occurrence (backend state wins over catalog default)
+  const seen = new Set<string>();
+  return merged.filter((field) => {
+    if (seen.has(field.campo)) return false;
+    seen.add(field.campo);
+    return true;
+  });
 };
 
 const estadoOptions: Array<{ label: string; value: EstadoForm }> = [
@@ -468,6 +516,7 @@ const Obras: React.FC = () => {
   const [registroLoading, setRegistroLoading] = useState(false);
   const [registroSaving, setRegistroSaving] = useState(false);
   const [registroError, setRegistroError] = useState<string | null>(null);
+  const [registroPanelOpen, setRegistroPanelOpen] = useState<string | string[]>([]);
   const [form] = Form.useForm<ObraFormValues>();
   const selectedRegion = Form.useWatch("region", form);
   const selectedTiposRegistro = Form.useWatch("tiposRegistro", form);
@@ -778,6 +827,7 @@ const Obras: React.FC = () => {
   const openOpcionesRegistro = (obra: Obra) => {
     setObraRegistro(obra);
     setRegistroDrawerOpen(true);
+    setRegistroPanelOpen([]);
     void cargarOpcionesRegistro(obra);
   };
 
@@ -878,30 +928,6 @@ const Obras: React.FC = () => {
     );
   };
 
-  const renderRegistroRoleBlock = (block: RegistroRoleBlock) => {
-    const fields = normalizedRegistroConfig[block.key] ?? [];
-
-    return (
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-4">
-          <Typography.Title level={5} className="!mb-1">
-            {block.title}
-          </Typography.Title>
-          <Typography.Text type="secondary">{block.description}</Typography.Text>
-        </div>
-        {fields.length ? (
-          <div className="space-y-3">
-            {fields.map((field) => renderRegistroField(block.key, field))}
-          </div>
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No hay campos configurables para este rol."
-          />
-        )}
-      </section>
-    );
-  };
 
   const showImportResult = (result: ItemizadoImportarResult) => {
     Modal.info({
@@ -1257,7 +1283,46 @@ const Obras: React.FC = () => {
               <Skeleton active paragraph={{ rows: 8 }} />
             </section>
           ) : (
-            registroRoleBlocks.map(renderRegistroRoleBlock)
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <Collapse
+                activeKey={registroPanelOpen}
+                onChange={setRegistroPanelOpen}
+                bordered={false}
+                style={{ background: "transparent" }}
+                items={registroRoleBlocks.map((block) => {
+                  const fields = normalizedRegistroConfig[block.key] ?? [];
+                  const visibles = fields.filter((f) => f.visible).length;
+                  const ocultos = fields.length - visibles;
+                  return {
+                    key: block.key,
+                    label: (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <Typography.Text strong style={{ fontSize: 14 }}>
+                          {block.title}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {block.description}
+                        </Typography.Text>
+                        <Space size={4} style={{ marginLeft: "auto" }}>
+                          <Tag color="green" style={{ margin: 0 }}>{visibles} visibles</Tag>
+                          <Tag color="default" style={{ margin: 0 }}>{ocultos} ocultos</Tag>
+                        </Space>
+                      </div>
+                    ),
+                    children: fields.length ? (
+                      <div className="space-y-3 px-2 pb-2">
+                        {fields.map((field) => renderRegistroField(block.key, field))}
+                      </div>
+                    ) : (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No hay campos configurables para este rol."
+                      />
+                    ),
+                  };
+                })}
+              />
+            </div>
           )}
         </div>
       </Drawer>
