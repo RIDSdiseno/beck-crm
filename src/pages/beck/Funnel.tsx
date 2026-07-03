@@ -48,19 +48,24 @@
     type LineaCotizacion,
   } from "../../components/CotizacionEditorModal";
   import { usePermisos } from "../../hooks/usePermisos";
+  import FirematFunnel from "../firemat/Funnel";
   import {
     clientesBeckAPI,
     cotizacionesAPI,
     fetchWithAuth,
+    firematFunnelAPI,
     funnelBeckAPI,
+    funnelUnificadoAPI,
     oficinaTecnicaPreventaAPI,
     usuariosAPI,
     type ClienteBeck,
     type ContactoClienteBeck,
     type CotizacionApiRecord,
     type CotizacionUpsertPayload,
+    type FirematFunnelEtapa,
     type FunnelBeckArchivo,
     type FunnelBeckArchivoTipo,
+    type FunnelBeckOpportunity,
     type FunnelBeckUpsertPayload,
     type HistorialEtapaBeck,
     type SolicitudOficinaTecnica,
@@ -250,6 +255,7 @@
   type FunnelCardProps = {
     deal: FunnelDeal;
     canEditFunnel: boolean;
+    canOperateFiremat: boolean;
     onStageChange: (dealId: string, etapa: FunnelStage) => void;
     onViewDetail: (deal: FunnelDeal) => Promise<void> | void;
     onCreateCotizacion: (deal: FunnelDeal) => void;
@@ -260,6 +266,7 @@
     label: string;
     deals: FunnelDeal[];
     canEditFunnel: boolean;
+    canOperateFiremat: boolean;
     onStageChange: (dealId: string, etapa: FunnelStage) => void;
     onViewDetail: (deal: FunnelDeal) => Promise<void> | void;
     onCreateCotizacion: (deal: FunnelDeal) => void;
@@ -1068,23 +1075,26 @@
   const FunnelCard: React.FC<FunnelCardProps> = ({
     deal,
     canEditFunnel,
+    canOperateFiremat,
     onStageChange,
     onViewDetail,
     onCreateCotizacion,
   }) => {
     void onStageChange;
     void onCreateCotizacion;
+    const isFiremat = deal.origen === "FIREMAT";
+    const draggingEnabled = isFiremat ? canOperateFiremat : canEditFunnel;
     const { attributes, listeners, setNodeRef, transform, isDragging } =
       useDraggable({
         id: deal.id,
-        disabled: !canEditFunnel,
+        disabled: !draggingEnabled,
       });
 
     return (
       <article
         ref={setNodeRef}
-        {...(canEditFunnel ? listeners : {})}
-        {...(canEditFunnel ? attributes : {})}
+        {...(draggingEnabled ? listeners : {})}
+        {...(draggingEnabled ? attributes : {})}
         className={`group cursor-pointer rounded-lg border bg-white text-xs shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-xl hover:z-20 overflow-hidden ${
           deal.estadoCierre === "perdida"
             ? "border-red-400 hover:border-red-500"
@@ -1114,11 +1124,18 @@
           {deal.nombreProyecto}
         </h4>
 
-        <span
-          className={`mt-0.5 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${getUnidadNegocioBadgeClass(deal.unidadNegocio)}`}
-        >
-          {getUnidadNegocioLabel(deal.unidadNegocio)}
-        </span>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+          {isFiremat && (
+            <span className="inline-flex rounded-full border border-orange-300 bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-800">
+              Firemat
+            </span>
+          )}
+          <span
+            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${getUnidadNegocioBadgeClass(deal.unidadNegocio)}`}
+          >
+            {getUnidadNegocioLabel(deal.unidadNegocio)}
+          </span>
+        </div>
 
         {deal.clienteBeck && (
           <p
@@ -1194,13 +1211,14 @@
     label,
     deals,
     canEditFunnel,
+    canOperateFiremat,
     onStageChange,
     onViewDetail,
     onCreateCotizacion,
   }) => {
     const { setNodeRef } = useDroppable({
       id: columnKey,
-      disabled: !canEditFunnel,
+      disabled: !canEditFunnel && !canOperateFiremat,
     });
 
     return (
@@ -1224,6 +1242,7 @@
                 key={deal.id}
                 deal={deal}
                 canEditFunnel={canEditFunnel}
+                canOperateFiremat={canOperateFiremat}
                 onStageChange={onStageChange}
                 onViewDetail={onViewDetail}
                 onCreateCotizacion={onCreateCotizacion}
@@ -3092,9 +3111,11 @@
     const location = useLocation();
     const pendingOportunidadId = useRef<string | null>(null);
     const lastOpenedAlertTs = useRef<number | null>(null);
-    const { canEdit } = usePermisos();
+    const { canEdit, canView } = usePermisos();
     const canEditFunnel = canEdit("beck_funnel");
     const canManageGanancia = canEdit("beck_funnel");
+    const canViewFirematFunnel = canView("firemat_funnel") || canEdit("firemat_funnel");
+    const canEditFirematFunnel = canEdit("firemat_funnel");
     const sensors = useSensors(
       useSensor(PointerSensor, {
         activationConstraint: {
@@ -3187,18 +3208,25 @@
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
     const [exportandoExcel, setExportandoExcel] = useState(false);
-    const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<string>("");
+    const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<string>("Beck");
     const [filterEstadoCierre, setFilterEstadoCierre] = useState<string>("");
 
+    // Operar (editar/mover) tarjetas Firemat solo procede con el filtro exacto
+    // "Firemat" y permiso de edicion firemat_funnel; en "Todas" queda readonly.
+    const canOperateFiremat = filterUnidadNegocio === "Firemat" && canEditFirematFunnel;
+
+    const [firematEmbedId, setFirematEmbedId] = useState<string | null>(null);
+
     const visibleDeals = useMemo(() => {
+      // El origen (Beck/Firemat/Todas) ya viene filtrado desde el servidor via
+      // /funnel-unificado (ver loadDeals). Beck/Mixto/Sin unidad son sub-filtros
+      // historicos sobre el campo unidadNegocio de las oportunidades Beck.
       let result = deals;
 
-      if (filterUnidadNegocio) {
-        if (filterUnidadNegocio === "__sin_unidad__") {
-          result = result.filter((d) => !d.unidadNegocio);
-        } else {
-          result = result.filter((d) => d.unidadNegocio === filterUnidadNegocio);
-        }
+      if (filterUnidadNegocio === "Beck" || filterUnidadNegocio === "Mixto") {
+        result = result.filter((d) => d.unidadNegocio === filterUnidadNegocio);
+      } else if (filterUnidadNegocio === "__sin_unidad__") {
+        result = result.filter((d) => !d.unidadNegocio);
       }
 
       if (filterEstadoCierre === "activas") {
@@ -3221,6 +3249,19 @@
     // Modal advertencias en guardado exitoso (200 con advertencias)
     const [advertenciasGuardadoOpen, setAdvertenciasGuardadoOpen] = useState(false);
     const [advertenciasGuardado, setAdvertenciasGuardado] = useState<string[]>([]);
+
+    // Bloqueo 409 al mover una tarjeta Firemat desde el tablero Beck (mismo
+    // formato que usa /firemat/funnel: bloqueos/advertencias + reintento con
+    // observacionCamposFaltantes).
+    const [firematBloqueoOpen, setFirematBloqueoOpen] = useState(false);
+    const [firematBloqueoBloqueos, setFirematBloqueoBloqueos] = useState<string[]>([]);
+    const [firematBloqueoAdvertencias, setFirematBloqueoAdvertencias] = useState<string[]>([]);
+    const [firematBloqueoObservacion, setFirematBloqueoObservacion] = useState("");
+    const [firematBloqueoRetrying, setFirematBloqueoRetrying] = useState(false);
+    const [firematBloqueoPendiente, setFirematBloqueoPendiente] = useState<{
+      firematId: string;
+      nuevaEtapa: FirematFunnelEtapa;
+    } | null>(null);
 
     void ufFecha;
 
@@ -3338,6 +3379,18 @@
       "Cliente recurrente": "cliente_recurrente",
       Prospeccion: "prospeccion",
       Otro: "otro",
+    };
+
+    // Mismo mapeo que usa el backend (funnelUnificado.service.ts) para calcular
+    // etapaTablero a partir de la etapa real Firemat. Se invierte aqui para saber
+    // que etapa real corresponde a la columna del tablero Beck sobre la que se
+    // suelta una tarjeta Firemat. "negociacion" no tiene equivalente Firemat.
+    const FIREMAT_TABLERO_TO_ETAPA: Partial<Record<FunnelStage, FirematFunnelEtapa>> = {
+      prospecto: "PROSPECTO",
+      visita: "PRIMER_CONTACTO",
+      cotizacion: "DESARROLLO_COTIZACION",
+      enviada: "COTIZACION_ENVIADA",
+      documentacion: "ORDEN_CONFIRMADA",
     };
 
     const fuenteLeadBackendToFrontendMap: Record<string, FunnelLeadSource> = {
@@ -3555,6 +3608,79 @@
       };
     };
 
+    const isFunnelStageValue = (value: string): value is FunnelStage =>
+      (etapas as string[]).includes(value);
+
+    // Mapea un item reducido de /funnel-unificado (usado para Firemat, y como
+    // respaldo de Beck si el registro completo no aparece en funnelBeckAPI.listar()).
+    const mapUnificadoItemToDeal = (
+      item: Record<string, unknown>,
+      origen: "BECK" | "FIREMAT"
+    ): FunnelDeal => {
+      const etapaRaw = toText(item.etapa, "");
+      const etapaTableroRaw = toText(item.etapaTablero, "");
+
+      const etapa: FunnelStage = isFunnelStageValue(etapaRaw)
+        ? etapaRaw
+        : isFunnelStageValue(etapaTableroRaw)
+          ? etapaTableroRaw
+          : "prospecto";
+      const etapaTablero: FunnelStage | undefined = isFunnelStageValue(
+        etapaTableroRaw
+      )
+        ? etapaTableroRaw
+        : undefined;
+
+      const estadoCierreRaw = toText(item.estadoCierre, "").toLowerCase();
+      const estadoCierre: FunnelEstadoCierre | undefined =
+        estadoCierreRaw === "ganada" ||
+        estadoCierreRaw === "perdida" ||
+        estadoCierreRaw === "postergada"
+          ? (estadoCierreRaw as FunnelEstadoCierre)
+          : undefined;
+
+      const monto = toNumber(item.monto);
+      const probabilidad = toNumber(item.probabilidad);
+      const rawId = toText(item.id);
+      const id = origen === "BECK" ? rawId.replace(/^beck_/, "") : rawId;
+
+      return {
+        id,
+        origen,
+        nombreProyecto:
+          toText(item.titulo, "") ||
+          (origen === "FIREMAT" ? "Oportunidad Firemat" : "Oportunidad Beck"),
+        empresa: toText(item.empresa, "") || toText(item.cliente, "") || undefined,
+        moneda: "CLP",
+        valorEstimado: monto > 0 ? monto : undefined,
+        nombreContacto: toText(item.contacto, "") || undefined,
+        etapa,
+        etapaTablero,
+        estadoCierre,
+        probabilidadCierre: probabilidad > 0 ? probabilidad : undefined,
+        proximaAccion: toText(item.proximaAccion, "") || undefined,
+        fechaProximaAccion: toText(item.fechaProximaAccion, "")
+          ? toText(item.fechaProximaAccion, "").slice(0, 10)
+          : undefined,
+        fechaCierre: toText(item.fechaCierre, "")
+          ? toText(item.fechaCierre, "").slice(0, 10)
+          : undefined,
+        motivoPerdida:
+          estadoCierre === "perdida"
+            ? toText(item.motivoCierre, "") || undefined
+            : undefined,
+        motivoPostergacion:
+          estadoCierre === "postergada"
+            ? toText(item.motivoCierre, "") || undefined
+            : undefined,
+        observacionCierre: toText(item.observacionCierre, "") || undefined,
+        unidadNegocio:
+          toText(item.unidadNegocio, "") ||
+          (origen === "FIREMAT" ? "Firemat" : undefined),
+        updatedAt: toText(item.updatedAt, "") || undefined,
+      };
+    };
+
     const dealToDraft = (deal: FunnelDeal): FunnelDraft => ({
       nombreProyecto: deal.nombreProyecto,
       empresa: deal.empresa || "",
@@ -3686,10 +3812,63 @@
 
     const loadDeals = async () => {
       try {
-        const opportunities = await funnelBeckAPI.listar();
-        const mapped: FunnelDeal[] = opportunities.map((item) =>
-          mapOpportunityToDeal(item as Record<string, unknown>)
+        setIsLoading(true);
+
+        // Beck, Mixto y Sin unidad son sub-filtros historicos sobre el campo
+        // unidadNegocio de oportunidades Beck, por lo que todos piden origen
+        // "beck" al backend; el recorte por texto ocurre en visibleDeals.
+        const unidadParam =
+          filterUnidadNegocio === "Firemat"
+            ? "firemat"
+            : filterUnidadNegocio === "Todas"
+              ? "todas"
+              : "beck";
+        const estadoParam =
+          filterEstadoCierre === "activas"
+            ? "activa"
+            : filterEstadoCierre === "perdidas"
+              ? "perdida"
+              : filterEstadoCierre === "postergadas"
+                ? "postergada"
+                : "todas";
+
+        // /funnel-unificado decide que oportunidades entran al tablero (Beck y/o
+        // Firemat). Cuando el filtro incluye Beck, ademas se pide el detalle
+        // completo via funnelBeckAPI.listar() para no perder edicion, cierre,
+        // cotizaciones ni drag & drop de las tarjetas Beck.
+        const [unificado, beckOpportunities] = await Promise.all([
+          funnelUnificadoAPI.listar({
+            unidadNegocio: unidadParam,
+            estadoCierre: estadoParam,
+          }),
+          unidadParam === "firemat"
+            ? Promise.resolve<FunnelBeckOpportunity[]>([])
+            : funnelBeckAPI.listar(),
+        ]);
+
+        const beckFullById = new Map(
+          beckOpportunities.map((item) => [String(item.id), item])
         );
+
+        const mapped: FunnelDeal[] = unificado.data.map((item) => {
+          const record = item as unknown as Record<string, unknown>;
+
+          if (item.origen === "FIREMAT") {
+            return mapUnificadoItemToDeal(record, "FIREMAT");
+          }
+
+          const realId = toText(item.id, "").replace(/^beck_/, "");
+          const full = beckFullById.get(realId);
+
+          if (full) {
+            return {
+              ...mapOpportunityToDeal(full as Record<string, unknown>),
+              origen: "BECK" as const,
+            };
+          }
+
+          return mapUnificadoItemToDeal(record, "BECK");
+        });
 
         setDeals(mapped);
         setSelectedDeal((current) =>
@@ -3810,6 +3989,53 @@
     };
 
     const openDealDetail = async (deal: FunnelDeal) => {
+      if (deal.origen === "FIREMAT") {
+        // Con Unidad de negocio = Firemat y permiso de ver, se abre el detalle
+        // completo Firemat (mismo modal/formulario que /firemat/funnel). En
+        // "Todas" u otros filtros, o sin permiso, queda en modo readonly basico.
+        if (filterUnidadNegocio === "Firemat" && canViewFirematFunnel) {
+          const firematId = String(deal.id).replace(/^firemat_/, "");
+          setFirematEmbedId(firematId);
+          return;
+        }
+
+        AntdModal.info({
+          title: deal.nombreProyecto || "Oportunidad Firemat",
+          okText: "Ir al funnel de Firemat",
+          onOk: () => navigate("/firemat/funnel"),
+          content: (
+            <div className="space-y-1 text-sm">
+              <p>
+                <strong>Empresa:</strong> {deal.empresa || "-"}
+              </p>
+              <p>
+                <strong>Contacto:</strong> {deal.nombreContacto || "-"}
+              </p>
+              <p>
+                <strong>Etapa:</strong> {etapasLabel[deal.etapa] ?? deal.etapa}
+              </p>
+              {typeof deal.valorEstimado === "number" && (
+                <p>
+                  <strong>Monto:</strong>{" "}
+                  {formatEstimatedValue(deal.valorEstimado, deal.moneda)}
+                </p>
+              )}
+              {deal.proximaAccion && (
+                <p>
+                  <strong>Proxima accion:</strong> {deal.proximaAccion}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-slate-500">
+                {filterUnidadNegocio === "Firemat"
+                  ? "No tienes permiso para ver el detalle completo de Firemat."
+                  : "Esta oportunidad pertenece a Firemat: cambia el filtro Unidad de negocio a Firemat para operarla, o ve a su funnel."}
+              </p>
+            </div>
+          ),
+        });
+        return;
+      }
+
       setSelectedDeal(deal);
       setArchivosFunnel([]);
       setRelatedCotizaciones([]);
@@ -4111,12 +4337,17 @@
 
     /* eslint-disable react-hooks/exhaustive-deps */
     useEffect(() => {
-      void loadDeals();
       void loadUfActual();
       void loadDolarActual();
       void loadJefesObra();
       void loadUsuariosComerciales();
     }, []);
+
+    // Recarga desde /funnel-unificado cada vez que cambia el filtro de Unidad
+    // de negocio o Estado de oportunidad (incluye la carga inicial).
+    useEffect(() => {
+      void loadDeals();
+    }, [filterUnidadNegocio, filterEstadoCierre]);
 
     // Reacciona a cada navegación desde una alerta (funciona tanto al montar como estando ya en funnel)
     useEffect(() => {
@@ -4356,6 +4587,77 @@
       }));
     };
 
+    type FirematBloqueoErrorResponse = {
+      response: {
+        status: 409;
+        data: {
+          bloqueos?: string[];
+          advertencias?: string[];
+          puedeAvanzar?: boolean;
+          message?: string;
+        };
+      };
+    };
+
+    const isFirematBloqueoError = (
+      err: unknown
+    ): err is FirematBloqueoErrorResponse => {
+      const e = err as {
+        response?: { status?: number; data?: { bloqueos?: unknown; puedeAvanzar?: unknown } };
+      };
+      return (
+        e?.response?.status === 409 &&
+        (Array.isArray(e.response.data?.bloqueos) || e.response.data?.puedeAvanzar === false)
+      );
+    };
+
+    // Mueve una tarjeta Firemat usando PATCH /firemat/funnel/:id/etapa (mismo
+    // endpoint y manejo de bloqueos 409 que usa /firemat/funnel).
+    const handleFirematStageChange = async (
+      firematId: string,
+      nuevaEtapa: FirematFunnelEtapa,
+      observacionCamposFaltantes?: string
+    ) => {
+      try {
+        await firematFunnelAPI.cambiarEtapa(
+          firematId,
+          nuevaEtapa,
+          observacionCamposFaltantes
+        );
+        message.success("Etapa Firemat actualizada");
+        setFirematBloqueoOpen(false);
+        setFirematBloqueoPendiente(null);
+        setFirematBloqueoObservacion("");
+        void loadDeals();
+      } catch (error) {
+        if (isFirematBloqueoError(error)) {
+          const data = error.response.data;
+          setFirematBloqueoBloqueos(Array.isArray(data.bloqueos) ? data.bloqueos : []);
+          setFirematBloqueoAdvertencias(
+            Array.isArray(data.advertencias) ? data.advertencias : []
+          );
+          setFirematBloqueoPendiente({ firematId, nuevaEtapa });
+          setFirematBloqueoOpen(true);
+        } else {
+          message.error(
+            getErrorMessage(error, "No se pudo actualizar la etapa Firemat")
+          );
+        }
+      } finally {
+        setFirematBloqueoRetrying(false);
+      }
+    };
+
+    const handleRetryFirematBloqueo = () => {
+      if (!firematBloqueoPendiente || !firematBloqueoObservacion.trim()) return;
+      setFirematBloqueoRetrying(true);
+      void handleFirematStageChange(
+        firematBloqueoPendiente.firematId,
+        firematBloqueoPendiente.nuevaEtapa,
+        firematBloqueoObservacion.trim()
+      );
+    };
+
     const updateDealStage = async (
       dealId: string,
       payload: {
@@ -4487,15 +4789,18 @@
     };
 
     const handleDragStart = (event: DragStartEvent) => {
-      if (!canEditFunnel) return;
+      if (!canEditFunnel && !canOperateFiremat) return;
 
       const dealId = String(event.active.id);
       const deal = deals.find((item) => item.id === dealId) ?? null;
+
+      if (deal?.origen === "FIREMAT" && !canOperateFiremat) return;
+
       setActiveDragDeal(deal);
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
-      if (!canEditFunnel) {
+      if (!canEditFunnel && !canOperateFiremat) {
         setActiveDragDeal(null);
         return;
       }
@@ -4508,18 +4813,58 @@
         return;
       }
 
+      const deal = deals.find((item) => item.id === dealId);
+      if (!deal) {
+        setActiveDragDeal(null);
+        return;
+      }
+
+      if (deal.origen === "FIREMAT") {
+        if (!canOperateFiremat) {
+          setActiveDragDeal(null);
+          return;
+        }
+
+        const firematId = String(deal.id).replace(/^firemat_/, "");
+        const nuevaEtapaFiremat: FirematFunnelEtapa | undefined =
+          columnKeyRaw === "cerrada_ganada"
+            ? "GANADA"
+            : FIREMAT_TABLERO_TO_ETAPA[columnKeyRaw as FunnelStage];
+
+        if (!nuevaEtapaFiremat) {
+          message.warning(
+            "Firemat no tiene una etapa equivalente a esta columna del tablero Beck."
+          );
+          setActiveDragDeal(null);
+          return;
+        }
+
+        const currentColumnKeyFiremat =
+          deal.estadoCierre === "ganada"
+            ? "cerrada_ganada"
+            : (deal.etapaTablero ?? deal.etapa);
+
+        if (columnKeyRaw === currentColumnKeyFiremat) {
+          setActiveDragDeal(null);
+          return;
+        }
+
+        void handleFirematStageChange(firematId, nuevaEtapaFiremat);
+        setActiveDragDeal(null);
+        return;
+      }
+
+      if (!canEditFunnel) {
+        setActiveDragDeal(null);
+        return;
+      }
+
       const cerradaSubcolumnMap: Record<string, FunnelEstadoCierre> = {
         cerrada_ganada: "ganada",
       };
 
       const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw] as FunnelEstadoCierre | undefined;
       const nuevaEtapa: FunnelStage = estadoCierrePreset ? "cerrada" : (columnKeyRaw as FunnelStage);
-
-      const deal = deals.find((item) => item.id === dealId);
-      if (!deal) {
-        setActiveDragDeal(null);
-        return;
-      }
 
       // Calcular la columna actual del deal usando etapaTablero cuando está disponible
       const currentColumnKey =
@@ -5551,15 +5896,14 @@
               <Select
                 size="small"
                 style={{ minWidth: 160 }}
-                value={filterUnidadNegocio || undefined}
-                onChange={(v) => setFilterUnidadNegocio(v ?? "")}
-                allowClear
-                placeholder="Todas"
+                value={filterUnidadNegocio}
+                onChange={(v) => setFilterUnidadNegocio(v ?? "Beck")}
                 options={[
                   { value: "Beck", label: "Beck" },
                   { value: "Firemat", label: "Firemat" },
                   { value: "Mixto", label: "Mixto" },
                   { value: "__sin_unidad__", label: "Sin unidad" },
+                  { value: "Todas", label: "Todas" },
                 ]}
               />
               <span className="text-xs font-medium text-slate-500">
@@ -5578,12 +5922,10 @@
                   { value: "postergadas", label: "Postergadas" },
                 ]}
               />
-              {(filterUnidadNegocio || filterEstadoCierre) && (
-                <span className="text-xs text-slate-400">
-                  {visibleDeals.length} oportunidad
-                  {visibleDeals.length !== 1 ? "es" : ""}
-                </span>
-              )}
+              <span className="text-xs text-slate-400">
+                {visibleDeals.length} oportunidad
+                {visibleDeals.length !== 1 ? "es" : ""}
+              </span>
             </div>
           )}
         </section>
@@ -5639,6 +5981,7 @@
                       label={label}
                       deals={colDeals}
                       canEditFunnel={canEditFunnel}
+                      canOperateFiremat={canOperateFiremat}
                       onStageChange={handleStageChange}
                       onViewDetail={openDealDetail}
                       onCreateCotizacion={openCreateCotizacion}
@@ -6410,6 +6753,94 @@
             )}
           </div>
         </AntdModal>
+
+        {/* Modal bloqueante Firemat (mover tarjeta Firemat desde el tablero Beck) */}
+        <AntdModal
+          title="No se puede avanzar la etapa Firemat"
+          open={firematBloqueoOpen}
+          destroyOnClose
+          onCancel={() => {
+            setFirematBloqueoOpen(false);
+            setFirematBloqueoPendiente(null);
+            setFirematBloqueoObservacion("");
+          }}
+          footer={[
+            <Button
+              key="cancelar"
+              onClick={() => {
+                setFirematBloqueoOpen(false);
+                setFirematBloqueoPendiente(null);
+                setFirematBloqueoObservacion("");
+              }}
+            >
+              Cancelar
+            </Button>,
+            <Button
+              key="reintentar"
+              type="primary"
+              danger
+              loading={firematBloqueoRetrying}
+              disabled={!firematBloqueoObservacion.trim()}
+              onClick={handleRetryFirematBloqueo}
+            >
+              Avanzar con observación
+            </Button>,
+          ]}
+        >
+          <div className="space-y-4">
+            {firematBloqueoBloqueos.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold" style={{ color: "#cf1322" }}>
+                  Reglas bloqueantes:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                  {firematBloqueoBloqueos.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {firematBloqueoAdvertencias.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold" style={{ color: "#d48806" }}>
+                  Advertencias:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
+                  {firematBloqueoAdvertencias.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div>
+              <p className="mb-1 text-xs font-semibold text-beck-ink">
+                Observación de campos faltantes (obligatoria para reintentar):
+              </p>
+              <Input.TextArea
+                rows={3}
+                value={firematBloqueoObservacion}
+                onChange={(e) => setFirematBloqueoObservacion(e.target.value)}
+                placeholder="Describe por que se avanza igualmente..."
+              />
+            </div>
+          </div>
+        </AntdModal>
+
+        {/* Reutiliza el formulario/modal completo de /firemat/funnel para ver y
+            editar una oportunidad Firemat sin salir de /beck/funnel. Se monta
+            oculto: su propio <Modal> interno se sigue renderizando por encima
+            via portal de antd. */}
+        {firematEmbedId && (
+          <div style={{ display: "none" }} aria-hidden="true">
+            <FirematFunnel
+              embedOportunidadId={firematEmbedId}
+              onEmbedClose={() => {
+                setFirematEmbedId(null);
+                void loadDeals();
+              }}
+            />
+          </div>
+        )}
 
         {/* Modal guardado con advertencias (200 con advertencias) */}
         <AntdModal

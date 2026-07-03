@@ -52,9 +52,14 @@ export type RegistroSello = {
   rendimientoIndividual?: number | null;
   rendimientoIndividualPct?: number | null;
   seleccionadoParaInspeccion?: boolean | null;
+  inspeccionEstado?: "no_enviado" | "en_inspeccion" | "inspeccionado";
   fechaSeleccionInspeccion?: string | null;
   seleccionadoInspeccionPorId?: string | null;
   seleccionadoInspeccionPor?: { id?: string | null; nombre?: string | null } | null;
+  estadoValidacionObra?: "pendiente" | "validado" | "rechazado";
+  validacionObraPorId?: string | null;
+  validacionObraAt?: string | null;
+  motivoRechazoObra?: string | null;
   controlesInspeccion?: Array<{
     id?: string | null;
     conformidad?: string | null;

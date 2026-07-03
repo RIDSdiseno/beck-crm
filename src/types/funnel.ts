@@ -30,6 +30,7 @@ export type FunnelEstadoCierre = "ganada" | "perdida" | "postergada";
 
 export type FunnelDeal = {
   id: string;
+  origen?: "BECK" | "FIREMAT";
   etapa: FunnelStage;
   nombreProyecto: string;
   moneda: FunnelCurrency;

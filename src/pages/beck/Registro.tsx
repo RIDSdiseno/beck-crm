@@ -1,6 +1,6 @@
 // src/pages/RegistroSellos.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
+import { Button, Card, DatePicker, Input, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
   FireOutlined,
   TableOutlined,
@@ -118,6 +118,10 @@ type RegistroApiRecord = {
   cantidadEjecutada?: number | null;
   rendimientoIndividual?: number | null;
   rendimientoIndividualPct?: number | null;
+  estadoValidacionObra?: "pendiente" | "validado" | "rechazado" | null;
+  validacionObraPorId?: string | null;
+  validacionObraAt?: string | null;
+  motivoRechazoObra?: string | null;
 };
 
 type RegistrosApiResponse = {
@@ -230,6 +234,27 @@ const getEstadoBadgeClass = (estado?: string): string => {
     return "border border-red-200 bg-red-50 text-red-700";
   }
   return "border border-orange-200 bg-orange-50 text-orange-700";
+};
+
+const normalizeEstadoValidacionObra = (
+  estado?: string | null
+): "pendiente" | "validado" | "rechazado" => {
+  if (estado === "validado" || estado === "rechazado") return estado;
+  return "pendiente";
+};
+
+const getEstadoValidacionObraLabel = (estado?: string | null): string => {
+  const normalized = normalizeEstadoValidacionObra(estado);
+  if (normalized === "validado") return "Validado por obra";
+  if (normalized === "rechazado") return "Rechazado por obra";
+  return "Pendiente obra";
+};
+
+const getEstadoValidacionObraColor = (estado?: string | null): string => {
+  const normalized = normalizeEstadoValidacionObra(estado);
+  if (normalized === "validado") return "green";
+  if (normalized === "rechazado") return "red";
+  return "gold";
 };
 
 const getTipoRegistroLabel = (tipo?: string | null): string => {
@@ -528,6 +553,10 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     cantidadEjecutada: r.cantidadEjecutada ?? null,
     rendimientoIndividual: r.rendimientoIndividual ?? null,
     rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
+    estadoValidacionObra: normalizeEstadoValidacionObra(r.estadoValidacionObra),
+    validacionObraPorId: r.validacionObraPorId ?? null,
+    validacionObraAt: r.validacionObraAt ?? null,
+    motivoRechazoObra: r.motivoRechazoObra ?? null,
   };
 };
 
@@ -567,6 +596,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const canImportarExcel = canEdit("beck_registro");
   const canEditRegistro = canEdit("beck_registro");
   const canDownloadPdf = canView("beck_registro");
+  const canValidarObra = user?.rol === "Administrador" || user?.rol === "JefeObra";
   const [itemizadosMandante, setItemizadosMandante] = useState<ItemizadoMandante[]>([]);
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState<
@@ -589,6 +619,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [savingNuevoRegistro, setSavingNuevoRegistro] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
+  const [filtroValidacionObra, setFiltroValidacionObra] = useState<
+    "pendiente" | "validado" | "rechazado" | "todos"
+  >("pendiente");
+  const [validandoObraId, setValidandoObraId] = useState<string | null>(null);
+  const [rechazandoObraRegistro, setRechazandoObraRegistro] = useState<RegistroSello | null>(null);
+  const [motivoRechazoObraInput, setMotivoRechazoObraInput] = useState("");
+  const [motivoRechazoObraError, setMotivoRechazoObraError] = useState(false);
+  const [savingRechazoObra, setSavingRechazoObra] = useState(false);
 
   // Rendimiento acumulado
   const [showRendimientoAcumuladoModal, setShowRendimientoAcumuladoModal] = useState(false);
@@ -738,9 +776,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           const [start, end] = rangoFechas;
           if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
         }
+        if (
+          filtroValidacionObra !== "todos" &&
+          normalizeEstadoValidacionObra(r.estadoValidacionObra) !== filtroValidacionObra
+        )
+          return false;
         return true;
       }),
-    [data, tipoSeleccionado, obraSeleccionada, rangoFechas]
+    [data, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroValidacionObra]
   );
 
   // KPIs — adaptados por tab
@@ -811,6 +854,61 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       message.error("No se pudo reenviar el registro a revisión");
     } finally {
       setReenviarRevisionId(null);
+    }
+  };
+
+  const getValidacionObraErrorMessage = (error: unknown, fallback: string): string => {
+    const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
+    return (
+      axiosErr.response?.data?.error ??
+      axiosErr.response?.data?.message ??
+      fallback
+    );
+  };
+
+  const handleValidarObra = async (record: RegistroSello) => {
+    const id = String(record.id);
+    setValidandoObraId(id);
+    try {
+      await registrosAPI.actualizarValidacionObra(id, { estadoValidacionObra: "validado" });
+      await cargarRegistros();
+      message.success("Registro validado. Ahora está disponible en Procesamiento Ingeniería.");
+    } catch (error) {
+      console.error(error);
+      message.error(getValidacionObraErrorMessage(error, "No se pudo validar el registro"));
+    } finally {
+      setValidandoObraId(null);
+    }
+  };
+
+  const handleAbrirRechazoObra = (record: RegistroSello) => {
+    setRechazandoObraRegistro(record);
+    setMotivoRechazoObraInput("");
+    setMotivoRechazoObraError(false);
+  };
+
+  const handleConfirmarRechazoObra = async () => {
+    if (!rechazandoObraRegistro) return;
+    if (!motivoRechazoObraInput.trim()) {
+      setMotivoRechazoObraError(true);
+      return;
+    }
+    const id = String(rechazandoObraRegistro.id);
+    setSavingRechazoObra(true);
+    try {
+      await registrosAPI.actualizarValidacionObra(id, {
+        estadoValidacionObra: "rechazado",
+        motivoRechazoObra: motivoRechazoObraInput.trim(),
+      });
+      setRechazandoObraRegistro(null);
+      setMotivoRechazoObraInput("");
+      await cargarRegistros();
+      message.success("Registro rechazado por obra");
+    } catch (error) {
+      console.error(error);
+      message.error(getValidacionObraErrorMessage(error, "No se pudo rechazar el registro"));
+    } finally {
+      setSavingRechazoObra(false);
     }
   };
 
@@ -1309,9 +1407,34 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       },
     },
     {
+      title: "Validación Obra",
+      key: "validacionObra",
+      width: 160,
+      render: (_: unknown, record: RegistroSello) => {
+        const estadoObra = record.estadoValidacionObra;
+        const tag = (
+          <Tag
+            className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+            color={getEstadoValidacionObraColor(estadoObra)}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {getEstadoValidacionObraLabel(estadoObra)}
+          </Tag>
+        );
+        if (estadoObra === "rechazado" && record.motivoRechazoObra) {
+          return (
+            <Tooltip title={`Motivo: ${record.motivoRechazoObra}`} placement="topLeft">
+              {tag}
+            </Tooltip>
+          );
+        }
+        return tag;
+      },
+    },
+    {
       title: "Acciones",
       key: "acciones",
-      width: 190,
+      width: 260,
       render: (_value: unknown, record: RegistroSello) => {
         const esCorreccionEditable =
           record.esCorreccion === true && record.estado !== "en_revision";
@@ -1319,6 +1442,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           canEdit("beck_registro") &&
           (record.esCorreccion === true || record.estado === "devuelto_a_tecnico") &&
           record.estado !== "en_revision";
+        const estadoObra = normalizeEstadoValidacionObra(record.estadoValidacionObra);
         return (
           <div className="flex flex-wrap gap-1">
             <Button
@@ -1354,6 +1478,31 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 }}
               >
                 Reenviar
+              </Button>
+            )}
+            {canValidarObra && estadoObra === "pendiente" && (
+              <Button
+                size="small"
+                type="primary"
+                loading={validandoObraId === String(record.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleValidarObra(record);
+                }}
+              >
+                Validar
+              </Button>
+            )}
+            {canValidarObra && estadoObra === "pendiente" && (
+              <Button
+                size="small"
+                danger
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleAbrirRechazoObra(record);
+                }}
+              >
+                Rechazar
               </Button>
             )}
             {canDownloadPdf && (
@@ -1526,6 +1675,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "cantidadEjecutada",
     "rendimientoIndividual",
     "estado",
+    "validacionObra",
     "acciones",
   ]);
 
@@ -2847,6 +2997,21 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           body: { padding: 0 },
         }}
       >
+        <div className="border-b border-slate-100 px-4 py-2.5">
+          <Segmented
+            size="small"
+            options={[
+              { label: "Pendientes obra", value: "pendiente" },
+              { label: "Validados obra", value: "validado" },
+              { label: "Rechazados obra", value: "rechazado" },
+              { label: "Todos", value: "todos" },
+            ]}
+            value={filtroValidacionObra}
+            onChange={(v) =>
+              setFiltroValidacionObra(v as "pendiente" | "validado" | "rechazado" | "todos")
+            }
+          />
+        </div>
         <Table
           columns={columnasTabla}
           dataSource={filteredData}
@@ -3072,6 +3237,51 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         rendimientoSellosEsperadoDiario={registroDetalle?.rendimientoSellosEsperadoDiario}
         rendimientoReparacionEsperadoDiario={registroDetalle?.rendimientoReparacionEsperadoDiario}
       />
+
+      {/* Modal rechazo validación de obra */}
+      <Modal
+        title="Rechazar registro (validación de obra)"
+        open={!!rechazandoObraRegistro}
+        onCancel={() => setRechazandoObraRegistro(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setRechazandoObraRegistro(null)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="confirm"
+            danger
+            type="primary"
+            loading={savingRechazoObra}
+            onClick={() => void handleConfirmarRechazoObra()}
+          >
+            Rechazar
+          </Button>,
+        ]}
+      >
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-slate-700">Indique el motivo del rechazo.</p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              Motivo de rechazo <span className="text-red-500">*</span>
+            </label>
+            <Input.TextArea
+              rows={4}
+              value={motivoRechazoObraInput}
+              onChange={(e) => {
+                setMotivoRechazoObraInput(e.target.value);
+                if (e.target.value.trim()) setMotivoRechazoObraError(false);
+              }}
+              placeholder="Describe el motivo del rechazo..."
+              status={motivoRechazoObraError ? "error" : undefined}
+            />
+            {motivoRechazoObraError && (
+              <p className="mt-1 text-xs text-red-500">
+                El motivo de rechazo es obligatorio.
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       {/* Drawer nuevo registro (desde la derecha) */}
       {canCreateRegistro && (

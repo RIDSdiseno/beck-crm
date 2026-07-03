@@ -733,6 +733,80 @@ export const funnelBeckAPI = {
   },
 };
 
+export type FunnelUnificadoOrigen = "BECK" | "FIREMAT";
+
+export type FunnelUnificadoUnidadNegocio = "beck" | "firemat" | "todas";
+
+export type FunnelUnificadoEstadoCierre =
+  | "activa"
+  | "ganada"
+  | "perdida"
+  | "postergada"
+  | "descartada"
+  | "todas";
+
+export interface FunnelUnificadoItem {
+  id: string;
+  origen: FunnelUnificadoOrigen;
+  titulo?: string;
+  empresa?: string;
+  cliente?: string;
+  contacto?: string;
+  etapa?: string;
+  etapaTablero?: string;
+  unidadNegocio?: string;
+  monto?: number;
+  probabilidad?: number;
+  proximaAccion?: string;
+  fechaProximaAccion?: string;
+  fechaCierre?: string;
+  estadoCierre?: string;
+  motivoCierre?: string;
+  observacionCierre?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface FunnelUnificadoMeta {
+  beckIncluido: boolean;
+  firematIncluido: boolean;
+  total: number;
+}
+
+export interface FunnelUnificadoResponse {
+  data: FunnelUnificadoItem[];
+  meta: FunnelUnificadoMeta;
+}
+
+export const funnelUnificadoAPI = {
+  listar: async (params?: {
+    unidadNegocio?: FunnelUnificadoUnidadNegocio;
+    estadoCierre?: FunnelUnificadoEstadoCierre;
+  }): Promise<FunnelUnificadoResponse> => {
+    const response = await api.get<{
+      success: boolean;
+      data: FunnelUnificadoItem[];
+      meta: FunnelUnificadoMeta;
+      error?: string;
+      message?: string;
+    }>("/funnel-unificado", { params });
+
+    if (!response.data.success) {
+      throw new Error(
+        response.data.error ||
+          response.data.message ||
+          "No se pudo obtener el funnel unificado"
+      );
+    }
+
+    return {
+      data: Array.isArray(response.data.data) ? response.data.data : [],
+      meta: response.data.meta,
+    };
+  },
+};
+
 export const authAPI = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>("/auth/login", {
@@ -1560,6 +1634,13 @@ export interface RendimientoAcumuladoParams {
   nombreSellador?: string;
 }
 
+export type EstadoValidacionObra = "pendiente" | "validado" | "rechazado";
+
+export interface ValidacionObraPayload {
+  estadoValidacionObra: EstadoValidacionObra;
+  motivoRechazoObra?: string;
+}
+
 export const registrosAPI = {
   resumen: async (): Promise<RegistrosResumen> => {
     const response = await api.get<RegistrosResumen | ApiResponseEnvelope<RegistrosResumen>>("/registros/resumen");
@@ -1568,6 +1649,10 @@ export const registrosAPI = {
       return unwrapApiResponse(raw as ApiResponseEnvelope<RegistrosResumen>);
     }
     return raw as RegistrosResumen;
+  },
+
+  actualizarValidacionObra: async (id: string, payload: ValidacionObraPayload): Promise<void> => {
+    await api.patch(`/registros/${id}/validacion-obra`, payload);
   },
 
   getRendimientoAcumulado: async (params: RendimientoAcumuladoParams): Promise<RendimientoAcumuladoItem[]> => {
@@ -3979,32 +4064,30 @@ export interface ControlInspeccionParametro {
   observacion?: string | null;
 }
 
-export interface ControlInspeccion {
-  id?: string;
-  registroTerrenoId?: string;
-  ingenieroId?: string;
-  fecha: string;
-  ensayo?: string | null;
+export type InspeccionEstado = "no_enviado" | "en_inspeccion" | "inspeccionado";
+
+// Nota: el control de inspección (checklist) se realiza únicamente desde la
+// app móvil del supervisor. La web solo puede enviar/quitar un registro de la
+// bandeja de inspección (PATCH /inspeccion) y consultar el detalle ya
+// registrado (GET /inspeccion) — nunca crear el control (POST /control-inspeccion).
+export interface InspeccionDetalle {
+  inspeccionEstado?: InspeccionEstado;
+  seleccionadoParaInspeccion?: boolean | null;
+  seleccionadoInspeccionPorId?: string | null;
+  seleccionadoInspeccionPor?: { id?: string; nombre?: string | null } | null;
+  fechaSeleccionInspeccion?: string | null;
+  supervisorInspeccionId?: string | null;
+  supervisorInspeccion?: { id?: string; nombre?: string | null } | null;
+  fechaInspeccion?: string | null;
+  resultado?: string | null;
+  conformidad?: EstadoConformidadInspeccion | null;
   observacion?: string | null;
-  conformidad: EstadoConformidadInspeccion;
+  observaciones?: string | null;
+  fotos?: Array<string | { url?: string | null }> | null;
   fotoInspeccionUrl?: string | null;
   fotoNoConformidadUrl?: string | null;
-  parametros?: ControlInspeccionParametro[];
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface ControlInspeccionPayload {
-  fecha: string;
-  ensayo?: string | null;
-  observacion?: string | null;
-  conformidad: EstadoConformidadInspeccion;
-  parametros: Array<{
-    orden: number;
-    parametro: string;
-    resultado: ResultadoParametroInspeccion;
-    observacion?: string | null;
-  }>;
+  parametros?: ControlInspeccionParametro[] | null;
+  [key: string]: unknown;
 }
 
 export const inspeccionAPI = {
@@ -4017,29 +4100,19 @@ export const inspeccionAPI = {
     });
   },
 
-  obtenerControl: async (
+  obtenerDetalleInspeccion: async (
     registroId: string
-  ): Promise<ControlInspeccion | null> => {
+  ): Promise<InspeccionDetalle | null> => {
     try {
       const response = await api.get<
-        ApiResponseEnvelope<ControlInspeccion> | ControlInspeccion
-      >(`/registros/${registroId}/control-inspeccion`);
-      return unwrapItem(response.data) as ControlInspeccion;
+        ApiResponseEnvelope<InspeccionDetalle> | InspeccionDetalle
+      >(`/registros/${registroId}/inspeccion`);
+      return unwrapItem(response.data) as InspeccionDetalle;
     } catch (err) {
       const e = err as { response?: { status?: number } };
       if (e?.response?.status === 404) return null;
       throw err;
     }
-  },
-
-  crearControl: async (
-    registroId: string,
-    data: ControlInspeccionPayload
-  ): Promise<ControlInspeccion> => {
-    const response = await api.post<
-      ApiResponseEnvelope<ControlInspeccion> | ControlInspeccion
-    >(`/registros/${registroId}/control-inspeccion`, data);
-    return unwrapItem(response.data) as ControlInspeccion;
   },
 };
 

@@ -670,10 +670,19 @@ const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
   );
 };
 
-const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell }) => {
+const FirematFunnel: React.FC<{
+  alertaBell?: React.ReactNode;
+  // Cuando se provee, el componente abre directamente el detalle/edicion de
+  // esa oportunidad (usado para embeber el formulario Firemat completo desde
+  // /beck/funnel sin duplicar su logica) y avisa via onEmbedClose al cerrarse.
+  embedOportunidadId?: string | null;
+  onEmbedClose?: () => void;
+}> = ({ alertaBell, embedOportunidadId, onEmbedClose }) => {
   const location = useLocation();
   const pendingOportunidadId = useRef<string | null>(null);
   const lastOpenedAlertTs = useRef<number | null>(null);
+  const embedOpenedIdRef = useRef<string | null>(null);
+  const embedHasOpenedRef = useRef(false);
   const { canView: canViewFunnel, canEdit: canEditFunnelPerm } = usePermisos();
   const canCambiarEmpresaFiremat =
     canViewFunnel("firemat_cambiar_empresa") || canEditFunnelPerm("firemat_cambiar_empresa");
@@ -920,6 +929,37 @@ const FirematFunnel: React.FC<{ alertaBell?: React.ReactNode }> = ({ alertaBell 
     const target = oportunidades.find((o) => String(o.id) === id);
     if (target) void openOportunidad(target, "ver");
   }, [oportunidades]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  // Modo embebido (usado desde /beck/funnel): abre el detalle de la oportunidad
+  // indicada sin esperar a que cargue el tablero completo, ya que openOportunidad
+  // solo necesita el id para pedir el detalle real via firematFunnelAPI.obtener.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    if (!embedOportunidadId) return;
+    if (embedOpenedIdRef.current === embedOportunidadId) return;
+    embedOpenedIdRef.current = embedOportunidadId;
+    embedHasOpenedRef.current = false;
+    void openOportunidad(
+      { id: embedOportunidadId } as FirematFunnelOportunidad,
+      "ver"
+    ).then(() => {
+      embedHasOpenedRef.current = true;
+    });
+  }, [embedOportunidadId]);
+
+  // Avisa al padre cuando el modal embebido se cierra (cancelar o guardado
+  // exitoso), sin importar cual de los flujos internos lo haya cerrado.
+  useEffect(() => {
+    if (!embedOportunidadId) return;
+    if (modalOpen) {
+      embedHasOpenedRef.current = true;
+      return;
+    }
+    if (embedHasOpenedRef.current) {
+      onEmbedClose?.();
+    }
+  }, [modalOpen, embedOportunidadId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const cargarClientesActivos = useCallback(async () => {

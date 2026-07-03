@@ -11,7 +11,7 @@ import type { RegistroSello } from "../../types/registroSello";
 import { api, obrasAPI, registrosAPI, inspeccionAPI, type Obra } from "../../services/api";
 import { usePermisos } from "../../hooks/usePermisos";
 import { useAuth } from "../../context/useAuth";
-import ControlInspeccionModal from "../../components/ControlInspeccionModal";
+import DetalleInspeccionModal from "../../components/DetalleInspeccionModal";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -103,6 +103,7 @@ type RegistroApiRecord = {
   rendimientoIndividualPct?: number | null;
   seleccionadoParaInspeccion?: boolean | null;
   seleccionado_para_inspeccion?: boolean | null;
+  inspeccionEstado?: "no_enviado" | "en_inspeccion" | "inspeccionado" | null;
   fechaSeleccionInspeccion?: string | null;
   fecha_seleccion_inspeccion?: string | null;
   seleccionadoInspeccionPorId?: string | null;
@@ -168,6 +169,26 @@ const getEstadoColor = (estado?: string): string => {
   if (normalized === "validado") return "green";
   if (normalized === "rechazado") return "red";
   return "gold";
+};
+
+const normalizeInspeccionEstado = (
+  raw?: string | null,
+  fallbackSeleccionado?: boolean | null
+): "no_enviado" | "en_inspeccion" | "inspeccionado" => {
+  if (raw === "en_inspeccion" || raw === "inspeccionado" || raw === "no_enviado") return raw;
+  return fallbackSeleccionado ? "en_inspeccion" : "no_enviado";
+};
+
+const getInspeccionEstadoLabel = (estado: "no_enviado" | "en_inspeccion" | "inspeccionado"): string => {
+  if (estado === "en_inspeccion") return "En inspección";
+  if (estado === "inspeccionado") return "Inspeccionado";
+  return "No enviado";
+};
+
+const getInspeccionEstadoColor = (estado: "no_enviado" | "en_inspeccion" | "inspeccionado"): string => {
+  if (estado === "en_inspeccion") return "gold";
+  if (estado === "inspeccionado") return "green";
+  return "default";
 };
 
 const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
@@ -402,7 +423,12 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     cantidadEjecutada: r.cantidadEjecutada ?? null,
     rendimientoIndividual: r.rendimientoIndividual ?? null,
     rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
-    seleccionadoParaInspeccion: Boolean(r.seleccionadoParaInspeccion ?? r.seleccionado_para_inspeccion),
+    inspeccionEstado: normalizeInspeccionEstado(
+      r.inspeccionEstado,
+      r.seleccionadoParaInspeccion ?? r.seleccionado_para_inspeccion
+    ),
+    seleccionadoParaInspeccion:
+      normalizeInspeccionEstado(r.inspeccionEstado, r.seleccionadoParaInspeccion ?? r.seleccionado_para_inspeccion) !== "no_enviado",
     fechaSeleccionInspeccion: r.fechaSeleccionInspeccion ?? r.fecha_seleccion_inspeccion ?? null,
     seleccionadoInspeccionPorId: r.seleccionadoInspeccionPorId ?? r.seleccionado_inspeccion_por_id ?? null,
     seleccionadoInspeccionPor: r.seleccionadoInspeccionPor ?? (r.seleccionado_inspeccion_por_nombre ? { nombre: r.seleccionado_inspeccion_por_nombre } : null),
@@ -464,7 +490,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [savingRechazo, setSavingRechazo] = useState(false);
   const [resumenKpis, setResumenKpis] = useState<{ pendientes: number; enRevision: number; validados: number; rechazados: number; total: number } | null>(null);
   const [marcandoInspeccionId, setMarcandoInspeccionId] = useState<string | null>(null);
-  const [controlInspeccionRegistroId, setControlInspeccionRegistroId] = useState<string | null>(null);
+  const [verInspeccionRegistroId, setVerInspeccionRegistroId] = useState<string | null>(null);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
@@ -802,7 +828,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const estado = normalizeEstado(record.estado);
     const loadingEstado = changingEstadoId === String(record.id);
     const loadingInspeccion = marcandoInspeccionId === String(record.id);
-    const seleccionado = record.seleccionadoParaInspeccion;
+    const estadoInspeccion = normalizeInspeccionEstado(record.inspeccionEstado, record.seleccionadoParaInspeccion);
     return (
       <div className="flex flex-wrap gap-1">
         <Button
@@ -873,7 +899,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             Reenviar a revisión
           </Button>
         )}
-        {!seleccionado && canEditIngenieria && (
+        {estadoInspeccion === "no_enviado" && canEditIngenieria && (
           <Button
             size="small"
             className="px-2"
@@ -883,7 +909,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             Enviar a inspección
           </Button>
         )}
-        {seleccionado && canEditIngenieria && (
+        {estadoInspeccion === "en_inspeccion" && canEditIngenieria && (
           <Button
             size="small"
             danger
@@ -894,14 +920,14 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             Quitar inspección
           </Button>
         )}
-        {seleccionado && (
+        {estadoInspeccion === "inspeccionado" && (
           <Button
             size="small"
             type="dashed"
             className="px-2"
-            onClick={() => setControlInspeccionRegistroId(String(record.id))}
+            onClick={() => setVerInspeccionRegistroId(String(record.id))}
           >
-            Control inspección
+            Ver inspección
           </Button>
         )}
         <Button
@@ -920,27 +946,15 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     key: "inspeccion",
     width: 140,
     render: (_, r) => {
-      const seleccionado = r.seleccionadoParaInspeccion;
-      const ultimoControl = r.controlesInspeccion?.[0];
+      const estadoInspeccion = normalizeInspeccionEstado(r.inspeccionEstado, r.seleccionadoParaInspeccion);
       return (
-        <div className="flex flex-col gap-1">
-          <Tag
-            color={seleccionado ? "gold" : "default"}
-            style={{ marginInlineEnd: 0 }}
-            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-          >
-            {seleccionado ? "En inspección" : "No enviado"}
-          </Tag>
-          {ultimoControl?.conformidad && (
-            <Tag
-              color={ultimoControl.conformidad === "conforme" ? "green" : "red"}
-              style={{ marginInlineEnd: 0 }}
-              className="rounded-full px-2 py-0.5 text-[10px]"
-            >
-              {ultimoControl.conformidad === "conforme" ? "Conforme" : "No conforme"}
-            </Tag>
-          )}
-        </div>
+        <Tag
+          color={getInspeccionEstadoColor(estadoInspeccion)}
+          style={{ marginInlineEnd: 0 }}
+          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+        >
+          {getInspeccionEstadoLabel(estadoInspeccion)}
+        </Tag>
       );
     },
   };
@@ -1474,11 +1488,10 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         rendimientoReparacionEsperadoDiario={registroDetalle?.rendimientoReparacionEsperadoDiario}
       />
 
-      <ControlInspeccionModal
-        registroId={controlInspeccionRegistroId}
-        open={!!controlInspeccionRegistroId}
-        onClose={() => setControlInspeccionRegistroId(null)}
-        onSaved={() => void cargarRegistros()}
+      <DetalleInspeccionModal
+        registroId={verInspeccionRegistroId}
+        open={!!verInspeccionRegistroId}
+        onClose={() => setVerInspeccionRegistroId(null)}
       />
 
       <Modal
