@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Spin, Table, Tag, message } from "antd";
+import { Button, Input, Modal, Spin, Table, Tag, message } from "antd";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import {
   inspeccionAPI,
   type ControlInspeccionParametro,
+  type EstadoRevisionInspeccion,
   type InspeccionDetalle,
   type InspeccionEstado,
   type ResultadoParametroInspeccion,
@@ -14,7 +15,23 @@ interface Props {
   registroId: string | null;
   open: boolean;
   onClose: () => void;
+  /** El usuario actual puede validar/rechazar el resultado de la inspección. */
+  puedeRevisar?: boolean;
+  /** Se llama tras validar o rechazar, para que la tabla que abrió el modal se refresque. */
+  onRevisado?: () => void;
 }
+
+const revisionLabel: Record<EstadoRevisionInspeccion, string> = {
+  pendiente: "Pendiente de revisión",
+  validado: "Validada por Ingeniería",
+  rechazado: "Rechazada por Ingeniería",
+};
+
+const revisionColor: Record<EstadoRevisionInspeccion, string> = {
+  pendiente: "gold",
+  validado: "green",
+  rechazado: "red",
+};
 
 const estadoLabel: Record<InspeccionEstado, string> = {
   no_enviado: "No enviado",
@@ -75,13 +92,38 @@ const getFotos = (detalle: InspeccionDetalle): string[] => {
   ];
 };
 
-const DetalleInspeccionModal: React.FC<Props> = ({ registroId, open, onClose }) => {
+const DetalleInspeccionModal: React.FC<Props> = ({
+  registroId,
+  open,
+  onClose,
+  puedeRevisar,
+  onRevisado,
+}) => {
   const [loading, setLoading] = useState(false);
   const [detalle, setDetalle] = useState<InspeccionDetalle | null>(null);
+  const [mostrarMotivo, setMostrarMotivo] = useState(false);
+  const [motivoRechazo, setMotivoRechazo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const cargarDetalle = async () => {
+    if (!registroId) return;
+    setLoading(true);
+    try {
+      const data = await inspeccionAPI.obtenerDetalleInspeccion(registroId);
+      setDetalle(data);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo cargar el detalle de la inspección");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || !registroId) {
       setDetalle(null);
+      setMostrarMotivo(false);
+      setMotivoRechazo("");
       return;
     }
 
@@ -103,6 +145,44 @@ const DetalleInspeccionModal: React.FC<Props> = ({ registroId, open, onClose }) 
       active = false;
     };
   }, [open, registroId]);
+
+  const handleValidar = async () => {
+    if (!registroId) return;
+    setEnviando(true);
+    try {
+      await inspeccionAPI.revisarInspeccion(registroId, "validar");
+      message.success("Inspección validada");
+      await cargarDetalle();
+      onRevisado?.();
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo validar la inspección");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const handleRechazar = async () => {
+    if (!registroId) return;
+    if (!motivoRechazo.trim()) {
+      message.error("Indica el motivo del rechazo");
+      return;
+    }
+    setEnviando(true);
+    try {
+      await inspeccionAPI.revisarInspeccion(registroId, "rechazar", motivoRechazo.trim());
+      message.success("Inspección rechazada, vuelve a la cola del supervisor");
+      setMostrarMotivo(false);
+      setMotivoRechazo("");
+      onRevisado?.();
+      onClose();
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo rechazar la inspección");
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const estado = (detalle?.inspeccionEstado ?? "no_enviado") as InspeccionEstado;
   const enviadoPor = detalle ? getNombre([detalle.seleccionadoInspeccionPor]) : null;
@@ -213,6 +293,61 @@ const DetalleInspeccionModal: React.FC<Props> = ({ registroId, open, onClose }) 
               </div>
             )}
           </div>
+
+          {estado === "inspeccionado" && (
+            <div className="rounded border border-slate-200 p-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-slate-600">Revisión de Ingeniería:</span>
+                <Tag color={revisionColor[detalle.inspeccionRevisionEstado ?? "pendiente"]}>
+                  {revisionLabel[detalle.inspeccionRevisionEstado ?? "pendiente"]}
+                </Tag>
+              </div>
+              {detalle.motivoRechazoInspeccion && (
+                <div className="mt-2">
+                  <span className="font-medium text-slate-600">Motivo de rechazo:</span>{" "}
+                  {detalle.motivoRechazoInspeccion}
+                </div>
+              )}
+
+              {puedeRevisar && (detalle.inspeccionRevisionEstado ?? "pendiente") === "pendiente" && (
+                <div className="mt-3 space-y-2">
+                  {!mostrarMotivo ? (
+                    <div className="flex gap-2">
+                      <Button type="primary" loading={enviando} onClick={handleValidar}>
+                        Validar inspección
+                      </Button>
+                      <Button danger disabled={enviando} onClick={() => setMostrarMotivo(true)}>
+                        Rechazar inspección
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Input.TextArea
+                        rows={2}
+                        placeholder="Motivo del rechazo (obligatorio)"
+                        value={motivoRechazo}
+                        onChange={(e) => setMotivoRechazo(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button danger loading={enviando} onClick={handleRechazar}>
+                          Confirmar rechazo
+                        </Button>
+                        <Button
+                          disabled={enviando}
+                          onClick={() => {
+                            setMostrarMotivo(false);
+                            setMotivoRechazo("");
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {parametros.length > 0 && (
             <div>

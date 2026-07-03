@@ -4065,6 +4065,7 @@ export interface ControlInspeccionParametro {
 }
 
 export type InspeccionEstado = "no_enviado" | "en_inspeccion" | "inspeccionado";
+export type EstadoRevisionInspeccion = "pendiente" | "validado" | "rechazado";
 
 // Nota: el control de inspección (checklist) se realiza únicamente desde la
 // app móvil del supervisor. La web solo puede enviar/quitar un registro de la
@@ -4087,6 +4088,10 @@ export interface InspeccionDetalle {
   fotoInspeccionUrl?: string | null;
   fotoNoConformidadUrl?: string | null;
   parametros?: ControlInspeccionParametro[] | null;
+  inspeccionRevisionEstado?: EstadoRevisionInspeccion | null;
+  inspeccionRevisionAt?: string | null;
+  inspeccionRevisionPor?: { id?: string; nombre?: string | null } | null;
+  motivoRechazoInspeccion?: string | null;
   [key: string]: unknown;
 }
 
@@ -4113,6 +4118,17 @@ export const inspeccionAPI = {
       if (e?.response?.status === 404) return null;
       throw err;
     }
+  },
+
+  revisarInspeccion: async (
+    registroId: string,
+    accion: "validar" | "rechazar",
+    motivo?: string
+  ): Promise<void> => {
+    await api.patch(`/registros/${registroId}/inspeccion/revision`, {
+      accion,
+      motivo,
+    });
   },
 };
 
