@@ -26,7 +26,13 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ThemeMode } from "../hooks/useSystemTheme";
 import type { RolUsuario } from "../types/usuario";
 import { usePermisos } from "../hooks/usePermisos";
-import type { ModuloBeck } from "../services/api";
+import { EMPRESA_STORAGE_KEY, type ModuloBeck } from "../services/api";
+import {
+  getEmpresaFromPath,
+  getEquivalentCompanyPath,
+  PLATAFORMAS,
+  type EmpresaActiva,
+} from "../platforms";
 
 export type RoleAccess = {
   // Beck modules
@@ -58,7 +64,7 @@ export type RoleAccess = {
   clienteRegistros: boolean;
 };
 
-type Company = "beck" | "firemat";
+type Company = EmpresaActiva;
 
 type SidebarProps = {
   themeMode: ThemeMode;
@@ -72,25 +78,6 @@ type SidebarProps = {
 
 export const SIDEBAR_WIDTH_EXPANDED = 256;
 export const SIDEBAR_WIDTH_COLLAPSED = 80;
-
-const ROUTE_MAP: Record<string, Record<string, string>> = {
-  beck: {
-    "/beck/dashboard": "/firemat/dashboard",
-    "/beck/funnel": "/firemat/funnel",
-    "/beck/cotizaciones": "/firemat/cotizaciones",
-    "/beck/reportes": "/firemat/reportes",
-    "/beck/movimientos": "/firemat/movimientos",
-    "/beck/usuarios-parametros": "/firemat/usuarios-parametros",
-  },
-  firemat: {
-    "/firemat/dashboard": "/beck/dashboard",
-    "/firemat/funnel": "/beck/funnel",
-    "/firemat/cotizaciones": "/beck/cotizaciones",
-    "/firemat/reportes": "/beck/reportes",
-    "/firemat/movimientos": "/beck/movimientos",
-    "/firemat/usuarios-parametros": "/beck/usuarios-parametros",
-  },
-};
 
 const BECK_NAV_MODULO: Partial<Record<string, ModuloBeck>> = {
   dashboard: "beck_dashboard",
@@ -136,28 +123,29 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [selectorOpen, setSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
 
-  const isFiremat = location.pathname.startsWith("/firemat");
-  const activeCompany: Company = isFiremat ? "firemat" : "beck";
+  const activeCompany: Company = getEmpresaFromPath(location.pathname);
+  const activeConfig = PLATAFORMAS[activeCompany];
+  const isFirematLike = activeConfig.theme === "firemat";
   const isCliente = user?.rol?.toLowerCase() === "cliente";
   const permisosLoading = refreshingPermisos || loadingPermisos || !permisosReady;
 
   const isBeck = activeCompany === "beck";
-  const logoSrc = isFiremat ? "/Firemat_logo.png" : "/logo.png";
-  const brandName = isFiremat ? "Firemat" : "BECK Soluciones";
-  const brandSubtitle = isFiremat ? "CRM FIREMAT" : "CRM BECK";
-  const brandBadge = isFiremat ? "Inventario y ventas" : "Protección pasiva";
+  const logoSrc = activeConfig.logo;
+  const brandName = activeConfig.nombre;
+  const brandSubtitle = activeConfig.crm;
+  const brandBadge = activeConfig.badge;
 
   useEffect(() => {
-    document.title = isFiremat ? "Firemat | CRM" : "BECK Soluciones | CRM";
-  }, [isFiremat]);
+    document.title = `${brandName} | CRM`;
+  }, [brandName]);
 
   useEffect(() => {
     const favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
 
     if (favicon) {
-      favicon.href = isFiremat ? "/Firemat_logo.png" : "/logo.png";
+      favicon.href = logoSrc;
     }
-  }, [isFiremat]);
+  }, [logoSrc]);
 
   const isAdmin = user?.rol === "Administrador";
   const hasViewPermission = (modulo: ModuloBeck): boolean =>
@@ -168,25 +156,44 @@ const Sidebar: React.FC<SidebarProps> = ({
     !isCliente && (isAdmin || hasViewPermission("beck_cambiar_empresa") || hasEditPermission("beck_cambiar_empresa"));
   const canCambiarEmpresaFiremat =
     !isCliente && (isAdmin || hasViewPermission("firemat_cambiar_empresa") || hasEditPermission("firemat_cambiar_empresa"));
-  const puedeCambiarEmpresa = canCambiarEmpresaBeck || canCambiarEmpresaFiremat;
+  const canCambiarEmpresaTrager = canCambiarEmpresaFiremat;
+  const puedeCambiarEmpresa = canCambiarEmpresaBeck || canCambiarEmpresaFiremat || canCambiarEmpresaTrager;
 
   const handleCompanySwitch = (company: Company) => {
     if (company === "beck" && !canCambiarEmpresaBeck) return;
     if (company === "firemat" && !canCambiarEmpresaFiremat) return;
+    if (company === "trager" && !canCambiarEmpresaTrager) return;
     setSelectorOpen(false);
     if (company === activeCompany) return;
 
-    const map = ROUTE_MAP[activeCompany];
-    const equivalent = map[location.pathname];
-    navigate(equivalent ?? (company === "beck" ? "/beck/dashboard" : "/firemat/dashboard"), {
-      replace: true,
-    });
+    window.localStorage.setItem(EMPRESA_STORAGE_KEY, company);
+    navigate(getEquivalentCompanyPath(location.pathname, company), { replace: true });
   };
+
+  const renderLogo = (className: string) =>
+    activeCompany === "trager" ? (
+      <span
+        aria-label="Trager"
+        className={`${className} inline-flex items-center justify-center rounded-md bg-[#e63c1e] px-2 text-sm font-bold text-white`}
+      >
+        T
+      </span>
+    ) : (
+      <img
+        src={logoSrc}
+        alt={brandName}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = "/logo.png";
+        }}
+        className={className}
+      />
+    );
 
   /* ── Styling tokens by company ──────────────────────────── */
   const sidebarBg = isBeck
     ? "bg-[#f6f5ee]/95 border-beck-border-light"
     : "bg-[#f5f3f3]/95 border-firemat-border";
+  const themeClass = activeConfig.theme === "firemat" ? "theme-firemat" : "theme-beck";
 
   const linkBase = "flex items-center rounded-xl py-2 text-xs transition-all";
 
@@ -221,17 +228,24 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "clienteRegistros", to: "/cliente/registros-mi-empresa", icon: <FileSearchOutlined />, label: "Vista Cliente", access: access.clienteRegistros },
   ];
 
+  const firematBase = isFirematLike ? activeCompany : "firemat";
   const firematNav = [
-    { key: "dashboard", to: "/firemat/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
-    { key: "funnel", to: "/firemat/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
-    { key: "cotizaciones", to: "/firemat/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
-    { key: "clientes", to: "/firemat/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
-    { key: "productos", to: "/firemat/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
-    {key: "categorias", to: "/firemat/categorias", icon: <ProfileOutlined/>, label: "Categorias", access: access.firematCategorias } ,
-    { key: "inventario", to: "/firemat/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.firematInventario },
-    { key: "ventas", to: "/firemat/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firematVentas },
-    { key: "movimientos", to: "/firemat/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.firematMovimientos || access.firematKardex },
-    { key: "reportes", to: "/firemat/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.firematReportes },
+    { key: "dashboard", to: `/${firematBase}/dashboard`, icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
+    { key: "funnel", to: `/${firematBase}/funnel`, icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
+    { key: "cotizaciones", to: `/${firematBase}/cotizaciones`, icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
+    { key: "clientes", to: `/${firematBase}/clientes`, icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
+    { key: "productos", to: `/${firematBase}/productos`, icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
+    {key: "categorias", to: `/${firematBase}/categorias`, icon: <ProfileOutlined/>, label: "Categorias", access: access.firematCategorias } ,
+    { key: "inventario", to: `/${firematBase}/inventario`, icon: <InboxOutlined />, label: "Inventario", access: access.firematInventario },
+    { key: "ventas", to: `/${firematBase}/ventas`, icon: <ShoppingCartOutlined />, label: "Ventas", access: access.firematVentas },
+    { key: "movimientos", to: `/${firematBase}/movimientos`, icon: <HistoryOutlined />, label: "Movimientos", access: access.firematMovimientos || access.firematKardex },
+    { key: "reportes", to: `/${firematBase}/reportes`, icon: <BarChartOutlined />, label: "Reportes", access: access.firematReportes },
+  ];
+
+  const tragerNav = [
+    { key: "dashboard", to: "/trager/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
+    { key: "funnel", to: "/trager/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
+    { key: "clientes", to: "/trager/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
   ];
 
   const clienteNav = [
@@ -244,7 +258,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const navItems = isCliente ? clienteNav : isBeck ? beckNav : firematNav;
+  const navItems = isCliente
+    ? clienteNav
+    : isBeck
+      ? beckNav
+      : activeCompany === "trager"
+        ? tragerNav
+        : firematNav;
   const visibleNavItems = isCliente
     ? clienteNav
     : permisosLoading
@@ -265,10 +285,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     (isBeck
       ? hasViewPermission("beck_usuarios_parametros") ||
         hasViewPermission("beck_reglas_validacion")
-      : hasViewPermission("firemat_usuarios_parametros"));
+      : activeCompany !== "trager" && hasViewPermission("firemat_usuarios_parametros"));
   const companyOptions: Company[] = [
     ...(canCambiarEmpresaBeck ? (["beck"] as Company[]) : []),
     ...(canCambiarEmpresaFiremat ? (["firemat"] as Company[]) : []),
+    ...(canCambiarEmpresaTrager ? (["trager"] as Company[]) : []),
   ];
 
   return (
@@ -279,21 +300,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         ${collapsed ? "w-20" : "w-64"}
         fixed inset-y-0 left-0
         ${hiddenOnMobile ? "hidden md:flex" : "flex"}
-        z-40 flex-col theme-${activeCompany} sidebar-root
+        z-40 flex-col ${themeClass} sidebar-root
       `}
     >
       {/* ── Company header / selector ────────────────────────── */}
       <div className="border-b border-inherit px-3 py-4">
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
-            <img
-              src={logoSrc}
-              alt={brandName}
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/logo.png";
-              }}
-              className="h-8 w-auto object-contain"
-            />
+            {renderLogo("h-8 min-w-8 w-auto object-contain")}
             <button
               type="button"
               onClick={onToggleCollapse}
@@ -310,14 +324,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => puedeCambiarEmpresa && setSelectorOpen((v) => !v)}
                 className="flex w-full items-center gap-2 rounded-xl p-1 transition hover:bg-white/60"
               >
-                <img
-                  src={logoSrc}
-                  alt={brandName}
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/logo.png";
-                  }}
-                  className="h-8 w-auto object-contain flex-shrink-0"
-                />
+                {renderLogo("h-8 min-w-8 w-auto object-contain flex-shrink-0")}
                 <div className="min-w-0 flex-1 text-left leading-tight">
                   <p className="truncate text-xs font-semibold text-beck-ink">
                     {brandName}
@@ -351,10 +358,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <span className="w-3" />
                       )}
                       <span className="font-medium text-beck-ink">
-                        {company === "beck" ? "BECK Soluciones" : "Firemat"}
+                        {PLATAFORMAS[company].nombre}
                       </span>
                       <span className="ml-auto text-[10px] text-beck-muted">
-                        {company === "beck" ? "CRM BECK" : "CRM FIREMAT"}
+                        {PLATAFORMAS[company].crm}
                       </span>
                     </button>
                   ))}
@@ -420,7 +427,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
               {(isBeck ? hasViewPermission("beck_usuarios_parametros") : hasViewPermission("firemat_usuarios_parametros")) && (
               <NavLink
-                to={isBeck ? "/beck/usuarios-parametros" : "/firemat/usuarios-parametros"}
+                to={isBeck ? "/beck/usuarios-parametros" : `/${firematBase}/usuarios-parametros`}
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed
@@ -450,7 +457,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
               {!isBeck && hasViewPermission("firemat_usuarios_parametros") && (
               <NavLink
-                to="/firemat/permisos"
+                to={`/${firematBase}/permisos`}
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed
@@ -480,7 +487,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
               {!isBeck && user?.rol === "Administrador" && (
               <NavLink
-                to="/firemat/configuracion-validacion"
+                to={activeCompany === "trager" ? "/trager/reglas-validacion" : "/firemat/configuracion-validacion"}
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed
@@ -534,7 +541,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <>
             <p className="text-beck-muted/80">Versión 0.1</p>
             <p className="text-beck-muted/80">
-              Copyright 2025 BECK / Firemat
+              Copyright 2025 BECK / Firemat / Trager
             </p>
           </>
         )}

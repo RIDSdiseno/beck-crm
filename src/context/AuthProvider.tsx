@@ -20,6 +20,7 @@ import {
   type AuthUser,
   type LoginParams,
 } from "./authContext";
+import type { EmpresaActiva } from "../platforms";
 
 const ROLE_MAP: Record<string, RolUsuario> = {
   administrador: "Administrador",
@@ -34,9 +35,10 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   cliente: "Cliente",
 };
 
-const getEmpresaPorEmail = (email?: string): "beck" | "firemat" => {
+const getEmpresaPorEmail = (email?: string): EmpresaActiva => {
   const lower = email?.toLowerCase() ?? "";
   if (lower.endsWith("@firemat.cl")) return "firemat";
+  if (lower.endsWith("@trager.cl")) return "trager";
   return "beck";
 };
 

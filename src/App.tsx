@@ -49,6 +49,12 @@ import {
   FirematClientes,
   FirematPermisos,
 } from "./pages/firemat";
+import {
+  TragerClientes,
+  TragerDashboard,
+  TragerFunnel,
+  TragerProximamente,
+} from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
 import type { ThemeMode } from "./hooks/useSystemTheme";
@@ -57,6 +63,7 @@ import { usePermisos } from "./hooks/usePermisos";
 import type { RolUsuario } from "./types/usuario";
 import { EMPRESA_STORAGE_KEY, type ModuloBeck } from "./services/api";
 import { AlertasBeckBell, AlertasFirematBell } from "./components/AlertasBell";
+import { getEmpresaFromPath, isEmpresaActiva } from "./platforms";
 
 const { Content } = Layout;
 
@@ -181,7 +188,10 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
         typeof window !== "undefined"
           ? window.localStorage.getItem(EMPRESA_STORAGE_KEY)
           : null;
-      return empresa === "firemat" ? "/firemat/dashboard" : "/beck/dashboard";
+      if (isEmpresaActiva(empresa) && empresa !== "beck") {
+        return `/${empresa}/dashboard`;
+      }
+      return "/beck/dashboard";
     }
     case "Vendedor":
       return "/beck/funnel";
@@ -250,6 +260,11 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/firemat/usuarios-parametros") return access.firemat && access.configuracion;
   if (pathname.startsWith("/firemat/")) return access.firemat;
 
+  if (pathname === "/trager/dashboard") return access.firematDashboard;
+  if (pathname === "/trager/funnel") return access.firematFunnel;
+  if (pathname === "/trager/clientes") return access.firematClientes;
+  if (pathname.startsWith("/trager/")) return access.firemat;
+
   if (pathname === "/cliente/registros-mi-empresa") return access.clienteRegistros;
   if (pathname.startsWith("/cliente/")) return access.clienteRegistros;
 
@@ -308,6 +323,12 @@ const FIREMAT_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/firemat/reportes": "firemat_reportes",
   "/firemat/usuarios-parametros": "firemat_usuarios_parametros",
   "/firemat/permisos": "firemat_usuarios_parametros",
+};
+
+const TRAGER_ROUTE_MODULO: Record<string, ModuloBeck> = {
+  "/trager/dashboard": "firemat_dashboard",
+  "/trager/funnel": "firemat_funnel",
+  "/trager/clientes": "firemat_clientes",
 };
 
 const PermisosFallback: React.FC = () => (
@@ -438,8 +459,9 @@ const AppShell: React.FC = () => {
     return "/login";
   }, [user, permisosLoaded, canView]);
 
-  const isFiremat = location.pathname.startsWith("/firemat");
-  const themeClass = isFiremat ? "theme-firemat" : "theme-beck";
+  const activeEmpresa = getEmpresaFromPath(location.pathname);
+  const isFirematLike = activeEmpresa === "firemat" || activeEmpresa === "trager";
+  const themeClass = isFirematLike ? "theme-firemat" : "theme-beck";
 
   useEffect(() => {
     const onResize = () => {
@@ -483,6 +505,13 @@ const AppShell: React.FC = () => {
     const firematModulo = FIREMAT_ROUTE_MODULO[location.pathname];
     if (firematModulo) {
       if (!canView(firematModulo)) {
+        navigate(homeRoute, { replace: true });
+      }
+      return;
+    }
+    const tragerModulo = TRAGER_ROUTE_MODULO[location.pathname];
+    if (tragerModulo) {
+      if (!canView(tragerModulo)) {
         navigate(homeRoute, { replace: true });
       }
       return;
@@ -604,11 +633,12 @@ const AppShell: React.FC = () => {
   const canSeeFiremat = !!user && ALERTAS_FIREMAT_ROLES.includes(user.rol);
 
   const inFiremat = location.pathname.startsWith("/firemat");
+  const inTrager = location.pathname.startsWith("/trager");
   const inBeck = location.pathname.startsWith("/beck");
   const inCliente = location.pathname.startsWith("/cliente");
 
-  const showBeckBell = canSeeBeck && !inFiremat;
-  const showFirematBell = canSeeFiremat && !inBeck && !inCliente;
+  const showBeckBell = canSeeBeck && !inFiremat && !inTrager;
+  const showFirematBell = canSeeFiremat && inFiremat && !inBeck && !inCliente;
 
   // En los Funnels la campana va embebida en el header de la página (pasada como prop).
   // En el resto de páginas del módulo se muestra en un strip no-fixed en el Content.
@@ -617,7 +647,8 @@ const AppShell: React.FC = () => {
 
   const onFunnelRoute =
     location.pathname === "/beck/funnel" ||
-    location.pathname === "/firemat/funnel";
+    location.pathname === "/firemat/funnel" ||
+    location.pathname === "/trager/funnel";
 
   const bellStrip =
     !onFunnelRoute && (bellBeck || bellFiremat) ? (
@@ -672,7 +703,7 @@ const AppShell: React.FC = () => {
           }}
         >
           <Content
-            className={isFiremat ? "bg-firemat-bg" : "bg-beck-bg-light"}
+            className={isFirematLike ? "bg-firemat-bg" : "bg-beck-bg-light"}
             style={{
               padding: "12px 12px",
               paddingTop: isMobile && collapsed ? 56 : 12,
@@ -922,6 +953,33 @@ const AppShell: React.FC = () => {
                 />
 
                 {/* ── Cliente routes ──────────────────────────── */}
+                {/* Trager routes: frontend-only modules, no Firemat services */}
+                <Route
+                  path="/trager/dashboard"
+                  element={
+                    <PermisosGate modulo="firemat_dashboard" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerDashboard />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/funnel"
+                  element={
+                    <PermisosGate modulo="firemat_funnel" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerFunnel />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/clientes"
+                  element={
+                    <PermisosGate modulo="firemat_clientes" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerClientes />
+                    </PermisosGate>
+                  }
+                />
+                <Route path="/trager/*" element={<TragerProximamente />} />
+
                 <Route
                   path="/cliente/registros-mi-empresa"
                   element={

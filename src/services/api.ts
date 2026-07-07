@@ -174,7 +174,7 @@ export interface LoginResponse {
       | "visualizador_firemat"
       | "cliente";
   };
-  empresaDefault?: "beck" | "firemat";
+  empresaDefault?: "beck" | "firemat" | "trager";
 }
 
 export interface ApiError {
