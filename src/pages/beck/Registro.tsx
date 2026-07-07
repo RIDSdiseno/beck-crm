@@ -1,6 +1,6 @@
 // src/pages/RegistroSellos.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, DatePicker, Input, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
+import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
   FireOutlined,
   TableOutlined,
