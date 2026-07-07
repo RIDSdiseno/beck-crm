@@ -735,7 +735,7 @@ export const funnelBeckAPI = {
 
 export type FunnelUnificadoOrigen = "BECK" | "FIREMAT";
 
-export type FunnelUnificadoUnidadNegocio = "beck" | "firemat" | "todas";
+export type FunnelUnificadoUnidadNegocio = "beck" | "firemat" | "mixto" | "todas";
 
 export type FunnelUnificadoEstadoCierre =
   | "activa"
@@ -1370,6 +1370,13 @@ export const usuariosAPI = {
     const data = unwrapApiResponse(response.data);
     console.log("UNWRAPPED usuarios comerciales", data);
     return data;
+  },
+
+  listarComercialesFiremat: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
+      "/usuarios/comerciales-firemat"
+    );
+    return unwrapApiResponse(response.data);
   },
 
   crear: async (data: CrearUsuarioInput) => {

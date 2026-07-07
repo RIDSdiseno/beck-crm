@@ -190,6 +190,11 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   const observaciones = detalle?.observaciones ?? detalle?.observacion ?? null;
   const fotos = detalle ? getFotos(detalle) : [];
   const parametros = detalle?.parametros ?? [];
+  const puedeAccionar =
+    !!detalle &&
+    !!puedeRevisar &&
+    estado === "inspeccionado" &&
+    (detalle.inspeccionRevisionEstado ?? "pendiente") === "pendiente";
 
   const columnsParametros: ColumnsType<ControlInspeccionParametro> = [
     { title: "#", dataIndex: "orden", key: "orden", width: 44 },
@@ -216,11 +221,27 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       title="Detalle de inspección"
       open={open}
       onCancel={onClose}
-      onOk={onClose}
-      okText="Cerrar"
-      cancelButtonProps={{ style: { display: "none" } }}
       width={720}
       destroyOnClose
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <div className="flex gap-2">
+            {puedeAccionar && !mostrarMotivo && (
+              <>
+                <Button type="primary" loading={enviando} onClick={handleValidar}>
+                  Validar
+                </Button>
+                <Button danger disabled={enviando} onClick={() => setMostrarMotivo(true)}>
+                  Rechazar
+                </Button>
+              </>
+            )}
+          </div>
+          <Button type="primary" onClick={onClose}>
+            Cerrar
+          </Button>
+        </div>
+      }
     >
       {loading ? (
         <div className="flex justify-center py-10">
@@ -309,41 +330,28 @@ const DetalleInspeccionModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {puedeRevisar && (detalle.inspeccionRevisionEstado ?? "pendiente") === "pendiente" && (
+              {puedeAccionar && mostrarMotivo && (
                 <div className="mt-3 space-y-2">
-                  {!mostrarMotivo ? (
-                    <div className="flex gap-2">
-                      <Button type="primary" loading={enviando} onClick={handleValidar}>
-                        Validar inspección
-                      </Button>
-                      <Button danger disabled={enviando} onClick={() => setMostrarMotivo(true)}>
-                        Rechazar inspección
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <Input.TextArea
-                        rows={2}
-                        placeholder="Motivo del rechazo (obligatorio)"
-                        value={motivoRechazo}
-                        onChange={(e) => setMotivoRechazo(e.target.value)}
-                      />
-                      <div className="flex gap-2">
-                        <Button danger loading={enviando} onClick={handleRechazar}>
-                          Confirmar rechazo
-                        </Button>
-                        <Button
-                          disabled={enviando}
-                          onClick={() => {
-                            setMostrarMotivo(false);
-                            setMotivoRechazo("");
-                          }}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="Motivo del rechazo (obligatorio)"
+                    value={motivoRechazo}
+                    onChange={(e) => setMotivoRechazo(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button danger loading={enviando} onClick={handleRechazar}>
+                      Confirmar rechazo
+                    </Button>
+                    <Button
+                      disabled={enviando}
+                      onClick={() => {
+                        setMostrarMotivo(false);
+                        setMotivoRechazo("");
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

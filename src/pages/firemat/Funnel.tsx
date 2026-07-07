@@ -1,5 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+// Mismo mecanismo de drag & drop que beck/Funnel.tsx (dnd-kit con
+// PointerSensor); el D&D nativo HTML5 anterior no disparaba dragstart en
+// este tablero.
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  type DragEndEvent,
+  type DragStartEvent,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { useAuth } from "../../context/useAuth";
 import { usePermisos } from "../../hooks/usePermisos";
 import {
   Alert,
@@ -21,7 +36,6 @@ import {
   message,
 } from "antd";
 import {
-  ClearOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -30,7 +44,6 @@ import {
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SearchOutlined,
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
@@ -43,6 +56,13 @@ import {
 } from "../../constants/motivosCierre";
 import FunnelFirematDashboard from "./FunnelFirematDashboard";
 import FunnelFirematCalendario from "../../components/FunnelFirematCalendario";
+// Import diferido (no estatico) a proposito: beck/Funnel.tsx importa este
+// mismo archivo (para su propio embed de detalle Firemat), y un import
+// estatico circular entre ambos archivos puede volverse fragil con Fast
+// Refresh/HMR de Vite (edits que rompen el drag&drop hasta un reload
+// completo). React.lazy corta el ciclo: esta rama solo se resuelve en
+// tiempo de ejecucion, cuando Beck ya esta completamente cargado.
+const FunnelBeck = React.lazy(() => import("../beck/Funnel"));
 import {
   clientesFirematAPI,
   firematCotizacionesAPI,
@@ -62,6 +82,8 @@ import {
   type FirematFunnelResumen,
   type HistorialEtapaFiremat,
   type ProductoFiremat,
+  usuariosAPI,
+  type UsuarioResumen,
 } from "../../services/api";
 
 const { Text } = Typography;
@@ -184,6 +206,82 @@ const ETAPAS: Array<{
   { label: "Postergada", value: "POSTERGADA", color: "#9333ea" },
   { label: "Descartado", value: "DESCARTADO", color: "#64748b" },
 ];
+
+
+const ETAPAS_COMERCIALES: FirematFunnelEtapa[] = [
+  "PROSPECTO",
+  "PRIMER_CONTACTO",
+  "DESARROLLO_COTIZACION",
+  "COTIZACION_ENVIADA",
+  "ORDEN_CONFIRMADA",
+];
+
+const ETAPAS_CIERRE_SIN_COLUMNA: FirematFunnelEtapa[] = [
+  "PERDIDA",
+  "POSTERGADA",
+  "DESCARTADO",
+];
+
+
+const ETAPAS_KANBAN = ETAPAS.filter(
+  (e) => !ETAPAS_CIERRE_SIN_COLUMNA.includes(e.value)
+);
+
+
+// Cinta superior de unidad de negocio, misma estetica que las tarjetas de
+// /beck/funnel (ver UNIDAD_NEGOCIO_STRIP / getUnidadNegocioVisualLabel en
+// src/pages/beck/Funnel.tsx).
+const UNIDAD_NEGOCIO_STRIP: Record<string, string> = {
+  Beck: "bg-[#d6b02a] text-black",
+  Firemat: "bg-red-600 text-white",
+  Mixto: "bg-purple-600 text-white",
+};
+
+const getUnidadNegocioVisualLabel = (
+  item: FirematFunnelOportunidad
+): "BECK" | "FIREMAT" | "MIXTO" => {
+  if (item.unidadNegocio === "Mixto") return "MIXTO";
+  if (item.unidadNegocio === "Beck") return "BECK";
+  return "FIREMAT";
+};
+
+const getUnidadNegocioStripClass = (label: string): string =>
+  UNIDAD_NEGOCIO_STRIP[
+    label === "BECK" ? "Beck" : label === "MIXTO" ? "Mixto" : "Firemat"
+  ];
+
+const CIERRE_BANNER: Partial<
+  Record<FirematFunnelEtapa, { label: string; bannerClass: string; borderClass: string }>
+> = {
+  PERDIDA: {
+    label: "PERDIDA",
+    bannerClass: "bg-red-600",
+    borderClass: "border-red-400 hover:border-red-500",
+  },
+  POSTERGADA: {
+    label: "POSTERGADA",
+    bannerClass: "bg-orange-500",
+    borderClass: "border-orange-400 hover:border-orange-500",
+  },
+  DESCARTADO: {
+    label: "DESCARTADA",
+    bannerClass: "bg-slate-500",
+    borderClass: "border-slate-400 hover:border-slate-500",
+  },
+};
+
+
+const resolverEtapaComercialDesdeHistorial = (
+  historial: HistorialEtapaFiremat[]
+): FirematFunnelEtapa => {
+  for (let i = historial.length - 1; i >= 0; i -= 1) {
+    const etapaNueva = historial[i]?.etapaNueva as FirematFunnelEtapa | undefined;
+    if (etapaNueva && ETAPAS_COMERCIALES.includes(etapaNueva)) {
+      return etapaNueva;
+    }
+  }
+  return "PROSPECTO";
+};
 
 
 const TIPO_CLIENTE_OPTIONS: Array<{
@@ -516,61 +614,80 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
 type FirematFunnelCardProps = {
   item: FirematFunnelOportunidad;
   productoNombre?: string | null;
-  isDragging: boolean;
-  onDragStart: (
-    event: React.DragEvent<HTMLElement>,
-    item: FirematFunnelOportunidad
-  ) => void;
-  onDragEnd: () => void;
+  dragDisabled: boolean;
   onViewDetail: (item: FirematFunnelOportunidad) => Promise<void> | void;
 };
 
 const FirematFunnelCard: React.FC<FirematFunnelCardProps> = ({
   item,
   productoNombre,
-  isDragging,
-  onDragStart,
-  onDragEnd,
+  dragDisabled,
   onViewDetail,
 }) => {
+  const cierreBanner = CIERRE_BANNER[item.etapa];
+  // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) y GANADA no se arrastran.
+  const draggingEnabled =
+    !dragDisabled && !cierreBanner && item.etapa !== "GANADA";
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: item.id,
+    disabled: !draggingEnabled,
+    // La oportunidad viaja con el evento: handleDndDragEnd la lee desde
+    // active.data.current sin depender de una busqueda por id en el estado.
+    data: { oportunidad: item },
+  });
+
   return (
     <article
-      draggable
+      ref={setNodeRef}
+      {...(draggingEnabled ? listeners : {})}
+      {...(draggingEnabled ? attributes : {})}
       data-opportunity-id={item.id}
-      onDragStart={(event) => onDragStart(event, item)}
-      onDragEnd={onDragEnd}
-      className={`group cursor-pointer rounded-lg border border-slate-200 bg-white p-2 text-xs shadow-sm transition-all duration-200 hover:scale-[1.02] hover:border-orange-300 hover:shadow-md ${
-        isDragging ? "is-dragging opacity-40 ring-2 ring-orange-300" : ""
-      }`}
+      className={`group cursor-pointer overflow-hidden rounded-lg border bg-white text-xs shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md ${
+        cierreBanner ? cierreBanner.borderClass : "border-slate-200 hover:border-orange-300"
+      } ${isDragging ? "is-dragging opacity-30 ring-2 ring-orange-300" : ""}`}
       onClick={() => void onViewDetail(item)}
     >
-      <h4 className="truncate font-semibold leading-tight text-beck-ink">
-        {item.cliente}
-      </h4>
-
-      <p className="mt-1 font-medium tabular-nums text-firemat-primary">
-        {formatCLP(item.montoEstimado)}
-      </p>
-
-      <p className="mt-0.5 text-beck-muted">
-        Próxima: {formatDate(item.fechaProximaAccion)}
-      </p>
-
-      {productoNombre && (
-        <p className="mt-1 line-clamp-2 text-beck-ink-soft">{productoNombre}</p>
-      )}
-      <Button
-        size="small"
-        type="link"
-        icon={<EyeOutlined />}
-        className="mt-1 !px-0 text-xs"
-        onClick={(e) => {
-          e.stopPropagation();
-          void onViewDetail(item);
-        }}
+      <div
+        className={`flex h-[18px] items-center justify-center text-[8px] font-semibold uppercase tracking-[0.08em] select-none ${getUnidadNegocioStripClass(getUnidadNegocioVisualLabel(item))}`}
       >
-        Ver detalle
-      </Button>
+        {getUnidadNegocioVisualLabel(item)}
+      </div>
+      {cierreBanner && (
+        <div
+          className={`px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-widest text-white select-none ${cierreBanner.bannerClass}`}
+        >
+          ━━━ {cierreBanner.label} ━━━
+        </div>
+      )}
+      <div className="p-2">
+        <h4 className="truncate font-semibold leading-tight text-beck-ink">
+          {item.cliente}
+        </h4>
+
+        <p className="mt-1 font-medium tabular-nums text-firemat-primary">
+          {formatCLP(item.montoEstimado)}
+        </p>
+
+        <p className="mt-0.5 text-beck-muted">
+          Próxima: {formatDate(item.fechaProximaAccion)}
+        </p>
+
+        {productoNombre && (
+          <p className="mt-1 line-clamp-2 text-beck-ink-soft">{productoNombre}</p>
+        )}
+        <Button
+          size="small"
+          type="link"
+          icon={<EyeOutlined />}
+          className="mt-1 !px-0 text-xs"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onViewDetail(item);
+          }}
+        >
+          Ver detalle
+        </Button>
+      </div>
     </article>
   );
 };
@@ -584,44 +701,26 @@ type FirematFunnelColumnProps = {
     total: number;
   };
   productoMap: Map<number, ProductoFiremat>;
-  draggedOpportunityId?: string | null;
-  dropOverEtapa?: FirematFunnelEtapa | null;
-  onCardDragStart: (
-    event: React.DragEvent<HTMLElement>,
-    item: FirematFunnelOportunidad
-  ) => void;
-  onCardDragEnd: () => void;
-  onColumnDragOver: (
-    event: React.DragEvent<HTMLDivElement>,
-    etapa: FirematFunnelEtapa
-  ) => void;
-  onColumnDragLeave: (etapa: FirematFunnelEtapa) => void;
-  onColumnDrop: (
-    event: React.DragEvent<HTMLDivElement>,
-    etapa: FirematFunnelEtapa
-  ) => void;
+  dragDisabled: boolean;
   onViewDetail: (item: FirematFunnelOportunidad) => Promise<void> | void;
 };
 
 const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
   column,
   productoMap,
-  draggedOpportunityId,
-  dropOverEtapa,
-  onCardDragStart,
-  onCardDragEnd,
-  onColumnDragOver,
-  onColumnDragLeave,
-  onColumnDrop,
+  dragDisabled,
   onViewDetail,
 }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.value,
+    disabled: dragDisabled,
+  });
+
   return (
     <div
-      onDragOver={(event) => onColumnDragOver(event, column.value)}
-      onDragLeave={() => onColumnDragLeave(column.value)}
-      onDrop={(event) => onColumnDrop(event, column.value)}
+      ref={setNodeRef}
       className={`flex min-h-[420px] w-[220px] shrink-0 flex-col rounded-xl border p-3 transition-colors ${
-        dropOverEtapa === column.value
+        isOver
           ? "drop-over border-orange-400 bg-[#fff0eb]"
           : "border-[#ead7d2] bg-[#fff7f5]"
       }`}
@@ -653,9 +752,7 @@ const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
                 key={item.id}
                 item={item}
                 productoNombre={producto}
-                isDragging={draggedOpportunityId === item.id}
-                onDragStart={onCardDragStart}
-                onDragEnd={onCardDragEnd}
+                dragDisabled={dragDisabled}
                 onViewDetail={onViewDetail}
               />
             );
@@ -670,11 +767,9 @@ const FirematFunnelColumn: React.FC<FirematFunnelColumnProps> = ({
   );
 };
 
+
 const FirematFunnel: React.FC<{
   alertaBell?: React.ReactNode;
-  // Cuando se provee, el componente abre directamente el detalle/edicion de
-  // esa oportunidad (usado para embeber el formulario Firemat completo desde
-  // /beck/funnel sin duplicar su logica) y avisa via onEmbedClose al cerrarse.
   embedOportunidadId?: string | null;
   onEmbedClose?: () => void;
 }> = ({ alertaBell, embedOportunidadId, onEmbedClose }) => {
@@ -686,6 +781,18 @@ const FirematFunnel: React.FC<{
   const { canView: canViewFunnel, canEdit: canEditFunnelPerm } = usePermisos();
   const canCambiarEmpresaFiremat =
     canViewFunnel("firemat_cambiar_empresa") || canEditFunnelPerm("firemat_cambiar_empresa");
+  const { user } = useAuth();
+  const isAdminGlobal = user?.rol === "Administrador";
+  // Igual criterio que canOperateFiremat en beck/Funnel.tsx: mover tarjetas
+  // requiere edicion sobre firemat_funnel; administrador siempre puede.
+  const canEditFirematFunnel = isAdminGlobal || canEditFunnelPerm("firemat_funnel");
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   const [form] = Form.useForm<FunnelFormValues>();
   const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
@@ -706,6 +813,11 @@ const FirematFunnel: React.FC<{
   const [archivosFiremat, setArchivosFiremat] = useState<FunnelFirematArchivo[]>([]);
   const [uploadingArchivo, setUploadingArchivo] = useState(false);
   const [clientesLoading, setClientesLoading] = useState(false);
+  const [usuariosComercialesFiremat, setUsuariosComercialesFiremat] = useState<
+    UsuarioResumen[]
+  >([]);
+  const [usuariosComercialesFirematLoading, setUsuariosComercialesFirematLoading] =
+    useState(false);
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
   const [contactoModalOpen, setContactoModalOpen] = useState(false);
   const [contactoSaving, setContactoSaving] = useState(false);
@@ -726,9 +838,25 @@ const FirematFunnel: React.FC<{
   const [savingCotizacion, setSavingCotizacion] = useState(false);
   const [activeDragOpportunity, setActiveDragOpportunity] =
     useState<FirematFunnelOportunidad | null>(null);
-  const activeDragRef = useRef<FirematFunnelOportunidad | null>(null);
-  const [dropOverEtapa, setDropOverEtapa] =
-    useState<FirematFunnelEtapa | null>(null);
+
+  const [etapaComercialPorId, setEtapaComercialPorId] = useState<
+    Record<string, FirematFunnelEtapa>
+  >({});
+  const etapaComercialEnCursoRef = useRef<Set<string>>(new Set());
+  const [cierreModalOpen, setCierreModalOpen] = useState(false);
+  const [cierreTipo, setCierreTipo] = useState<
+    "" | "PERDIDA" | "POSTERGADA" | "DESCARTADO"
+  >("");
+  const [cierreMotivoPerdida, setCierreMotivoPerdida] = useState("");
+  const [cierreMotivoPerdidaDetalle, setCierreMotivoPerdidaDetalle] = useState("");
+  const [cierreMotivoPostergacion, setCierreMotivoPostergacion] = useState("");
+  const [cierreMotivoPostergacionDetalle, setCierreMotivoPostergacionDetalle] = useState("");
+  const [cierreFechaReactivacion, setCierreFechaReactivacion] = useState<Dayjs | null>(null);
+  const [cierreMotivoDescarte, setCierreMotivoDescarte] = useState("");
+  const [cierreMotivoDescarteDetalle, setCierreMotivoDescarteDetalle] = useState("");
+  const [cierreObservacion, setCierreObservacion] = useState("");
+  const [cierreSaving, setCierreSaving] = useState(false);
+
   const [viewMode, setViewMode] = useState<"funnel" | "calendario" | "dashboard">("funnel");
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
   const [historialEtapas, setHistorialEtapas] = useState<HistorialEtapaFiremat[]>([]);
@@ -748,11 +876,16 @@ const FirematFunnel: React.FC<{
   const [advertenciaSuccessOpen, setAdvertenciaSuccessOpen] = useState(false);
   const [advertenciaSuccessItems, setAdvertenciaSuccessItems] = useState<string[]>([]);
 
-  const [q, setQ] = useState("");
-  const [etapa, setEtapa] = useState<FirematFunnelEtapa | "">("");
-  const [responsable, setResponsable] = useState("");
-  const [tipoCliente, setTipoCliente] = useState<FirematCotizacionTipoCliente | "">("");
-  const [productoId, setProductoId] = useState<number | undefined>();
+  const [filterEstadoOportunidad, setFilterEstadoOportunidad] = useState<
+    "" | "activas" | "ganadas" | "perdidas" | "postergadas" | "descartadas"
+  >("");
+  const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<
+    "Beck" | "Firemat" | "Mixto"
+  >("Firemat");
+  // Contador de oportunidades visibles cuando el tablero embebido de Beck
+  // esta activo (ver FunnelBeck embedUnidadNegocio mas abajo); lo reporta el
+  // propio componente Beck via onVisibleCountChange.
+  const [beckVisibleCount, setBeckVisibleCount] = useState(0);
 
   const productoOptions = useMemo(
     () =>
@@ -762,6 +895,26 @@ const FirematFunnel: React.FC<{
       })),
     [productos]
   );
+
+  const responsableFirematOptions = useMemo(
+    () =>
+      usuariosComercialesFiremat
+        .filter((u) => u.nombre || u.email)
+        .map((u) => ({
+          value: u.nombre || u.email,
+          label: u.nombre ? `${u.nombre} — ${u.email}` : u.email,
+        })),
+    [usuariosComercialesFiremat]
+  );
+
+  const responsableFirematFilterOption = (
+    input: string,
+    option?: { label?: React.ReactNode }
+  ) => {
+    if (!option) return false;
+    const label = typeof option.label === "string" ? option.label : String(option.label ?? "");
+    return label.toLowerCase().includes(input.toLowerCase());
+  };
 
   const productoMap = useMemo(
     () => new Map(productos.map((producto) => [producto.id, producto])),
@@ -850,29 +1003,14 @@ const FirematFunnel: React.FC<{
     return fromList;
   }, [cotizaciones, selected]);
 
-  const responsableOptions = useMemo(() => {
-    const values = Array.from(
-      new Set(
-        oportunidades
-          .map((item) => item.responsable?.trim())
-          .filter((item): item is string => Boolean(item))
-      )
-    );
-    return values.map((value) => ({ label: value, value }));
-  }, [oportunidades]);
-
   const cargar = useCallback(async () => {
     try {
       setLoading(true);
-      const params: Parameters<typeof firematFunnelAPI.listar>[0] = {};
-      if (q.trim()) params.q = q.trim();
-      if (etapa) params.etapa = etapa;
-      if (responsable.trim()) params.responsable = responsable.trim();
-      if (tipoCliente) params.tipoCliente = tipoCliente;
-      if (productoId) params.productoId = productoId;
-
+      // Siempre Firemat puro: cuando Unidad de negocio no es Firemat, el
+      // tablero lo muestra/opera el propio Funnel Beck embebido (ver render
+      // mas abajo), que hace su propia carga via loadDeals/funnel-unificado.
       const [funnelResponse, cotizacionesResponse] = await Promise.all([
-        firematFunnelAPI.listar(params),
+        firematFunnelAPI.listar({}),
         firematCotizacionesAPI.listar({}),
       ]);
 
@@ -880,7 +1018,6 @@ const FirematFunnel: React.FC<{
       setResumen(funnelResponse.resumen);
       setCotizaciones(cotizacionesResponse.data);
 
-      // Productos son auxiliares: si fallan (ej. sin permiso firemat_productos) no bloquear el funnel
       try {
         const productosResponse = await firematProductosAPI.listar({ activo: true });
         setProductos(productosResponse.data);
@@ -894,14 +1031,44 @@ const FirematFunnel: React.FC<{
     } finally {
       setLoading(false);
     }
-  }, [etapa, productoId, q, responsable, tipoCliente]);
+  }, []);
 
   useEffect(() => {
     void cargar();
   }, [cargar]);
 
-  // Reacciona a cada navegación desde una alerta
-  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    const pendientes = oportunidades.filter(
+      (o) =>
+        ETAPAS_CIERRE_SIN_COLUMNA.includes(o.etapa) &&
+        !(String(o.id) in etapaComercialPorId) &&
+        !etapaComercialEnCursoRef.current.has(String(o.id))
+    );
+    if (pendientes.length === 0) return;
+
+    pendientes.forEach((o) => etapaComercialEnCursoRef.current.add(String(o.id)));
+
+    void Promise.all(
+      pendientes.map(async (o) => {
+        const id = String(o.id);
+        try {
+          const historial = await firematFunnelAPI.getHistorialEtapas(o.id);
+          return [id, resolverEtapaComercialDesdeHistorial(historial)] as const;
+        } catch {
+          return [id, "PROSPECTO" as FirematFunnelEtapa] as const;
+        } finally {
+          etapaComercialEnCursoRef.current.delete(id);
+        }
+      })
+    ).then((entries) => {
+      setEtapaComercialPorId((current) => {
+        const next = { ...current };
+        for (const [id, etapaComercial] of entries) next[id] = etapaComercial;
+        return next;
+      });
+    });
+  }, [oportunidades, etapaComercialPorId]);
+
   useEffect(() => {
     const state = location.state as {
       oportunidadId?: string | number;
@@ -921,7 +1088,6 @@ const FirematFunnel: React.FC<{
     }
   }, [location.state]);
 
-  // Resuelve oportunidad pendiente una vez que oportunidades está cargado
   useEffect(() => {
     if (!pendingOportunidadId.current || oportunidades.length === 0) return;
     const id = pendingOportunidadId.current;
@@ -929,12 +1095,7 @@ const FirematFunnel: React.FC<{
     const target = oportunidades.find((o) => String(o.id) === id);
     if (target) void openOportunidad(target, "ver");
   }, [oportunidades]);
-  /* eslint-enable react-hooks/exhaustive-deps */
 
-  // Modo embebido (usado desde /beck/funnel): abre el detalle de la oportunidad
-  // indicada sin esperar a que cargue el tablero completo, ya que openOportunidad
-  // solo necesita el id para pedir el detalle real via firematFunnelAPI.obtener.
-  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!embedOportunidadId) return;
     if (embedOpenedIdRef.current === embedOportunidadId) return;
@@ -948,8 +1109,7 @@ const FirematFunnel: React.FC<{
     });
   }, [embedOportunidadId]);
 
-  // Avisa al padre cuando el modal embebido se cierra (cancelar o guardado
-  // exitoso), sin importar cual de los flujos internos lo haya cerrado.
+
   useEffect(() => {
     if (!embedOportunidadId) return;
     if (modalOpen) {
@@ -960,7 +1120,22 @@ const FirematFunnel: React.FC<{
       onEmbedClose?.();
     }
   }, [modalOpen, embedOportunidadId]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+
+  const loadUsuariosComercialesFiremat = useCallback(async () => {
+    setUsuariosComercialesFirematLoading(true);
+    try {
+      const usuarios = await usuariosAPI.listarComercialesFiremat();
+      setUsuariosComercialesFiremat(usuarios);
+    } catch {
+      void message.error("No se pudo cargar la lista de responsables comerciales");
+    } finally {
+      setUsuariosComercialesFirematLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUsuariosComercialesFiremat();
+  }, [loadUsuariosComercialesFiremat]);
 
   const cargarClientesActivos = useCallback(async () => {
     setClientesLoading(true);
@@ -1069,14 +1244,6 @@ const FirematFunnel: React.FC<{
     } finally {
       setContactoSaving(false);
     }
-  };
-
-  const limpiar = () => {
-    setQ("");
-    setEtapa("");
-    setResponsable("");
-    setTipoCliente("");
-    setProductoId(undefined);
   };
 
   const setFormFromOportunidad = (
@@ -1205,6 +1372,9 @@ const FirematFunnel: React.FC<{
     });
     setModalOpen(true);
     void cargarClientesActivos();
+    if (usuariosComercialesFiremat.length === 0 && !usuariosComercialesFirematLoading) {
+      void loadUsuariosComercialesFiremat();
+    }
   };
 
   const ETAPA_HISTORIAL_LABELS_FIREMAT: Record<string, string> = {
@@ -1709,88 +1879,45 @@ const FirematFunnel: React.FC<{
   };
 
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
-  const mouseXDuringDragRef = useRef<number>(0);
-  const dragScrollRafRef = useRef<number | null>(null);
 
-  const stopDragScroll = useCallback(() => {
-    if (dragScrollRafRef.current !== null) {
-      cancelAnimationFrame(dragScrollRafRef.current);
-      dragScrollRafRef.current = null;
-    }
-  }, []);
-
-  const startDragScroll = useCallback(() => {
-    const tick = () => {
-      const container = kanbanScrollRef.current;
-      if (container) {
-        const { left, right } = container.getBoundingClientRect();
-        const x = mouseXDuringDragRef.current;
-        if (x > right - 80) container.scrollLeft += 15;
-        else if (x < left + 80) container.scrollLeft -= 15;
-      }
-      dragScrollRafRef.current = requestAnimationFrame(tick);
-    };
-    dragScrollRafRef.current = requestAnimationFrame(tick);
-  }, []);
-
-  useEffect(() => {
-    const trackMouse = (e: DragEvent) => {
-      mouseXDuringDragRef.current = e.clientX;
-    };
-    document.addEventListener("dragover", trackMouse);
-    return () => document.removeEventListener("dragover", trackMouse);
-  }, []);
-
-  const handleKanbanDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
+  // La oportunidad viaja en active.data.current (ver useDraggable en
+  // FirematFunnelCard); la busqueda por id en el estado queda solo como
+  // respaldo.
+  const getOportunidadFromDragEvent = (
+    event: DragStartEvent | DragEndEvent
+  ): FirematFunnelOportunidad | null => {
+    const data = event.active.data.current as
+      | { oportunidad?: FirematFunnelOportunidad }
+      | undefined;
+    return (
+      data?.oportunidad ??
+      oportunidades.find((item) => String(item.id) === String(event.active.id)) ??
+      null
+    );
   };
 
-  const handleDragStart = (
-    event: React.DragEvent<HTMLElement>,
-    oportunidad: FirematFunnelOportunidad
-  ) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", oportunidad.id);
-    activeDragRef.current = oportunidad;
-    setActiveDragOpportunity(oportunidad);
-    startDragScroll();
+  const handleDndDragStart = (event: DragStartEvent) => {
+    if (!canEditFirematFunnel) return;
+    setActiveDragOpportunity(getOportunidadFromDragEvent(event));
   };
 
-  const handleDragEnd = () => {
-    stopDragScroll();
-    activeDragRef.current = null;
-    setActiveDragOpportunity(null);
-    setDropOverEtapa(null);
-  };
-
-  const handleColumnDragOver = (
-    event: React.DragEvent<HTMLDivElement>,
-    etapaDestino: FirematFunnelEtapa
-  ) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropOverEtapa(etapaDestino);
-  };
-
-  const handleColumnDragLeave = (etapaDestino: FirematFunnelEtapa) => {
-    setDropOverEtapa((current) => (current === etapaDestino ? null : current));
-  };
-
-  const handleDrop = (
-    event: React.DragEvent<HTMLDivElement>,
-    etapaDestino: FirematFunnelEtapa
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const oportunidad = activeDragRef.current;
-    activeDragRef.current = null;
-    setDropOverEtapa(null);
+  const handleDndDragEnd = (event: DragEndEvent) => {
+    const etapaDestino = event.over?.id as FirematFunnelEtapa | undefined;
+    const oportunidad = getOportunidadFromDragEvent(event);
     setActiveDragOpportunity(null);
 
-    if (!oportunidad || oportunidad.etapa === etapaDestino) return;
+    if (!canEditFirematFunnel || !oportunidad || !etapaDestino) return;
+    if (!ETAPAS_KANBAN.some((stage) => stage.value === etapaDestino)) return;
+    // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) y GANADA no se mueven.
+    if (CIERRE_BANNER[oportunidad.etapa] || oportunidad.etapa === "GANADA") return;
+    const etapaActual = oportunidad.etapa;
+    if (etapaActual === etapaDestino) return;
 
     void handleCambiarEtapa(oportunidad, etapaDestino);
+  };
+
+  const handleDndDragCancel = () => {
+    setActiveDragOpportunity(null);
   };
 
   const handleEliminar = async (record: FirematFunnelOportunidad) => {
@@ -1873,6 +2000,117 @@ const FirematFunnel: React.FC<{
     comentariosInternos: oportunidad.comentariosInternos ?? null,
     observacionesTecnicas: oportunidad.observacionesTecnicas ?? null,
   });
+
+  const handleAbrirCierreFiremat = (record: FirematFunnelOportunidad) => {
+    setCierreTipo("");
+    setCierreMotivoPerdida("");
+    setCierreMotivoPerdidaDetalle("");
+    setCierreMotivoPostergacion("");
+    setCierreMotivoPostergacionDetalle("");
+    setCierreFechaReactivacion(null);
+    setCierreMotivoDescarte("");
+    setCierreMotivoDescarteDetalle("");
+    setCierreObservacion(record.observaciones ?? "");
+    setCierreModalOpen(true);
+  };
+
+  const handleConfirmarCierreFiremat = async () => {
+    if (!selected) return;
+
+    if (!cierreTipo) {
+      void message.error("Selecciona el tipo de cierre");
+      return;
+    }
+
+    if (cierreTipo === "PERDIDA") {
+      if (!cierreMotivoPerdida) {
+        void message.error("Ingresa el motivo de pérdida");
+        return;
+      }
+      if (cierreMotivoPerdida === "Otro" && !cierreMotivoPerdidaDetalle.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return;
+      }
+    }
+
+    if (cierreTipo === "POSTERGADA") {
+      if (!cierreMotivoPostergacion || !cierreFechaReactivacion) {
+        void message.error("Ingresa motivo de postergación y fecha de reactivación");
+        return;
+      }
+      if (cierreMotivoPostergacion === "Otro" && !cierreMotivoPostergacionDetalle.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return;
+      }
+    }
+
+    if (cierreTipo === "DESCARTADO") {
+      if (!cierreMotivoDescarte) {
+        void message.error("Ingresa el motivo de descarte");
+        return;
+      }
+      if (cierreMotivoDescarte === "Otro" && !cierreMotivoDescarteDetalle.trim()) {
+        void message.error("Debe especificar el motivo.");
+        return;
+      }
+    }
+
+    const payload: FirematFunnelPayload = {
+      ...buildPayloadFromOportunidad(selected),
+      etapa: cierreTipo,
+      motivoPerdida:
+        cierreTipo === "PERDIDA"
+          ? normalizarMotivoSubmit(cierreMotivoPerdida, cierreMotivoPerdidaDetalle) || null
+          : selected.motivoPerdida ?? null,
+      motivoPostergacion:
+        cierreTipo === "POSTERGADA"
+          ? normalizarMotivoSubmit(cierreMotivoPostergacion, cierreMotivoPostergacionDetalle) || null
+          : selected.motivoPostergacion ?? null,
+      fechaReactivacion:
+        cierreTipo === "POSTERGADA"
+          ? cierreFechaReactivacion?.format("YYYY-MM-DD") ?? null
+          : selected.fechaReactivacion ?? null,
+      motivoDescarte:
+        cierreTipo === "DESCARTADO"
+          ? normalizarMotivoSubmit(cierreMotivoDescarte, cierreMotivoDescarteDetalle) || null
+          : selected.motivoDescarte ?? null,
+      observaciones: cierreObservacion.trim() || null,
+    };
+
+    setCierreSaving(true);
+    try {
+      const updated = await firematFunnelAPI.actualizar(selected.id, payload);
+      setSelected(updated);
+      setOportunidades((current) =>
+        current.map((item) => (item.id === selected.id ? { ...item, ...updated } : item))
+      );
+      setCierreModalOpen(false);
+      if (updated?.advertencias?.length) {
+        setAdvertenciaSuccessItems(updated.advertencias);
+        setAdvertenciaSuccessOpen(true);
+      } else {
+        void message.success("Oportunidad cerrada");
+      }
+    } catch (error) {
+      if (isBloqueoError(error)) {
+        openBloqueoModal(error.response.data);
+      } else if (is409(error)) {
+        setBloqueoBloqueos(["No se puede completar la operación. Verifica los campos requeridos."]);
+        setBloqueoAdvertencias([]);
+        setBloqueoModalOpen(true);
+      } else {
+        const e400 = error as { response?: { status?: number; data?: { error?: string; detalles?: string[] } } };
+        if (e400?.response?.status === 400 && e400?.response?.data?.error === "Motivo inválido") {
+          const detalles = e400.response.data?.detalles?.join(", ") ?? "";
+          void message.error(`Motivo inválido: ${detalles}`);
+        } else {
+          void message.error("No se pudo cerrar la oportunidad");
+        }
+      }
+    } finally {
+      setCierreSaving(false);
+    }
+  };
 
   const buildCotizacionPayload = (
     values: CotizacionFormValues
@@ -2020,25 +2258,46 @@ const FirematFunnel: React.FC<{
     }
   };
 
+
+  const getColumnaKanban = useCallback(
+    (item: FirematFunnelOportunidad): FirematFunnelEtapa =>
+      ETAPAS_CIERRE_SIN_COLUMNA.includes(item.etapa)
+        ? etapaComercialPorId[String(item.id)] ?? "PROSPECTO"
+        : item.etapa,
+    [etapaComercialPorId]
+  );
+
+  const visibleOportunidades = useMemo(() => {
+    if (!filterEstadoOportunidad) return oportunidades;
+
+    if (filterEstadoOportunidad === "activas") {
+      return oportunidades.filter((item) => !ETAPAS_CERRADAS.includes(item.etapa));
+    }
+
+    const etapaPorEstado: Record<string, FirematFunnelEtapa> = {
+      ganadas: "GANADA",
+      perdidas: "PERDIDA",
+      postergadas: "POSTERGADA",
+      descartadas: "DESCARTADO",
+    };
+    const etapaObjetivo = etapaPorEstado[filterEstadoOportunidad];
+    return oportunidades.filter((item) => item.etapa === etapaObjetivo);
+  }, [oportunidades, filterEstadoOportunidad]);
+
   const groupedByEtapa = useMemo(
     () =>
-      ETAPAS.map((stage) => {
-        const items = oportunidades.filter((item) => item.etapa === stage.value);
+      ETAPAS_KANBAN.map((stage) => {
+        const items = visibleOportunidades.filter(
+          (item) => getColumnaKanban(item) === stage.value
+        );
         return {
           ...stage,
           items,
           total: items.reduce((acc, item) => acc + Number(item.montoEstimado || 0), 0),
         };
       }),
-    [oportunidades]
+    [visibleOportunidades, getColumnaKanban]
   );
-
-  const hayFiltros =
-    q !== "" ||
-    etapa !== "" ||
-    responsable !== "" ||
-    tipoCliente !== "" ||
-    productoId !== undefined;
 
   const modalReadOnly = modalMode === "ver";
   const isFocusedStageEdit = modalMode === "editar" && Boolean(initialEditSection);
@@ -2391,7 +2650,14 @@ const FirematFunnel: React.FC<{
           <Input placeholder="Cargo o rol del contacto" />
         </Form.Item>
         <Form.Item name="responsable" label={<>Responsable comercial <span className="text-red-500">*</span></>}>
-          <Input placeholder="Responsable comercial" />
+          <Select
+            showSearch
+            allowClear
+            loading={usuariosComercialesFirematLoading}
+            placeholder="Selecciona un responsable"
+            filterOption={responsableFirematFilterOption}
+            options={withLegacyOption(responsableFirematOptions, form.getFieldValue("responsable"))}
+          />
         </Form.Item>
         <Form.Item name="telefono" label={<>Teléfono <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
           <Input placeholder="+56..." />
@@ -2431,7 +2697,14 @@ const FirematFunnel: React.FC<{
           <Input placeholder="Dirección, sector o ubicación" />
         </Form.Item>
         <Form.Item name="unidadNegocio" label={<>Unidad de negocio <span className="text-red-500">*</span></>}>
-          <Input placeholder="Firemat, Industrial, Construccion..." />
+          <Select
+            placeholder="Seleccionar unidad de negocio"
+            options={[
+              { value: "Beck", label: "Beck" },
+              { value: "Firemat", label: "Firemat" },
+              { value: "Mixto", label: "Mixto" },
+            ]}
+          />
         </Form.Item>
         <Form.Item name="nombreOportunidad" label={<>Nombre del proyecto u oportunidad <span className="text-red-500">*</span></>}>
           <Input placeholder="Nombre del proyecto o descripción de la oportunidad" />
@@ -2774,7 +3047,14 @@ const FirematFunnel: React.FC<{
         <InputNumber min={0} className="w-full" prefix="$" />
       </Form.Item>
       <Form.Item name="responsable" label="Responsable">
-        <Input placeholder="Responsable comercial" />
+        <Select
+          showSearch
+          allowClear
+          loading={usuariosComercialesFirematLoading}
+          placeholder="Selecciona un responsable"
+          filterOption={responsableFirematFilterOption}
+          options={withLegacyOption(responsableFirematOptions, form.getFieldValue("responsable"))}
+        />
       </Form.Item>
       <Form.Item
         name="documentoRespaldo"
@@ -3042,82 +3322,115 @@ const FirematFunnel: React.FC<{
 
       <section className="firemat-panel p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <Input
-            prefix={<SearchOutlined className="text-beck-muted" />}
-            placeholder="Buscar cliente o contacto"
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
+          <span className="text-xs font-medium text-slate-500">
+            Unidad de negocio:
+          </span>
+          <Select
+            size="small"
+            style={{ minWidth: 160 }}
+            value={filterUnidadNegocio}
+            onChange={(v) => setFilterUnidadNegocio(v ?? "Firemat")}
+            options={[
+              { value: "Beck", label: "Beck" },
+              { value: "Firemat", label: "Firemat" },
+              { value: "Mixto", label: "Mixto" },
+            ]}
+          />
+          <span className="text-xs font-medium text-slate-500">
+            Estado de oportunidad:
+          </span>
+          <Select
+            size="small"
+            style={{ minWidth: 170 }}
+            value={filterEstadoOportunidad || undefined}
+            onChange={(v) => setFilterEstadoOportunidad(v ?? "")}
             allowClear
-            style={{ width: 260 }}
+            placeholder="Todas"
+            options={[
+              { value: "activas", label: "Activas" },
+              { value: "ganadas", label: "Ganadas" },
+              { value: "perdidas", label: "Perdidas" },
+              { value: "postergadas", label: "Postergadas" },
+              { value: "descartadas", label: "Descartadas" },
+            ]}
           />
-          <Select
-            value={etapa}
-            onChange={(value) => setEtapa(value)}
-            options={[{ label: "Todas las etapas", value: "" }, ...ETAPAS]}
-            style={{ width: 210 }}
-          />
-          <Select
-            value={responsable}
-            onChange={(value) => setResponsable(value)}
-            options={[{ label: "Todos los responsables", value: "" }, ...responsableOptions]}
-            style={{ width: 220 }}
-          />
-          <Select
-            value={tipoCliente}
-            onChange={(value) => setTipoCliente(value)}
-            options={[{ label: "Todos los tipos", value: "" }, ...TIPO_CLIENTE_OPTIONS]}
-            style={{ width: 190 }}
-          />
-          <Select
-            value={productoId}
-            onChange={(value) => setProductoId(value)}
-            options={productoOptions}
-            placeholder="Producto"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: 240 }}
-          />
-          {hayFiltros && (
-            <Button icon={<ClearOutlined />} onClick={limpiar}>
-              Limpiar filtros
-            </Button>
-          )}
+          <span className="text-xs text-slate-400">
+            {filterUnidadNegocio === "Firemat" ? visibleOportunidades.length : beckVisibleCount}{" "}
+            oportunidad
+            {(filterUnidadNegocio === "Firemat" ? visibleOportunidades.length : beckVisibleCount) !== 1
+              ? "es"
+              : ""}
+          </span>
         </div>
       </section>
 
-      <section className="firemat-panel bg-white" style={{ overflow: "visible" }}>
-        <div
-          ref={kanbanScrollRef}
-          style={{ overflowX: "auto", overflowY: "visible" }}
-          onDragOver={handleKanbanDragOver}
-          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        >
-          {loading ? (
+      {filterUnidadNegocio !== "Firemat" ? (
+        // Beck/Mixto/Todas: se opera igual que en /beck/funnel (mismo
+        // componente, mismos endpoints, permisos, validaciones/bloqueos y
+        // drag&drop), embebido con su filtro fijado desde aqui. Ver
+        // FunnelPageProps.embedUnidadNegocio en src/pages/beck/Funnel.tsx.
+        <React.Suspense
+          fallback={
             <div className="flex justify-center py-16">
               <Spin size="large" />
             </div>
-          ) : (
-            <div className="flex w-max flex-nowrap gap-4 p-4 pb-5">
-              {groupedByEtapa.map((column) => (
-                <FirematFunnelColumn
-                  key={column.value}
-                  column={column}
-                  productoMap={productoMap}
-                  draggedOpportunityId={activeDragOpportunity?.id}
-                  dropOverEtapa={dropOverEtapa}
-                  onCardDragStart={handleDragStart}
-                  onCardDragEnd={handleDragEnd}
-                  onColumnDragOver={handleColumnDragOver}
-                  onColumnDragLeave={handleColumnDragLeave}
-                  onColumnDrop={handleDrop}
-                  onViewDetail={(item) => openOportunidad(item, "ver")}
-                />
-              ))}
+          }
+        >
+          <FunnelBeck
+            themeMode="light"
+            embedUnidadNegocio={filterUnidadNegocio}
+            embedEstadoCierre={filterEstadoOportunidad}
+            onVisibleCountChange={setBeckVisibleCount}
+          />
+        </React.Suspense>
+      ) : (
+        <section className="firemat-panel bg-white" style={{ overflow: "visible" }}>
+          <DndContext
+            sensors={dndSensors}
+            onDragStart={handleDndDragStart}
+            onDragEnd={handleDndDragEnd}
+            onDragCancel={handleDndDragCancel}
+          >
+            <div
+              ref={kanbanScrollRef}
+              style={{ overflowX: "auto", overflowY: "visible" }}
+            >
+              {loading ? (
+                <div className="flex justify-center py-16">
+                  <Spin size="large" />
+                </div>
+              ) : (
+                <div className="flex w-max flex-nowrap gap-4 p-4 pb-5">
+                  {groupedByEtapa.map((column) => (
+                    <FirematFunnelColumn
+                      key={column.value}
+                      column={column}
+                      productoMap={productoMap}
+                      dragDisabled={!canEditFirematFunnel}
+                      onViewDetail={(item) => openOportunidad(item, "ver")}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </section>
+            <DragOverlay zIndex={9999}>
+              {activeDragOpportunity ? (
+                <div className="w-[200px] rounded-lg border border-orange-400 bg-white p-2 text-xs shadow-2xl">
+                  <h4 className="truncate font-semibold leading-tight text-beck-ink">
+                    {activeDragOpportunity.cliente}
+                  </h4>
+                  <p className="mt-1 font-medium tabular-nums text-firemat-primary">
+                    {formatCLP(activeDragOpportunity.montoEstimado)}
+                  </p>
+                  <p className="mt-0.5 text-beck-muted">
+                    Próxima: {formatDate(activeDragOpportunity.fechaProximaAccion)}
+                  </p>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </section>
+      )}
         </>
       )}
 
@@ -3339,6 +3652,12 @@ const FirematFunnel: React.FC<{
               >
                 {getStageActionLabel(selected.etapa)}
               </Button>
+              {selected.etapa !== "GANADA" &&
+                !ETAPAS_CIERRE_SIN_COLUMNA.includes(selected.etapa) && (
+                  <Button danger onClick={() => handleAbrirCierreFiremat(selected)}>
+                    Cerrar oportunidad
+                  </Button>
+                )}
               <Button
                 icon={<EyeOutlined />}
                 onClick={() => {
@@ -3554,7 +3873,14 @@ const FirematFunnel: React.FC<{
               <Input placeholder="Cargo o rol del contacto" />
             </Form.Item>
             <Form.Item name="responsable" label={<>Responsable comercial <span className="text-red-500">*</span></>}>
-              <Input placeholder="Responsable comercial" />
+              <Select
+                showSearch
+                allowClear
+                loading={usuariosComercialesFirematLoading}
+                placeholder="Selecciona un responsable"
+                filterOption={responsableFirematFilterOption}
+                options={withLegacyOption(responsableFirematOptions, form.getFieldValue("responsable"))}
+              />
             </Form.Item>
             <Form.Item name="telefono" label={<>Teléfono <span className="text-red-500">*</span></>} extra="Debe existir teléfono o correo">
               <Input placeholder="+56..." />
@@ -3594,7 +3920,14 @@ const FirematFunnel: React.FC<{
               <Input placeholder="Dirección, sector o ubicación" />
             </Form.Item>
             <Form.Item name="unidadNegocio" label={<>Unidad de negocio <span className="text-red-500">*</span></>}>
-              <Input placeholder="Firemat, Industrial, Construcción..." />
+              <Select
+                placeholder="Seleccionar unidad de negocio"
+                options={[
+                  { value: "Beck", label: "Beck" },
+                  { value: "Firemat", label: "Firemat" },
+                  { value: "Mixto", label: "Mixto" },
+                ]}
+              />
             </Form.Item>
             <Form.Item name="nombreOportunidad" label={<>Nombre del proyecto u oportunidad <span className="text-red-500">*</span></>}>
               <Input placeholder="Nombre del proyecto o descripción de la oportunidad" />
@@ -4018,6 +4351,177 @@ const FirematFunnel: React.FC<{
           )}
         </Form>
         )}
+      </Modal>
+
+      <Modal
+        open={cierreModalOpen}
+        onCancel={() => setCierreModalOpen(false)}
+        footer={null}
+        width="min(480px, 95vw)"
+        title="Cerrar oportunidad"
+        destroyOnClose
+      >
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+              Tipo de cierre <span className="text-red-500">*</span>
+            </label>
+            <Select
+              className="w-full"
+              placeholder="Selecciona el tipo de cierre"
+              value={cierreTipo || undefined}
+              onChange={(value) => {
+                setCierreTipo(value);
+                setCierreMotivoPerdida("");
+                setCierreMotivoPerdidaDetalle("");
+                setCierreMotivoPostergacion("");
+                setCierreMotivoPostergacionDetalle("");
+                setCierreFechaReactivacion(null);
+                setCierreMotivoDescarte("");
+                setCierreMotivoDescarteDetalle("");
+              }}
+              options={[
+                { value: "PERDIDA", label: "Perdida" },
+                { value: "POSTERGADA", label: "Postergada" },
+                { value: "DESCARTADO", label: "Descartada" },
+              ]}
+            />
+          </div>
+
+          {cierreTipo === "PERDIDA" && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Motivo de pérdida <span className="text-red-500">*</span>
+                </label>
+                <Select
+                  className="w-full"
+                  placeholder="Selecciona un motivo"
+                  value={cierreMotivoPerdida || undefined}
+                  onChange={(value) => {
+                    setCierreMotivoPerdida(value ?? "");
+                    setCierreMotivoPerdidaDetalle("");
+                  }}
+                  options={MOTIVOS_PERDIDA}
+                />
+              </div>
+              {cierreMotivoPerdida === "Otro" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Especifica el motivo <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={cierreMotivoPerdidaDetalle}
+                    onChange={(e) => setCierreMotivoPerdidaDetalle(e.target.value)}
+                    placeholder="Describe el motivo..."
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {cierreTipo === "POSTERGADA" && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Motivo de postergación <span className="text-red-500">*</span>
+                </label>
+                <Select
+                  className="w-full"
+                  placeholder="Selecciona un motivo"
+                  value={cierreMotivoPostergacion || undefined}
+                  onChange={(value) => {
+                    setCierreMotivoPostergacion(value ?? "");
+                    setCierreMotivoPostergacionDetalle("");
+                  }}
+                  options={MOTIVOS_POSTERGACION}
+                />
+              </div>
+              {cierreMotivoPostergacion === "Otro" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Especifica el motivo <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={cierreMotivoPostergacionDetalle}
+                    onChange={(e) => setCierreMotivoPostergacionDetalle(e.target.value)}
+                    placeholder="Describe el motivo..."
+                  />
+                </div>
+              )}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Fecha de reactivación <span className="text-red-500">*</span>
+                </label>
+                <DatePicker
+                  className="w-full"
+                  format="DD-MM-YYYY"
+                  value={cierreFechaReactivacion}
+                  onChange={(value) => setCierreFechaReactivacion(value)}
+                />
+              </div>
+            </>
+          )}
+
+          {cierreTipo === "DESCARTADO" && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                  Motivo de descarte <span className="text-red-500">*</span>
+                </label>
+                <Select
+                  className="w-full"
+                  placeholder="Selecciona un motivo"
+                  value={cierreMotivoDescarte || undefined}
+                  onChange={(value) => {
+                    setCierreMotivoDescarte(value ?? "");
+                    setCierreMotivoDescarteDetalle("");
+                  }}
+                  options={MOTIVOS_DESCARTE}
+                />
+              </div>
+              {cierreMotivoDescarte === "Otro" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Especifica el motivo <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={cierreMotivoDescarteDetalle}
+                    onChange={(e) => setCierreMotivoDescarteDetalle(e.target.value)}
+                    placeholder="Describe el motivo..."
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {cierreTipo && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                Observación
+              </label>
+              <Input.TextArea
+                rows={3}
+                placeholder="Observaciones adicionales..."
+                value={cierreObservacion}
+                onChange={(e) => setCierreObservacion(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setCierreModalOpen(false)}>Cancelar</Button>
+            <Button
+              type="primary"
+              className="firemat-action-button"
+              loading={cierreSaving}
+              disabled={!cierreTipo}
+              onClick={() => void handleConfirmarCierreFiremat()}
+            >
+              Confirmar cierre
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Modal de detalle completo */}

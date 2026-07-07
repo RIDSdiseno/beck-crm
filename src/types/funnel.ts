@@ -1,9 +1,12 @@
 import type {
   ClienteBeck,
   ContactoClienteBeck,
+  FirematFunnelEtapa,
   FunnelBeckArchivo,
   SolicitudOficinaTecnica,
 } from "../services/api";
+
+export type { FirematFunnelEtapa };
 
 export type { ClienteBeck, ContactoClienteBeck };
 
@@ -26,7 +29,10 @@ export type FunnelStage =
   | "documentacion"
   | "cerrada";
 
-export type FunnelEstadoCierre = "ganada" | "perdida" | "postergada";
+// "descartada" es exclusivo de Firemat (Beck nunca lo genera); se agrega
+// para que las oportunidades Firemat descartadas se puedan mostrar en el
+// tablero unificado con su propio banner, igual que en /firemat/funnel.
+export type FunnelEstadoCierre = "ganada" | "perdida" | "postergada" | "descartada";
 
 export type FunnelDeal = {
   id: string;
@@ -119,6 +125,9 @@ export type FunnelDeal = {
   observacionCierre?: string | null;
   fechaReactivacion?: string;
   etapaTablero?: FunnelStage | null;
+  // Etapa real Firemat (sin traducir a columnas Beck), solo presente para
+  // oportunidades con origen "FIREMAT" provenientes de /funnel-unificado.
+  etapaFiremat?: FirematFunnelEtapa;
   documentoRespaldo?: string;
   flujoPosterior?: string;
   montoFinalGanado?: number;

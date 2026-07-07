@@ -48,6 +48,7 @@
     type LineaCotizacion,
   } from "../../components/CotizacionEditorModal";
   import { usePermisos } from "../../hooks/usePermisos";
+  import { useAuth } from "../../context/useAuth";
   import FirematFunnel from "../firemat/Funnel";
   import {
     clientesBeckAPI,
@@ -88,6 +89,13 @@
   type FunnelPageProps = {
     themeMode: ThemeMode;
     alertaBell?: React.ReactNode;
+    // Permite embeber solo el tablero Kanban (sin encabezado ni pestanas
+    // propias) dentro de otra pagina, ej. /firemat/funnel cuando su filtro
+    // "Unidad de negocio" no es Firemat. El filtro y el estado de cierre
+    // quedan controlados por quien embebe; ver uso en src/pages/firemat/Funnel.tsx.
+    embedUnidadNegocio?: "Beck" | "Firemat" | "Mixto" | "Todas";
+    embedEstadoCierre?: string;
+    onVisibleCountChange?: (count: number) => void;
   };
 
   type FunnelDraft = {
@@ -200,6 +208,7 @@
   type FunnelFieldErrors = Partial<Record<keyof FunnelDraft, string>>;
 
   type FunnelEditSection =
+    | "prospecto"
     | "visita"
     | "desarrollo"
     | "negociacion"
@@ -324,6 +333,42 @@
     negociacion: "En Negociacion",
     documentacion: "Documentación de Venta",
     cerrada: "Cerrada",
+  };
+
+  // Etiquetas del tablero comun usado unicamente cuando Unidad de negocio =
+  // "Todas": columnas equivalentes donde conviven oportunidades Beck y
+  // Firemat (ver mapeo en resolverColumnaComun / etapaBackendMap).
+  const etapasLabelComun: Record<FunnelStage, string> = {
+    prospecto: "Prospección",
+    visita: "Primer contacto / Levantamiento",
+    cotizacion: "Cotización en desarrollo",
+    enviada: "Cotización enviada",
+    negociacion: "Negociación",
+    documentacion: "Documentación / Firmada",
+    cerrada: "Ganada",
+  };
+
+  // Columnas reales del Funnel Firemat (mismas etapas y orden que /firemat/funnel),
+  // usadas en el tablero unificado solo cuando Unidad de negocio = Firemat.
+  const FIREMAT_COLUMNS: { key: FirematFunnelEtapa; label: string }[] = [
+    { key: "PROSPECTO", label: "Prospecto" },
+    { key: "PRIMER_CONTACTO", label: "Primer contacto" },
+    { key: "DESARROLLO_COTIZACION", label: "Desarrollo cotización" },
+    { key: "COTIZACION_ENVIADA", label: "Cotización enviada" },
+    { key: "ORDEN_CONFIRMADA", label: "Firmada" },
+    { key: "GANADA", label: "Ganada" },
+  ];
+
+  // Traduce la columna comun destino (usada solo en modo "Todas") a la etapa
+  // real Firemat al soltar una tarjeta. "negociacion" no tiene equivalente
+  // Firemat (ver mensaje de advertencia en handleDragEnd).
+  const ETAPA_COMUN_A_FIREMAT: Partial<Record<string, FirematFunnelEtapa>> = {
+    prospecto: "PROSPECTO",
+    visita: "PRIMER_CONTACTO",
+    cotizacion: "DESARROLLO_COTIZACION",
+    enviada: "COTIZACION_ENVIADA",
+    documentacion: "ORDEN_CONFIRMADA",
+    cerrada_ganada: "GANADA",
   };
 
   const leadSourceOptions: FunnelLeadSource[] = [
@@ -1060,17 +1105,24 @@
     values.map((item) => item.trim()).filter(Boolean).join(", ");
 
 
-  const UNIDAD_NEGOCIO_BADGE: Record<string, string> = {
-    Beck: "border-blue-200 bg-blue-50 text-blue-700",
-    Firemat: "border-orange-200 bg-orange-50 text-orange-700",
-    Mixto: "border-purple-200 bg-purple-50 text-purple-700",
+  const UNIDAD_NEGOCIO_STRIP: Record<string, string> = {
+    Beck: "bg-[#d6b02a] text-black",
+    Firemat: "bg-red-600 text-white",
+    Mixto: "bg-purple-600 text-white",
   };
 
-  const getUnidadNegocioBadgeClass = (unidad?: string | null): string =>
-    UNIDAD_NEGOCIO_BADGE[unidad ?? ""] ?? "border-gray-200 bg-gray-100 text-gray-500";
+  const getUnidadNegocioVisualLabel = (deal: FunnelDeal): string => {
+    if (deal.unidadNegocio === "Mixto") return "MIXTO";
+    if (deal.origen === "FIREMAT" || deal.unidadNegocio === "Firemat") {
+      return "FIREMAT";
+    }
+    return "BECK";
+  };
 
-  const getUnidadNegocioLabel = (unidad?: string | null): string =>
-    unidad || "Sin unidad";
+  const getUnidadNegocioStripClass = (label: string): string =>
+    UNIDAD_NEGOCIO_STRIP[
+      label === "FIREMAT" ? "Firemat" : label === "MIXTO" ? "Mixto" : "Beck"
+    ];
 
   const FunnelCard: React.FC<FunnelCardProps> = ({
     deal,
@@ -1083,6 +1135,7 @@
     void onStageChange;
     void onCreateCotizacion;
     const isFiremat = deal.origen === "FIREMAT";
+    const unidadVisualLabel = getUnidadNegocioVisualLabel(deal);
     const draggingEnabled = isFiremat ? canOperateFiremat : canEditFunnel;
     const { attributes, listeners, setNodeRef, transform, isDragging } =
       useDraggable({
@@ -1100,6 +1153,8 @@
             ? "border-red-400 hover:border-red-500"
             : deal.estadoCierre === "postergada"
             ? "border-orange-400 hover:border-orange-500"
+            : deal.estadoCierre === "descartada"
+            ? "border-slate-400 hover:border-slate-500"
             : "border-beck-border-light hover:border-yellow-400"
         } ${isDragging ? "opacity-30" : ""}`}
         style={{
@@ -1109,6 +1164,11 @@
         }}
         onClick={() => void onViewDetail(deal)}
       >
+        <div
+          className={`flex h-[18px] items-center justify-center text-[8px] font-semibold uppercase tracking-[0.08em] select-none ${getUnidadNegocioStripClass(unidadVisualLabel)}`}
+        >
+          {unidadVisualLabel}
+        </div>
         {deal.estadoCierre === "perdida" && (
           <div className="bg-red-600 px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-widest text-white select-none">
             ━━━ PERDIDA ━━━
@@ -1119,23 +1179,15 @@
             ━━━ POSTERGADA ━━━
           </div>
         )}
-        <div className="p-2">
+        {deal.estadoCierre === "descartada" && (
+          <div className="bg-slate-500 px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-widest text-white select-none">
+            ━━━ DESCARTADA ━━━
+          </div>
+        )}
+        <div className="px-2 pb-2 pt-3">
         <h4 className="font-semibold leading-tight text-beck-ink">
           {deal.nombreProyecto}
         </h4>
-
-        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          {isFiremat && (
-            <span className="inline-flex rounded-full border border-orange-300 bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-800">
-              Firemat
-            </span>
-          )}
-          <span
-            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${getUnidadNegocioBadgeClass(deal.unidadNegocio)}`}
-          >
-            {getUnidadNegocioLabel(deal.unidadNegocio)}
-          </span>
-        </div>
 
         {deal.clienteBeck && (
           <p
@@ -1949,6 +2001,9 @@
     const isFocusedStageEdit = mode === "edit" && Boolean(initialEditSection);
     const showFullForm = !isFocusedStageEdit;
     const showAllStageSections = mode === "edit" && !isFocusedStageEdit;
+    const showProspectoSection =
+      showFullForm ||
+      initialEditSection === "prospecto";
     const showVisitaSection =
       showAllStageSections ||
       initialEditSection === "visita" ||
@@ -2037,6 +2092,8 @@
               </div>
             )}
 
+            {showProspectoSection && (
+            <>
             {showFullForm && (
             <>
             {/* CLIENTE ASOCIADO */}
@@ -2385,9 +2442,11 @@
                 {renderTextarea("observaciones", "Observaciones generales", "Comentarios u observaciones sobre la oportunidad")}
               </div>
             </div>
+            </>
+            )}
 
             {/* PROSPECTO */}
-            <div className="border-t border-beck-border-light pt-4">
+            <div id="funnel-section-prospecto" className="border-t border-beck-border-light pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
                 Prospecto
               </p>
@@ -2510,6 +2569,8 @@
               </div>
             </div>
 
+            {showFullForm && (
+            <>
             {/* CAMPOS ESPECÍFICOS BECK */}
             <div className="border-t border-beck-border-light pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
@@ -2811,6 +2872,8 @@
             </div>
             </>
             )}
+            </>
+            )}
 
             {showVisitaSection && (
               <div id="funnel-section-visita" className="border-t border-beck-border-light pt-4">
@@ -3082,29 +3145,141 @@
     beckBloqueo: boolean;
   };
 
+  type ValidationMessageGroup = {
+    etapa: string;
+    messages: string[];
+  };
+
+  const VALIDATION_DETAIL_INLINE_LIMIT = 5;
+
   const isBeckBloqueoException = (e: unknown): e is BeckBloqueoException =>
     e instanceof Error && (e as BeckBloqueoException).beckBloqueo === true;
+
+  // El backend puede nombrar estas listas de forma distinta segun el endpoint o
+  // version de la regla (bloqueos/bloqueantes, advertencias/advertenciasCamposCriticos).
+  // Se combinan todas las variantes conocidas para no perder advertencias por un
+  // nombre de campo distinto al esperado.
+  const BLOQUEO_KEYS = ["bloqueos", "bloqueantes"];
+  const ADVERTENCIA_KEYS = ["advertencias", "advertenciasCamposCriticos"];
+
+  const pickStringArray = (
+    source: Record<string, unknown> | null | undefined,
+    keys: string[]
+  ): string[] => {
+    if (!source) return [];
+    const combined: string[] = [];
+    for (const key of keys) {
+      const value = source[key];
+      if (Array.isArray(value)) {
+        combined.push(...(value.filter((v): v is string => typeof v === "string")));
+      }
+    }
+    return combined;
+  };
 
   const isBeckBloqueoAxiosError = (err: unknown): boolean => {
     const e = err as { response?: { status?: number; data?: Record<string, unknown> } };
     return (
       e?.response?.status === 409 &&
-      Array.isArray(e?.response?.data?.bloqueos) &&
+      pickStringArray(e?.response?.data, BLOQUEO_KEYS).length > 0 &&
       e?.response?.data?.puedeAvanzar === false
     );
   };
 
   const getBeckBloqueosFromAxiosError = (err: unknown): string[] => {
     const e = err as { response?: { data?: Record<string, unknown> } };
-    return (e?.response?.data?.bloqueos as string[]) ?? [];
+    return pickStringArray(e?.response?.data, BLOQUEO_KEYS);
   };
 
   const getBeckAdvertenciasFromBloqueoAxiosError = (err: unknown): string[] => {
     const e = err as { response?: { data?: Record<string, unknown> } };
-    return (e?.response?.data?.advertencias as string[]) ?? [];
+    return pickStringArray(e?.response?.data, ADVERTENCIA_KEYS);
   };
 
-  const FunnelPage: React.FC<FunnelPageProps> = ({ themeMode, alertaBell }) => {
+  const formatAdvertenciaMessage = (message: string): string => {
+    const text = message.trim();
+    const campoMatch = text.match(/^El campo\s+(.+?)\s+es obligatori[oa](.*)$/i);
+
+    if (campoMatch) {
+      return `Falta completar ${campoMatch[1]}${campoMatch[2]}`.trim();
+    }
+
+    const requiredMatch = text.match(/^(El|La)\s+(.+?)\s+es obligatori[oa](.*)$/i);
+
+    if (requiredMatch) {
+      return `Falta completar ${requiredMatch[1].toLowerCase()} ${requiredMatch[2]}${requiredMatch[3]}`.trim();
+    }
+
+    return text
+      .replace(/\bobligatorios\b/gi, "pendientes")
+      .replace(/\bobligatorias\b/gi, "pendientes")
+      .replace(/\bobligatorio\b/gi, "pendiente")
+      .replace(/\bobligatoria\b/gi, "pendiente");
+  };
+
+  const splitValidationMessageStage = (
+    message: string
+  ): { etapa: string; message: string; hasStagePrefix: boolean } => {
+    const trimmed = message.trim();
+    const match = trimmed.match(/^\[([^\]]+)\]\s*(.+)$/);
+
+    if (!match) {
+      return { etapa: "General", message: trimmed, hasStagePrefix: false };
+    }
+
+    return {
+      etapa: match[1].trim() || "General",
+      message: match[2].trim(),
+      hasStagePrefix: true,
+    };
+  };
+
+  const groupValidationMessages = (
+    messages: string[],
+    formatter: (message: string) => string = (message) => message
+  ): ValidationMessageGroup[] => {
+    const groups = new Map<string, string[]>();
+
+    messages.forEach((message) => {
+      const parsed = splitValidationMessageStage(message);
+      const formattedMessage = formatter(parsed.message);
+      const current = groups.get(parsed.etapa) ?? [];
+      current.push(formattedMessage);
+      groups.set(parsed.etapa, current);
+    });
+
+    return Array.from(groups.entries()).map(([etapa, groupedMessages]) => ({
+      etapa,
+      messages: groupedMessages,
+    }));
+  };
+
+  const groupPrefixedValidationMessages = (
+    messages: string[]
+  ): ValidationMessageGroup[] => {
+    const groups = new Map<string, string[]>();
+
+    messages.forEach((message) => {
+      const parsed = splitValidationMessageStage(message);
+      if (!parsed.hasStagePrefix) return;
+      const current = groups.get(parsed.etapa) ?? [];
+      current.push(parsed.message);
+      groups.set(parsed.etapa, current);
+    });
+
+    return Array.from(groups.entries()).map(([etapa, groupedMessages]) => ({
+      etapa,
+      messages: groupedMessages,
+    }));
+  };
+
+  const FunnelPage: React.FC<FunnelPageProps> = ({
+    themeMode,
+    alertaBell,
+    embedUnidadNegocio,
+    embedEstadoCierre,
+    onVisibleCountChange,
+  }) => {
     void themeMode;
 
     const navigate = useNavigate();
@@ -3112,8 +3287,16 @@
     const pendingOportunidadId = useRef<string | null>(null);
     const lastOpenedAlertTs = useRef<number | null>(null);
     const { canEdit, canView } = usePermisos();
-    const canEditFunnel = canEdit("beck_funnel");
-    const canManageGanancia = canEdit("beck_funnel");
+    const { user } = useAuth();
+    const isAdminGlobal = user?.rol === "Administrador";
+    const canCambiarEmpresaBeckOperar =
+      canView("beck_cambiar_empresa") || canEdit("beck_cambiar_empresa");
+    // Puede operar (editar, mover, cotizar) el tablero Beck si es
+    // administrador, si puede cambiar de plataforma/empresa, o si tiene
+    // permiso efectivo de edicion sobre beck_funnel.
+    const canEditFunnel =
+      isAdminGlobal || canCambiarEmpresaBeckOperar || canEdit("beck_funnel");
+    const canManageGanancia = canEditFunnel;
     const canViewFirematFunnel = canView("firemat_funnel") || canEdit("firemat_funnel");
     const canEditFirematFunnel = canEdit("firemat_funnel");
     const sensors = useSensors(
@@ -3127,7 +3310,10 @@
     const [deals, setDeals] = useState<FunnelDeal[]>([]);
     const [activeDragDeal, setActiveDragDeal] = useState<FunnelDeal | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<"kanban" | "calendar" | "dashboard">("kanban");
+    const [viewModeInterno, setViewMode] = useState<"kanban" | "calendar" | "dashboard">("kanban");
+    // Embebido desde /firemat/funnel: solo el tablero Kanban, sin pestanas
+    // propias (Firemat ya tiene las suyas).
+    const viewMode = embedUnidadNegocio ? "kanban" : viewModeInterno;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [funnelModalMode, setFunnelModalMode] = useState<"create" | "edit">("create");
     const [editingDealId, setEditingDealId] = useState<string | null>(null);
@@ -3141,8 +3327,11 @@
     const [showValidationSummary, setShowValidationSummary] = useState(false);
     const [cierreModalOpen, setCierreModalOpen] = useState(false);
     const [dealEnCierre, setDealEnCierre] = useState<string | null>(null);
+    // Cierre manual de oportunidades Beck (CierreDeProyecto): solo admite
+    // ganada/perdida/postergada, "descartada" es exclusivo de Firemat y nunca
+    // se asigna desde este flujo.
     const [estadoCierreModal, setEstadoCierreModal] = useState<
-      FunnelEstadoCierre | ""
+      "ganada" | "perdida" | "postergada" | ""
     >("");
     const [motivoPerdidaModal, setMotivoPerdidaModal] = useState("");
     const [etapaPerdidaModal, setEtapaPerdidaModal] = useState("");
@@ -3188,7 +3377,7 @@
     >({});
     const [updatingStage, setUpdatingStage] = useState(false);
     const [cierreEstadoOpen, setCierreEstadoOpen] = useState(false);
-    const [cierreEstadoStep, setCierreEstadoStep] = useState<"select" | "perdida" | "postergada">("select");
+    const [cierreEstadoStep, setCierreEstadoStep] = useState<"" | "perdida" | "postergada">("");
     const [cierreEstadoSelectMotivo, setCierreEstadoSelectMotivo] = useState("");
     const [cierreEstadoDetalleOtro, setCierreEstadoDetalleOtro] = useState("");
     const [cierreEstadoObservacion, setCierreEstadoObservacion] = useState("");
@@ -3208,12 +3397,19 @@
     const [jefeObraAsignado, setJefeObraAsignado] = useState("");
     const [asignandoJefeObra, setAsignandoJefeObra] = useState(false);
     const [exportandoExcel, setExportandoExcel] = useState(false);
-    const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<string>("Beck");
-    const [filterEstadoCierre, setFilterEstadoCierre] = useState<string>("");
+    const [filterUnidadNegocioInterno, setFilterUnidadNegocio] = useState<string>("Beck");
+    const [filterEstadoCierreInterno, setFilterEstadoCierre] = useState<string>("");
+    // Embebido desde /firemat/funnel: el filtro lo controla quien embebe
+    // (ver FunnelPageProps).
+    const filterUnidadNegocio = embedUnidadNegocio ?? filterUnidadNegocioInterno;
+    const filterEstadoCierre = embedEstadoCierre ?? filterEstadoCierreInterno;
 
-    // Operar (editar/mover) tarjetas Firemat solo procede con el filtro exacto
-    // "Firemat" y permiso de edicion firemat_funnel; en "Todas" queda readonly.
-    const canOperateFiremat = filterUnidadNegocio === "Firemat" && canEditFirematFunnel;
+    // Operar (editar/mover) tarjetas Firemat procede con el filtro "Firemat"
+    // (columnas reales Firemat) o "Todas" (columnas comunes, traducidas a la
+    // etapa real Firemat al soltar), siempre con permiso firemat_funnel.
+    const canOperateFiremat =
+      (filterUnidadNegocio === "Firemat" || filterUnidadNegocio === "Todas") &&
+      canEditFirematFunnel;
 
     const [firematEmbedId, setFirematEmbedId] = useState<string | null>(null);
 
@@ -3231,21 +3427,37 @@
 
       if (filterEstadoCierre === "activas") {
         result = result.filter(
-          (d) => !d.estadoCierre || (d.estadoCierre !== "perdida" && d.estadoCierre !== "postergada")
+          (d) =>
+            !d.estadoCierre ||
+            (d.estadoCierre !== "ganada" &&
+              d.estadoCierre !== "perdida" &&
+              d.estadoCierre !== "postergada" &&
+              d.estadoCierre !== "descartada")
         );
+      } else if (filterEstadoCierre === "ganadas") {
+        result = result.filter((d) => d.estadoCierre === "ganada");
       } else if (filterEstadoCierre === "perdidas") {
         result = result.filter((d) => d.estadoCierre === "perdida");
       } else if (filterEstadoCierre === "postergadas") {
         result = result.filter((d) => d.estadoCierre === "postergada");
+      } else if (filterEstadoCierre === "descartadas") {
+        // "descartada" es exclusivo de Firemat (Beck nunca lo genera); ahora
+        // que el unificado lo trae, se filtra igual que los demas estados.
+        result = result.filter((d) => d.estadoCierre === "descartada");
       }
 
       return result;
     }, [deals, filterUnidadNegocio, filterEstadoCierre]);
 
+    useEffect(() => {
+      onVisibleCountChange?.(visibleDeals.length);
+    }, [visibleDeals, onVisibleCountChange]);
+
     // Modal bloqueante (nuevo formato 409 con bloqueos + puedeAvanzar: false)
     const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
     const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
     const [bloqueoAdvertencias, setBloqueoAdvertencias] = useState<string[]>([]);
+    const [bloqueoDetalleVisible, setBloqueoDetalleVisible] = useState(false);
     // Modal advertencias en guardado exitoso (200 con advertencias)
     const [advertenciasGuardadoOpen, setAdvertenciasGuardadoOpen] = useState(false);
     const [advertenciasGuardado, setAdvertenciasGuardado] = useState<string[]>([]);
@@ -3264,6 +3476,14 @@
     } | null>(null);
 
     void ufFecha;
+
+    useEffect(() => {
+      if (!bloqueoModalOpen) return;
+      setBloqueoDetalleVisible(
+        bloqueoBloqueos.length + bloqueoAdvertencias.length <=
+          VALIDATION_DETAIL_INLINE_LIMIT
+      );
+    }, [bloqueoModalOpen, bloqueoBloqueos.length, bloqueoAdvertencias.length]);
 
     const parsedDraftValue = draft.valorEstimado.trim()
       ? Number(draft.valorEstimado)
@@ -3379,18 +3599,6 @@
       "Cliente recurrente": "cliente_recurrente",
       Prospeccion: "prospeccion",
       Otro: "otro",
-    };
-
-    // Mismo mapeo que usa el backend (funnelUnificado.service.ts) para calcular
-    // etapaTablero a partir de la etapa real Firemat. Se invierte aqui para saber
-    // que etapa real corresponde a la columna del tablero Beck sobre la que se
-    // suelta una tarjeta Firemat. "negociacion" no tiene equivalente Firemat.
-    const FIREMAT_TABLERO_TO_ETAPA: Partial<Record<FunnelStage, FirematFunnelEtapa>> = {
-      prospecto: "PROSPECTO",
-      visita: "PRIMER_CONTACTO",
-      cotizacion: "DESARROLLO_COTIZACION",
-      enviada: "COTIZACION_ENVIADA",
-      documentacion: "ORDEN_CONFIRMADA",
     };
 
     const fuenteLeadBackendToFrontendMap: Record<string, FunnelLeadSource> = {
@@ -3611,6 +3819,20 @@
     const isFunnelStageValue = (value: string): value is FunnelStage =>
       (etapas as string[]).includes(value);
 
+    const FIREMAT_ETAPAS_VALIDAS: FirematFunnelEtapa[] = [
+      "PROSPECTO",
+      "PRIMER_CONTACTO",
+      "DESARROLLO_COTIZACION",
+      "COTIZACION_ENVIADA",
+      "ORDEN_CONFIRMADA",
+      "GANADA",
+      "PERDIDA",
+      "POSTERGADA",
+      "DESCARTADO",
+    ];
+    const isFirematEtapaValue = (value: string): value is FirematFunnelEtapa =>
+      (FIREMAT_ETAPAS_VALIDAS as string[]).includes(value);
+
     // Mapea un item reducido de /funnel-unificado (usado para Firemat, y como
     // respaldo de Beck si el registro completo no aparece en funnelBeckAPI.listar()).
     const mapUnificadoItemToDeal = (
@@ -3620,22 +3842,51 @@
       const etapaRaw = toText(item.etapa, "");
       const etapaTableroRaw = toText(item.etapaTablero, "");
 
+      // etapaTableroRaw viene desde el backend en formato "largo" (p.ej.
+      // "prospecto_identificado"), tanto para Beck como para Firemat (ver
+      // funnelUnificado.service.ts -> FIREMAT_ETAPA_A_TABLERO_BECK). Hay que
+      // traducirlo con etapaBackendMap; compararlo contra `etapas` (formato
+      // corto) nunca matcheaba y dejaba etapaTablero indefinido.
+      const etapaTableroTraducida: FunnelStage | undefined =
+        etapaBackendMap[etapaTableroRaw] ??
+        (isFunnelStageValue(etapaTableroRaw) ? etapaTableroRaw : undefined);
+
       const etapa: FunnelStage = isFunnelStageValue(etapaRaw)
         ? etapaRaw
-        : isFunnelStageValue(etapaTableroRaw)
-          ? etapaTableroRaw
-          : "prospecto";
-      const etapaTablero: FunnelStage | undefined = isFunnelStageValue(
-        etapaTableroRaw
-      )
-        ? etapaTableroRaw
-        : undefined;
+        : etapaTableroTraducida ?? "prospecto";
+      const etapaTablero: FunnelStage | undefined = etapaTableroTraducida;
+
+      // Etapa real Firemat (sin bucketizar a columnas Beck): viene tal cual desde
+      // /funnel-unificado en item.etapa para origen FIREMAT (ver
+      // funnelUnificado.service.ts -> obtenerOportunidadesFirematNormalizadas).
+      // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) no son columnas propias de
+      // FIREMAT_COLUMNS: hay que ubicarlas en su ultima etapa comercial real,
+      // igual que hace /firemat/funnel via historial. El backend ya resolvio esa
+      // etapa (ver resolverEtapasTableroFiremat) y la entrega como etapaTablero
+      // en formato Beck (ej. "visita_levantamiento"); ETAPA_COMUN_A_FIREMAT la
+      // traduce de vuelta a su etapa Firemat (ej. "PRIMER_CONTACTO").
+      const ETAPAS_CIERRE_FIREMAT: FirematFunnelEtapa[] = [
+        "PERDIDA",
+        "POSTERGADA",
+        "DESCARTADO",
+      ];
+      const etapaFiremat: FirematFunnelEtapa | undefined =
+        origen !== "FIREMAT"
+          ? undefined
+          : ETAPAS_CIERRE_FIREMAT.includes(etapaRaw as FirematFunnelEtapa)
+            ? (etapaTableroTraducida
+                ? ETAPA_COMUN_A_FIREMAT[etapaTableroTraducida]
+                : undefined) ?? "PROSPECTO"
+            : isFirematEtapaValue(etapaRaw)
+              ? etapaRaw
+              : undefined;
 
       const estadoCierreRaw = toText(item.estadoCierre, "").toLowerCase();
       const estadoCierre: FunnelEstadoCierre | undefined =
         estadoCierreRaw === "ganada" ||
         estadoCierreRaw === "perdida" ||
-        estadoCierreRaw === "postergada"
+        estadoCierreRaw === "postergada" ||
+        estadoCierreRaw === "descartada"
           ? (estadoCierreRaw as FunnelEstadoCierre)
           : undefined;
 
@@ -3647,8 +3898,15 @@
       return {
         id,
         origen,
+        // /firemat/funnel siempre muestra item.cliente como titulo de la
+        // tarjeta (ver FirematFunnelCard), nunca nombreOportunidad; item.titulo
+        // aqui viene de nombreOportunidad ?? cliente (ver funnelUnificado.service.ts)
+        // y puede traer un valor incorrecto/de prueba, asi que para FIREMAT se
+        // prioriza cliente igual que la pagina propia de Firemat.
         nombreProyecto:
-          toText(item.titulo, "") ||
+          (origen === "FIREMAT"
+            ? toText(item.cliente, "") || toText(item.titulo, "")
+            : toText(item.titulo, "")) ||
           (origen === "FIREMAT" ? "Oportunidad Firemat" : "Oportunidad Beck"),
         empresa: toText(item.empresa, "") || toText(item.cliente, "") || undefined,
         moneda: "CLP",
@@ -3656,6 +3914,7 @@
         nombreContacto: toText(item.contacto, "") || undefined,
         etapa,
         etapaTablero,
+        etapaFiremat,
         estadoCierre,
         probabilidadCierre: probabilidad > 0 ? probabilidad : undefined,
         proximaAccion: toText(item.proximaAccion, "") || undefined,
@@ -3826,11 +4085,13 @@
         const estadoParam =
           filterEstadoCierre === "activas"
             ? "activa"
-            : filterEstadoCierre === "perdidas"
-              ? "perdida"
-              : filterEstadoCierre === "postergadas"
-                ? "postergada"
-                : "todas";
+            : filterEstadoCierre === "ganadas"
+              ? "ganada"
+              : filterEstadoCierre === "perdidas"
+                ? "perdida"
+                : filterEstadoCierre === "postergadas"
+                  ? "postergada"
+                  : "todas";
 
         // /funnel-unificado decide que oportunidades entran al tablero (Beck y/o
         // Firemat). Cuando el filtro incluye Beck, ademas se pide el detalle
@@ -4682,12 +4943,14 @@
       });
 
       const result = (await response.json()) as Record<string, unknown>;
+      const bloqueosRecibidos = pickStringArray(result, BLOQUEO_KEYS);
+      const advertenciasRecibidas = pickStringArray(result, ADVERTENCIA_KEYS);
 
-      if (response.status === 409 && Array.isArray(result.bloqueos) && result.puedeAvanzar === false) {
+      if (response.status === 409 && bloqueosRecibidos.length > 0 && result.puedeAvanzar === false) {
         const err = new Error(String(result.message ?? "No se puede avanzar")) as BeckBloqueoException;
         err.beckBloqueo = true;
-        err.bloqueos = result.bloqueos as string[];
-        err.advertencias = Array.isArray(result.advertencias) ? (result.advertencias as string[]) : [];
+        err.bloqueos = bloqueosRecibidos;
+        err.advertencias = advertenciasRecibidas;
         throw err;
       }
 
@@ -4697,13 +4960,15 @@
         );
       }
 
-      if (Array.isArray(result.advertencias) && (result.advertencias as string[]).length > 0) {
-        setAdvertenciasGuardado(result.advertencias as string[]);
+      if (advertenciasRecibidas.length > 0) {
+        setAdvertenciasGuardado(advertenciasRecibidas);
         setAdvertenciasGuardadoOpen(true);
       }
     };
 
-    const handleStageChange = async (dealId: string, etapa: FunnelStage, estadoCierrePreset?: FunnelEstadoCierre) => {
+    // "descartada" es exclusivo de Firemat y nunca se asigna desde el cierre
+    // manual de oportunidades Beck (ver estadoCierreModal).
+    const handleStageChange = async (dealId: string, etapa: FunnelStage, estadoCierrePreset?: "ganada" | "perdida" | "postergada") => {
       if (!canEditFunnel || dealSaving) return;
 
       if (etapa === "cerrada") {
@@ -4716,26 +4981,20 @@
         return;
       }
 
-      const previousDeals = deals;
-
-      setDeals((current) => {
-        const movedDeal = current.find((deal) => deal.id === dealId);
-        if (!movedDeal) return current;
-
-        return [
-          { ...movedDeal, etapa },
-          ...current.filter((deal) => deal.id !== dealId),
-        ];
-      });
-
+      // Sin optimistic update: la tarjeta solo cambia de columna despues de que
+      // el backend confirme la etapa (bloqueos/advertencias incluidos). Si el
+      // backend rechaza el cambio, no se toco el estado local, por lo que la
+      // tarjeta permanece donde estaba sin necesidad de revertir nada.
       try {
         await updateDealStage(dealId, {
           etapa: etapaFrontendToBackendMap[etapa],
         });
 
+        setDeals((current) =>
+          current.map((deal) => (deal.id === dealId ? { ...deal, etapa, etapaTablero: etapa } : deal))
+        );
         void loadDeals();
       } catch (error) {
-        setDeals(previousDeals);
         if (isBeckBloqueoException(error)) {
           setBloqueoBloqueos(error.bloqueos);
           setBloqueoAdvertencias(error.advertencias);
@@ -4825,26 +5084,26 @@
           return;
         }
 
+        // Con filtro "Firemat" las columnas son las etapas reales Firemat (ver
+        // FIREMAT_COLUMNS), asi que columnKeyRaw ya viene en ese formato. Con
+        // "Todas" las columnas son comunes y hay que traducirlas a la etapa
+        // real Firemat (ver ETAPA_COMUN_A_FIREMAT); "negociacion" no tiene
+        // equivalente Firemat y no debe mover la tarjeta.
         const firematId = String(deal.id).replace(/^firemat_/, "");
-        const nuevaEtapaFiremat: FirematFunnelEtapa | undefined =
-          columnKeyRaw === "cerrada_ganada"
-            ? "GANADA"
-            : FIREMAT_TABLERO_TO_ETAPA[columnKeyRaw as FunnelStage];
+        const nuevaEtapaFiremat =
+          filterUnidadNegocio === "Firemat"
+            ? (isFirematEtapaValue(columnKeyRaw) ? columnKeyRaw : undefined)
+            : ETAPA_COMUN_A_FIREMAT[columnKeyRaw];
 
         if (!nuevaEtapaFiremat) {
-          message.warning(
-            "Firemat no tiene una etapa equivalente a esta columna del tablero Beck."
-          );
+          if (filterUnidadNegocio === "Todas" && columnKeyRaw === "negociacion") {
+            message.warning("Firemat no tiene una etapa equivalente a Negociación.");
+          }
           setActiveDragDeal(null);
           return;
         }
 
-        const currentColumnKeyFiremat =
-          deal.estadoCierre === "ganada"
-            ? "cerrada_ganada"
-            : (deal.etapaTablero ?? deal.etapa);
-
-        if (columnKeyRaw === currentColumnKeyFiremat) {
+        if (nuevaEtapaFiremat === deal.etapaFiremat) {
           setActiveDragDeal(null);
           return;
         }
@@ -4859,11 +5118,17 @@
         return;
       }
 
-      const cerradaSubcolumnMap: Record<string, FunnelEstadoCierre> = {
+      // Tarjeta Beck: tanto con filtro "Beck" como con "Todas" las columnas del
+      // tablero usan literalmente las claves de etapa Beck (ver etapas/baseColumns
+      // en el render), asi que columnKeyRaw ya es la etapa Beck real y no requiere
+      // traduccion. El cambio de etapa pasa siempre por handleStageChange, que
+      // usa el mismo endpoint /funnel-beck/:id/etapa con sus bloqueos/advertencias
+      // (a diferencia de Firemat, que usa firematFunnelAPI.cambiarEtapa mas arriba).
+      const cerradaSubcolumnMap: Record<string, "ganada" | "perdida" | "postergada"> = {
         cerrada_ganada: "ganada",
       };
 
-      const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw] as FunnelEstadoCierre | undefined;
+      const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw];
       const nuevaEtapa: FunnelStage = estadoCierrePreset ? "cerrada" : (columnKeyRaw as FunnelStage);
 
       // Calcular la columna actual del deal usando etapaTablero cuando está disponible
@@ -4964,9 +5229,9 @@
         ? "perdida"
         : deal.estadoCierre === "postergada"
         ? "postergada"
-        : "select";
+        : "";
 
-      setCierreEstadoStep(tipoPrevio as "select" | "perdida" | "postergada");
+      setCierreEstadoStep(tipoPrevio as "" | "perdida" | "postergada");
 
       if (tipoPrevio === "perdida" || tipoPrevio === "postergada") {
         const motivoField = tipoPrevio === "perdida" ? deal.motivoPerdida : deal.motivoPostergacion;
@@ -4990,7 +5255,10 @@
     const handleGuardarEstadoCierre = async () => {
       if (!selectedDeal) return;
       const tipo = cierreEstadoStep;
-      if (tipo !== "perdida" && tipo !== "postergada") return;
+      if (tipo !== "perdida" && tipo !== "postergada") {
+        message.error("Selecciona el tipo de cierre");
+        return;
+      }
 
       const motivoFinal = normalizarMotivoSubmit(cierreEstadoSelectMotivo, cierreEstadoDetalleOtro);
       if (!motivoFinal.trim()) {
@@ -5457,6 +5725,7 @@
     const getStageEditSection = (
       etapa: FunnelStage
     ): FunnelEditSection | null => {
+      if (etapa === "prospecto") return "prospecto";
       if (etapa === "visita") return "visita";
       if (etapa === "cotizacion") return "desarrollo";
       if (etapa === "enviada" || etapa === "negociacion") return "negociacion";
@@ -5806,8 +6075,126 @@
       </div>
     );
 
+    const formatRuleCount = (count: number, singular: string, plural: string) =>
+      `${count} ${count === 1 ? singular : plural}`;
+
+    const renderValidationGroupSummary = (
+      title: string,
+      groups: ValidationMessageGroup[],
+      color: string
+    ) => {
+      if (!groups.length) return null;
+
+      return (
+        <div>
+          <p className="mb-1 text-xs font-semibold" style={{ color }}>
+            {title}
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-beck-ink">
+            {groups.map((group) => (
+              <li key={`${title}-${group.etapa}`}>
+                <span className="font-medium">{group.etapa}:</span>{" "}
+                {formatRuleCount(group.messages.length, "pendiente", "pendientes")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    };
+
+    const renderValidationDetailGroups = (
+      title: string,
+      groups: ValidationMessageGroup[],
+      color: string
+    ) => {
+      if (!groups.length) return null;
+
+      return (
+        <div>
+          <p className="mb-2 text-xs font-semibold" style={{ color }}>
+            {title}
+          </p>
+          <div className="space-y-3">
+            {groups.map((group) => (
+              <div key={`${title}-${group.etapa}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="mb-1 text-xs font-semibold text-slate-700">
+                  {group.etapa}
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-beck-ink">
+                  {group.messages.map((message, index) => (
+                    <li key={`${group.etapa}-${index}`}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    const renderBloqueoValidationContent = () => {
+      const totalBloqueos = bloqueoBloqueos.length;
+      const totalAdvertencias = bloqueoAdvertencias.length;
+      const totalReglas = totalBloqueos + totalAdvertencias;
+      const showToggle = totalReglas > VALIDATION_DETAIL_INLINE_LIMIT;
+      const bloqueoSummaryGroups = groupPrefixedValidationMessages(bloqueoBloqueos);
+      const advertenciaSummaryGroups =
+        groupPrefixedValidationMessages(bloqueoAdvertencias);
+      const bloqueoDetailGroups = groupValidationMessages(bloqueoBloqueos);
+      const advertenciaDetailGroups = groupValidationMessages(
+        bloqueoAdvertencias,
+        formatAdvertenciaMessage
+      );
+
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-beck-ink">
+            Hay {formatRuleCount(totalBloqueos, "regla bloqueante", "reglas bloqueantes")} y{" "}
+            {formatRuleCount(totalAdvertencias, "advertencia pendiente", "advertencias pendientes")}.
+          </p>
+
+          {renderValidationGroupSummary(
+            "Reglas bloqueantes:",
+            bloqueoSummaryGroups,
+            "#cf1322"
+          )}
+          {renderValidationGroupSummary(
+            "Advertencias:",
+            advertenciaSummaryGroups,
+            "#d48806"
+          )}
+
+          {showToggle && (
+            <Button
+              type="link"
+              className="!px-0"
+              onClick={() => setBloqueoDetalleVisible((current) => !current)}
+            >
+              {bloqueoDetalleVisible ? "Ocultar detalle" : "Ver detalle"}
+            </Button>
+          )}
+
+          {bloqueoDetalleVisible && (
+            <div className="space-y-4 border-t border-slate-200 pt-3">
+              {renderValidationDetailGroups(
+                "Reglas bloqueantes:",
+                bloqueoDetailGroups,
+                "#cf1322"
+              )}
+              {renderValidationDetailGroups(
+                "Advertencias:",
+                advertenciaDetailGroups,
+                "#d48806"
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div className="space-y-4 md:space-y-6">
+        {!embedUnidadNegocio && (
         <section className="beck-panel-soft">
           <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
             <div>
@@ -5918,6 +6305,7 @@
                 placeholder="Todas"
                 options={[
                   { value: "activas", label: "Activas" },
+                  { value: "ganadas", label: "Ganadas" },
                   { value: "perdidas", label: "Perdidas" },
                   { value: "postergadas", label: "Postergadas" },
                 ]}
@@ -5929,6 +6317,7 @@
             </div>
           )}
         </section>
+        )}
 
         {viewMode === "dashboard" ? (
           <section className="beck-panel px-5 py-4">
@@ -5956,11 +6345,42 @@
             >
               <div className="flex gap-4 overflow-x-auto p-4 scrollbar-thin">
                 {(() => {
+                  if (filterUnidadNegocio === "Firemat") {
+                    const firematColumns = FIREMAT_COLUMNS.map(({ key, label }) => ({
+                      key: key as string,
+                      label,
+                      colDeals: visibleDeals.filter((d) => d.etapaFiremat === key),
+                    }));
+
+                    return firematColumns.map(({ key, label, colDeals }) => (
+                      <FunnelColumn
+                        key={key}
+                        columnKey={key}
+                        label={label}
+                        deals={colDeals}
+                        canEditFunnel={canEditFunnel}
+                        canOperateFiremat={canOperateFiremat}
+                        onStageChange={handleStageChange}
+                        onViewDetail={openDealDetail}
+                        onCreateCotizacion={openCreateCotizacion}
+                      />
+                    ));
+                  }
+
+                  // Con "Todas" ambos origenes comparten columnas equivalentes (ver
+                  // etapasLabelComun). El D&D queda habilitado igual que en Beck;
+                  // al soltar una tarjeta Firemat, handleDragEnd traduce la columna
+                  // comun a su etapa real Firemat (ver ETAPA_COMUN_A_FIREMAT). Beck,
+                  // Mixto y Sin unidad no cambian: solo traen oportunidades Beck y
+                  // conservan el tablero Beck actual.
+                  const isTodasMode = filterUnidadNegocio === "Todas";
+                  const stageLabels = isTodasMode ? etapasLabelComun : etapasLabel;
+
                   const baseColumns = etapas
                     .filter((e) => e !== "cerrada")
                     .map((e) => ({
                       key: e as string,
-                      label: etapasLabel[e],
+                      label: stageLabels[e],
                       colDeals: visibleDeals.filter(
                         (d) => d.estadoCierre !== "ganada" && (d.etapaTablero ?? d.etapa) === e
                       ),
@@ -6328,14 +6748,12 @@
                       >
                         Eliminar
                       </Button>
-                      {selectedDeal.estadoCierre !== "ganada" && (
+                      {!selectedDeal.estadoCierre && (
                         <Button
                           danger
                           onClick={() => handleAbrirCierreEstado(selectedDeal)}
                         >
-                          {selectedDeal.estadoCierre === "perdida" || selectedDeal.estadoCierre === "postergada"
-                            ? "Modificar estado de cierre"
-                            : "Cerrar oportunidad"}
+                          Cerrar oportunidad
                         </Button>
                       )}
                       <Button
@@ -6713,45 +7131,26 @@
         <AntdModal
           title="No se puede avanzar"
           open={bloqueoModalOpen}
-          onCancel={() => setBloqueoModalOpen(false)}
+          onCancel={() => {
+            setBloqueoModalOpen(false);
+            setBloqueoDetalleVisible(false);
+          }}
           destroyOnClose
           footer={[
             <Button
               key="entendido"
               type="primary"
               danger
-              onClick={() => setBloqueoModalOpen(false)}
+              onClick={() => {
+                setBloqueoModalOpen(false);
+                setBloqueoDetalleVisible(false);
+              }}
             >
               Entendido
             </Button>,
           ]}
         >
-          <div className="space-y-4">
-            {bloqueoBloqueos.length > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-semibold" style={{ color: "#cf1322" }}>
-                  Reglas bloqueantes:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
-                  {bloqueoBloqueos.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {bloqueoAdvertencias.length > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-semibold" style={{ color: "#d48806" }}>
-                  Advertencias:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
-                  {bloqueoAdvertencias.map((a) => (
-                    <li key={a}>{a}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          {renderBloqueoValidationContent()}
         </AntdModal>
 
         {/* Modal bloqueante Firemat (mover tarjeta Firemat desde el tablero Beck) */}
@@ -6807,7 +7206,7 @@
                 </p>
                 <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
                   {firematBloqueoAdvertencias.map((a) => (
-                    <li key={a}>{a}</li>
+                    <li key={a}>{formatAdvertenciaMessage(a)}</li>
                   ))}
                 </ul>
               </div>
@@ -6864,7 +7263,7 @@
             </p>
             <ul className="list-disc pl-5 text-sm text-beck-ink space-y-1">
               {advertenciasGuardado.map((a) => (
-                <li key={a}>{a}</li>
+                <li key={a}>{formatAdvertenciaMessage(a)}</li>
               ))}
             </ul>
           </div>
@@ -7006,131 +7405,108 @@
           open={cierreEstadoOpen}
           onCancel={() => setCierreEstadoOpen(false)}
           footer={null}
-          width="min(560px, 95vw)"
-          title={
-            cierreEstadoStep === "select"
-              ? "Cerrar oportunidad"
-              : cierreEstadoStep === "perdida"
-              ? "Marcar como Perdida"
-              : "Marcar como Postergada"
-          }
+          width="min(480px, 95vw)"
+          title="Cerrar oportunidad"
           destroyOnClose
         >
-          {cierreEstadoStep === "select" ? (
-            <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
-              <button
-                type="button"
-                className="flex flex-col items-center gap-3 rounded-xl border-2 border-red-200 bg-red-50 p-6 text-left transition hover:border-red-400 hover:bg-red-100 focus:outline-none"
-                onClick={() => {
-                  setCierreEstadoStep("perdida");
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                Tipo de cierre <span className="text-red-500">*</span>
+              </label>
+              <Select
+                className="w-full"
+                placeholder="Selecciona el tipo de cierre"
+                value={cierreEstadoStep || undefined}
+                onChange={(value) => {
+                  setCierreEstadoStep(value);
                   setCierreEstadoSelectMotivo("");
                   setCierreEstadoDetalleOtro("");
-                  setCierreEstadoObservacion("");
-                }}
-              >
-                <div>
-                  <p className="font-bold text-red-700">Marcar como Perdida</p>
-                  <p className="mt-1 text-xs text-red-500">
-                    La oportunidad no prosperó.
-                  </p>
-                </div>
-              </button>
-              <button
-                type="button"
-                className="flex flex-col items-center gap-3 rounded-xl border-2 border-orange-200 bg-orange-50 p-6 text-left transition hover:border-orange-400 hover:bg-orange-100 focus:outline-none"
-                onClick={() => {
-                  setCierreEstadoStep("postergada");
-                  setCierreEstadoSelectMotivo("");
-                  setCierreEstadoDetalleOtro("");
-                  setCierreEstadoObservacion("");
                   setCierreEstadoFechaReactivacion("");
                 }}
-              >
-                <div>
-                  <p className="font-bold text-orange-700">Marcar como Postergada</p>
-                  <p className="mt-1 text-xs text-orange-500">
-                    La oportunidad se retomará más adelante.
-                  </p>
-                </div>
-              </button>
+                options={[
+                  { value: "perdida", label: "Perdida" },
+                  { value: "postergada", label: "Postergada" },
+                ]}
+              />
             </div>
-          ) : (
-            <div className="space-y-4 py-2">
-              {cierreEstadoStep === "perdida" && (
-                <>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                      Motivo de pérdida <span className="text-red-500">*</span>
-                    </label>
-                    <Select
-                      className="w-full"
-                      placeholder="Selecciona un motivo"
-                      value={cierreEstadoSelectMotivo || undefined}
-                      onChange={(value) => {
-                        setCierreEstadoSelectMotivo(value ?? "");
-                        setCierreEstadoDetalleOtro("");
-                      }}
-                      options={MOTIVOS_PERDIDA}
-                    />
-                  </div>
-                  {cierreEstadoSelectMotivo === "Otro" && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                        Especifica el motivo <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        value={cierreEstadoDetalleOtro}
-                        onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
-                        placeholder="Describe el motivo..."
-                      />
-                    </div>
-                  )}
-                </>
-              )}
 
-              {cierreEstadoStep === "postergada" && (
-                <>
+            {cierreEstadoStep === "perdida" && (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Motivo de pérdida <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    className="w-full"
+                    placeholder="Selecciona un motivo"
+                    value={cierreEstadoSelectMotivo || undefined}
+                    onChange={(value) => {
+                      setCierreEstadoSelectMotivo(value ?? "");
+                      setCierreEstadoDetalleOtro("");
+                    }}
+                    options={MOTIVOS_PERDIDA}
+                  />
+                </div>
+                {cierreEstadoSelectMotivo === "Otro" && (
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                      Motivo de postergación <span className="text-red-500">*</span>
+                      Especifica el motivo <span className="text-red-500">*</span>
                     </label>
-                    <Select
-                      className="w-full"
-                      placeholder="Selecciona un motivo"
-                      value={cierreEstadoSelectMotivo || undefined}
-                      onChange={(value) => {
-                        setCierreEstadoSelectMotivo(value ?? "");
-                        setCierreEstadoDetalleOtro("");
-                      }}
-                      options={MOTIVOS_POSTERGACION}
+                    <Input
+                      value={cierreEstadoDetalleOtro}
+                      onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
+                      placeholder="Describe el motivo..."
                     />
                   </div>
-                  {cierreEstadoSelectMotivo === "Otro" && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                        Especifica el motivo <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        value={cierreEstadoDetalleOtro}
-                        onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
-                        placeholder="Describe el motivo..."
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                      Fecha de reactivación <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-beck-border-light bg-white px-3 py-2.5 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]"
-                      value={cierreEstadoFechaReactivacion}
-                      onChange={(e) => setCierreEstadoFechaReactivacion(e.target.value)}
-                    />
-                  </div>
-                </>
-              )}
+                )}
+              </>
+            )}
 
+            {cierreEstadoStep === "postergada" && (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Motivo de postergación <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    className="w-full"
+                    placeholder="Selecciona un motivo"
+                    value={cierreEstadoSelectMotivo || undefined}
+                    onChange={(value) => {
+                      setCierreEstadoSelectMotivo(value ?? "");
+                      setCierreEstadoDetalleOtro("");
+                    }}
+                    options={MOTIVOS_POSTERGACION}
+                  />
+                </div>
+                {cierreEstadoSelectMotivo === "Otro" && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                      Especifica el motivo <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={cierreEstadoDetalleOtro}
+                      onChange={(e) => setCierreEstadoDetalleOtro(e.target.value)}
+                      placeholder="Describe el motivo..."
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Fecha de reactivación <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-beck-border-light bg-white px-3 py-2.5 text-sm text-beck-ink-soft outline-none transition focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]"
+                    value={cierreEstadoFechaReactivacion}
+                    onChange={(e) => setCierreEstadoFechaReactivacion(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            {cierreEstadoStep && (
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-600">
                   Observación
@@ -7143,39 +7519,27 @@
                   onChange={(e) => setCierreEstadoObservacion(e.target.value)}
                 />
               </div>
+            )}
 
-              <div className="flex gap-2 justify-end">
-                <Button
-                  onClick={() => {
-                    setCierreEstadoStep("select");
-                    setCierreEstadoSelectMotivo("");
-                    setCierreEstadoDetalleOtro("");
-                    setCierreEstadoObservacion("");
-                    setCierreEstadoFechaReactivacion("");
-                  }}
-                >
-                  Volver
-                </Button>
-                <Button
-                  type="primary"
-                  danger={cierreEstadoStep === "perdida"}
-                  loading={cierreEstadoSaving}
-                  onClick={() => void handleGuardarEstadoCierre()}
-                  className={cierreEstadoStep === "postergada" ? "!bg-orange-500 !border-orange-500 hover:!bg-orange-600" : ""}
-                >
-                  {cierreEstadoStep === "perdida"
-                    ? "Marcar como perdida"
-                    : "Marcar como postergada"}
-                </Button>
-              </div>
+            <div className="flex gap-2 justify-end">
+              <Button onClick={() => setCierreEstadoOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="primary"
+                danger={cierreEstadoStep === "perdida"}
+                loading={cierreEstadoSaving}
+                disabled={!cierreEstadoStep}
+                onClick={() => void handleGuardarEstadoCierre()}
+                className={cierreEstadoStep === "postergada" ? "!bg-orange-500 !border-orange-500 hover:!bg-orange-600" : ""}
+              >
+                Confirmar cierre
+              </Button>
             </div>
-          )}
+          </div>
         </AntdModal>
       </div>
     );
   };
 
   export default FunnelPage;
-
-
-
