@@ -26,12 +26,12 @@ import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
 import { obrasAPI } from "../services/api";
 import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
-import { TIPOS_REGISTRO_TERRENO } from "../constants/roles";
+import { TIPOS_REGISTRO_TERRENO, getTipoRegistroLabel, getCantidadLabelPorTipo } from "../constants/roles";
 
 type ObraMin = { id: string; nombre: string; codigo?: string | null };
 
 export type NuevoRegistroValues = {
-  tipoRegistro: "sello_cortafuego" | "junta_lineal_espuma";
+  tipoRegistro: string;
   obraId: string;
   itemizadoMandanteId?: string;
   codigoBeck?: string;
@@ -286,7 +286,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
     message.success("Obra creada");
   };
 
-  const tipoLabel = esEspuma ? "Junta lineal ESPUMA" : "Sello cortafuego";
+  const tipoLabel = getTipoRegistroLabel(tipoRegistro);
 
   return (
     <Drawer
@@ -530,7 +530,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
                 {!esEspuma ? (
                   <Form.Item
                     name="cantidadSellos"
-                    label="Cantidad de sellos"
+                    label={getCantidadLabelPorTipo(tipoRegistro)}
                     rules={[{ required: true, message: "Indique cantidad" }]}
                   >
                     <InputNumber min={1} style={{ width: "100%" }} />

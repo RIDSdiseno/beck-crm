@@ -221,6 +221,7 @@ export interface CotizacionUpsertPayload {
   funnelBeckId?: string | null;
   clienteBeckId?: string | null;
   contactoBeckId?: string | null;
+  responsableId?: string | null;
   subtotal: number;
   impuesto: number;
   total: number;
@@ -280,6 +281,9 @@ export interface FunnelBeckGanadaSinObra {
   fechaCierre?: string;
   documentoRespaldo?: string;
   flujoPosterior?: string;
+  region?: string;
+  comuna?: string;
+  clienteBeckId?: string | null;
   clienteBeck?: {
     id: string;
     rut: string;
@@ -587,6 +591,18 @@ export type HistorialEtapaBeck = {
   createdAt: string;
 };
 
+// Línea de tiempo combinada del Funnel Beck: etapas + cambios de vendedor.
+// No reemplaza HistorialEtapaBeck/getHistorialEtapas — es un endpoint aparte.
+export type HistorialFunnelBeckEvento = {
+  tipo: "ETAPA" | "CAMBIO_VENDEDOR";
+  createdAt: string;
+  usuario: { id: string; nombre: string } | null;
+  etapaAnterior?: string | null;
+  etapaNueva?: string | null;
+  vendedorAnterior?: string | null;
+  vendedorNuevo?: string | null;
+};
+
 export type HistorialEtapaFiremat = {
   id: number;
   oportunidadId: number;
@@ -704,6 +720,25 @@ export const funnelBeckAPI = {
   getHistorialEtapas: async (id: string): Promise<HistorialEtapaBeck[]> => {
     const response = await api.get<ApiResponseEnvelope<HistorialEtapaBeck[]>>(
       `/funnel-beck/${id}/historial-etapas`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  // Línea de tiempo combinada (etapas + cambios de vendedor), en orden
+  // cronológico. Endpoint nuevo, separado de getHistorialEtapas.
+  getHistorial: async (id: string): Promise<HistorialFunnelBeckEvento[]> => {
+    const response = await api.get<ApiResponseEnvelope<HistorialFunnelBeckEvento[]>>(
+      `/funnel-beck/${id}/historial`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  // Cambia únicamente el vendedor (PATCH dedicado) — no reutiliza actualizar()
+  // (formulario completo de edición), que exige campos de otras etapas.
+  cambiarVendedor: async (id: string, vendedor: string): Promise<FunnelBeckOpportunity> => {
+    const response = await api.patch<ApiResponseEnvelope<FunnelBeckOpportunity>>(
+      `/funnel-beck/${id}/vendedor`,
+      { vendedor }
     );
     return unwrapApiResponse(response.data);
   },
@@ -1035,6 +1070,26 @@ export const notificacionesAPI = {
   },
 };
 
+export interface ObraOportunidadVinculada {
+  id: string;
+  nombreProyecto?: string | null;
+  empresa?: string | null;
+  region?: string | null;
+  comuna?: string | null;
+  clienteBeckId?: string | null;
+  clienteBeck?: {
+    id: string;
+    rut: string;
+    razonSocial: string;
+    nombreEmpresa?: string | null;
+  } | null;
+}
+
+export type EstadoPreparacionItemizado =
+  | "PREPARACION"
+  | "EN_REVISION_CLIENTE"
+  | "FINALIZADO";
+
 export interface Obra {
   id: string;
   codigo?: string | null;
@@ -1046,16 +1101,8 @@ export interface Obra {
   comuna?: string | null;
   cliente?: string | null;
   funnelBeckId?: string | null;
-  funnelBeck?: {
-    id: string;
-    nombreProyecto?: string | null;
-    empresa?: string | null;
-  } | null;
-  oportunidad?: {
-    id: string;
-    nombreProyecto?: string | null;
-    empresa?: string | null;
-  } | null;
+  funnelBeck?: ObraOportunidadVinculada | null;
+  oportunidad?: ObraOportunidadVinculada | null;
   clienteBeckId?: string | null;
   clienteBeck?: {
     id: string;
@@ -1074,6 +1121,13 @@ export interface Obra {
   }>;
   fecha_inicio?: string;
   fecha_termino?: string;
+  estadoPreparacionItemizado?: EstadoPreparacionItemizado;
+  itemizadoFinalizadoAt?: string | null;
+  itemizadoFinalizadoPor?: {
+    id: string;
+    nombre?: string | null;
+    email?: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
 }
@@ -1130,6 +1184,13 @@ export const obrasAPI = {
 
   actualizarEstado: async (id: string, estado: ObraEstado) => {
     const response = await api.patch<Obra>(`/obras/${id}/estado`, { estado });
+    return response.data;
+  },
+
+  // PREPARACION → EN_REVISION_CLIENTE: envía la propuesta de itemizado al
+  // cliente. A partir de este punto Beck no puede modificar la selección.
+  enviarItemizadoARevisionCliente: async (obraId: string): Promise<Obra> => {
+    const response = await api.patch<Obra>(`/obras/${obraId}/itemizado/enviar-a-cliente`);
     return response.data;
   },
 
@@ -1379,6 +1440,24 @@ export const usuariosAPI = {
     return unwrapApiResponse(response.data);
   },
 
+  // Alimenta el Select de Vendedor del Funnel Beck. A diferencia de
+  // listarComerciales (filtro por rol), este endpoint filtra por permiso
+  // efectivo (beck_funnel.puedeEditar) — no reutilizar listarComerciales
+  // para este selector ni usar este método para otros consumidores.
+  listarVendedoresFunnelBeck: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
+      "/usuarios/vendedores-funnel-beck"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  listarResponsablesCotizaciones: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
+      "/usuarios/responsables-cotizaciones"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
   crear: async (data: CrearUsuarioInput) => {
     const response = await api.post<UsuarioApi>("/usuarios", data);
     return response.data;
@@ -1389,19 +1468,23 @@ export const usuariosAPI = {
     return response.data;
   },
 
+  // El backend responde { usuario, obraIds, obras, cantidadObrasAsignadas } para estos
+  // dos endpoints (no un array plano ni un ApiResponseEnvelope), por eso no se usa unwrapArray.
   obtenerObrasUsuario: async (id: string): Promise<ObraClienteBeckResumen[]> => {
-    const response = await api.get<ApiResponseEnvelope<ObraClienteBeckResumen[]> | ObraClienteBeckResumen[]>(
+    const response = await api.get<{ obras?: ObraClienteBeckResumen[] } | ObraClienteBeckResumen[]>(
       `/usuarios/${id}/obras`
     );
-    return unwrapArray(response.data);
+    const data = response.data;
+    return Array.isArray(data) ? data : data.obras ?? [];
   },
 
   actualizarObrasUsuario: async (id: string, obraIds: string[]): Promise<ObraClienteBeckResumen[]> => {
-    const response = await api.put<ApiResponseEnvelope<ObraClienteBeckResumen[]> | ObraClienteBeckResumen[]>(
+    const response = await api.put<{ obras?: ObraClienteBeckResumen[] } | ObraClienteBeckResumen[]>(
       `/usuarios/${id}/obras`,
       { obraIds }
     );
-    return unwrapArray(response.data);
+    const data = response.data;
+    return Array.isArray(data) ? data : data.obras ?? [];
   },
 
   eliminar: async (id: string) => {
@@ -1580,6 +1663,14 @@ export interface DashboardBeckRegistro {
   tipo_registro?: string | null;
 }
 
+export interface DashboardBeckRendimientoTrabajador {
+  nombreSellador: string;
+  totalRegistros: number;
+  cantidadEjecutadaTotal: number;
+  rendimientoAcumulado: number;
+  rendimientoAcumuladoPct: number;
+}
+
 export interface DashboardBeckResponse {
   obras: DashboardBeckObra[];
   kpis?: DashboardBeckKpis;
@@ -1593,6 +1684,7 @@ export interface DashboardBeckResponse {
   selladores?: DashboardBeckProduccionSellador[];
   ultimosRegistros?: DashboardBeckRegistro[];
   registros?: DashboardBeckRegistro[];
+  rendimientoPorTrabajador?: DashboardBeckRendimientoTrabajador[];
 }
 
 export const dashboardBeckAPI = {
@@ -1641,13 +1733,6 @@ export interface RendimientoAcumuladoParams {
   nombreSellador?: string;
 }
 
-export type EstadoValidacionObra = "pendiente" | "validado" | "rechazado";
-
-export interface ValidacionObraPayload {
-  estadoValidacionObra: EstadoValidacionObra;
-  motivoRechazoObra?: string;
-}
-
 export const registrosAPI = {
   resumen: async (): Promise<RegistrosResumen> => {
     const response = await api.get<RegistrosResumen | ApiResponseEnvelope<RegistrosResumen>>("/registros/resumen");
@@ -1658,8 +1743,16 @@ export const registrosAPI = {
     return raw as RegistrosResumen;
   },
 
-  actualizarValidacionObra: async (id: string, payload: ValidacionObraPayload): Promise<void> => {
-    await api.patch(`/registros/${id}/validacion-obra`, payload);
+  // Mismo comportamiento y misma lógica de generación/unión de PDF que
+  // clienteAPI.descargarPdfConsolidado — solo cambia la ruta/autorización
+  // (staff interno de /beck/registro en vez del scope de Vista Cliente).
+  descargarPdfConsolidado: async (registroIds: string[]): Promise<Blob> => {
+    const response = await api.post<Blob>(
+      "/registros/pdf-consolidado",
+      { registroIds },
+      { responseType: "blob" }
+    );
+    return response.data;
   },
 
   getRendimientoAcumulado: async (params: RendimientoAcumuladoParams): Promise<RendimientoAcumuladoItem[]> => {
@@ -3272,7 +3365,7 @@ export const clientesBeckAPI = {
 
 // ── Configuracion campos registro ─────────────────────────────────────────────
 
-export type RolConfiguracionCamposRegistro = "jefeobra" | "trabajador" | "cliente";
+export type RolConfiguracionCamposRegistro = "jefeobra" | "trabajador" | "cliente" | "ingenieria";
 export type ColorConfiguracionCampoRegistro = "verde" | "azul" | "rojo";
 
 export interface CampoConfiguracionRegistro {
@@ -3489,6 +3582,15 @@ export type ItemizadoOpcion = {
   elementoPenetra?: string | null;
   materialidad?: string | null;
   visible: boolean;
+  // Solo presentes cuando se consulta con `obraId` — valor efectivo de la
+  // configuración por obra (false si no hay config explícita para esta obra,
+  // ninguno de los dos tiene override a nivel de catálogo global).
+  propuestoAlCliente?: boolean;
+  seleccionadoPorCliente?: boolean;
+  // Solo presentes cuando se consulta con `obraId` — valor efectivo de la
+  // configuración por obra (null si no hay override para esta obra).
+  nombrePersonalizado?: string | null;
+  orden?: number | null;
   rendimientoSellosEsperadoDiario?: number | null;
   rendimientoReparacionEsperadoDiario?: number | null;
   createdAt?: string;
@@ -3537,7 +3639,55 @@ export type ItemizadoConfiguracionObraPayload = {
     itemizadoOpcionId: string;
     orden?: number | null;
     nombrePersonalizado?: string | null;
+    visible?: boolean;
+    rendimientoSellosEsperadoDiario?: number | null;
+    rendimientoReparacionEsperadoDiario?: number | null;
   }>;
+};
+
+// Payload del endpoint dedicado a "Preparar itemizado" (PrepararItemizadoObraDrawer):
+// solo propuestoAlCliente — nunca visible, orden, nombrePersonalizado ni rendimientos.
+export type ItemizadoPropuestaObraPayload = {
+  items: Array<{
+    itemizadoOpcionId: string;
+    propuestoAlCliente: boolean;
+  }>;
+};
+
+export type ItemizadoPreparacionObraInfo = {
+  id: string;
+  estadoPreparacionItemizado: EstadoPreparacionItemizado;
+  itemizadoFinalizadoAt: string | null;
+  itemizadoFinalizadoPor: {
+    id: string;
+    nombre?: string | null;
+    email?: string | null;
+  } | null;
+};
+
+export type ItemizadoPreparacionItem = {
+  id: string | null;
+  obraId: string;
+  itemizadoOpcionId: string;
+  visible: boolean;
+  orden: number | null;
+  nombrePersonalizado: string | null;
+  nombreMostrar: string;
+  itemizadoOpcion: {
+    id?: string;
+    codigoBeck?: string | null;
+    tipo?: string | null;
+    elementoPasante?: string | null;
+    elementoPenetra?: string | null;
+    materialidad?: string | null;
+    rendimientoSellosEsperadoDiario?: number | null;
+    rendimientoReparacionEsperadoDiario?: number | null;
+  };
+};
+
+export type ItemizadoPreparacionObraResponse = {
+  obra: ItemizadoPreparacionObraInfo;
+  data: ItemizadoPreparacionItem[];
 };
 
 export const itemizadoOpcionesAPI = {
@@ -3564,8 +3714,15 @@ export const itemizadoOpcionesAPI = {
     return response.data;
   },
 
-  actualizar: async (id: string, payload: Partial<ItemizadoOpcionPayload>): Promise<ItemizadoOpcion> => {
-    const response = await api.put<ItemizadoOpcion>(`/itemizado-opciones/${id}`, payload);
+  actualizar: async (
+    id: string,
+    payload: Partial<ItemizadoOpcionPayload>,
+    obraId?: string
+  ): Promise<ItemizadoOpcion> => {
+    const response = await api.put<ItemizadoOpcion>(
+      `/itemizado-opciones/${id}`,
+      obraId ? { ...payload, obraId } : payload
+    );
     return response.data;
   },
 
@@ -3603,11 +3760,39 @@ export const itemizadoOpcionesAPI = {
     return unwrapArray(response.data);
   },
 
+  obtenerPreparacionObra: async (obraId: string): Promise<ItemizadoPreparacionObraResponse> => {
+    const response = await api.get<
+      ApiResponseEnvelope<ItemizadoPreparacionItem[]> & { obra: ItemizadoPreparacionObraInfo }
+    >(`/itemizado-opciones/obra/${obraId}/configuracion`);
+    return { obra: response.data.obra, data: unwrapArray(response.data) };
+  },
+
   guardarConfiguracionObra: async (
     obraId: string,
     payload: ItemizadoConfiguracionObraPayload
   ): Promise<void> => {
     await api.put(`/itemizado-opciones/obra/${obraId}/configuracion`, payload);
+  },
+
+  // Endpoint dedicado de "Preparar itemizado": solo escribe propuestoAlCliente,
+  // nunca visible/orden/nombrePersonalizado/rendimientos.
+  guardarPropuestaObra: async (
+    obraId: string,
+    payload: ItemizadoPropuestaObraPayload
+  ): Promise<void> => {
+    await api.put(`/itemizado-opciones/obra/${obraId}/propuesta`, payload);
+  },
+
+  // Equivalente interno (roles Beck) de clienteAPI.obtenerItemizados: misma tabla
+  // que verá el cliente (itemizados propuestos + selección), usado por
+  // ItemizadoPreviewPanel para la vista previa de solo lectura del administrador.
+  obtenerPropuestaObra: async (
+    obraId: string
+  ): Promise<{ obra: ItemizadoPreparacionObraInfo; data: ItemizadoPropuestoCliente[] }> => {
+    const response = await api.get<
+      ApiResponseEnvelope<ItemizadoPropuestoCliente[]> & { obra: ItemizadoPreparacionObraInfo }
+    >(`/itemizado-opciones/obra/${obraId}/propuesta`);
+    return { obra: response.data.obra, data: unwrapArray(response.data) };
   },
 
   actualizarVisibleMasivoObra: async (
@@ -3713,6 +3898,7 @@ export interface ClienteRegistroValidado {
   validadoCliente?: boolean | null;
   validadoClienteAt?: string | null;
   validadoClientePor?: string | null;
+  pdfFirmadoUrl?: string | null;
   fecha?: string | null;
   tipoRegistro?: string | null;
   piso?: string | null;
@@ -3730,6 +3916,16 @@ export interface ClienteRegistroValidado {
   fotoUrl?: string | null;
   fotos_registro?: Array<{ url: string; nombre?: string }> | null;
   [key: string]: unknown;
+}
+
+export interface ClienteFirmaMasivaResultado {
+  exitosos: Array<{ id: string; pdfFirmadoUrl: string }>;
+  omitidos: Array<{ id: string; motivo: string }>;
+  fallidos: Array<{ id: string; motivo: string }>;
+  totalSolicitados: number;
+  totalExitosos: number;
+  totalOmitidos: number;
+  totalFallidos: number;
 }
 
 export interface ClienteRegistroColumna {
@@ -4139,6 +4335,34 @@ export const inspeccionAPI = {
   },
 };
 
+// ── Itemizado de la obra (revisión del cliente) ───────────────────────────────
+
+export interface ItemizadoPropuestoCliente {
+  itemizadoOpcionId: string;
+  codigoBeck: string | null;
+  nombreBeck: string | null;
+  nombrePersonalizado: string | null;
+  propuestoAlCliente: true;
+  seleccionadoPorCliente: boolean;
+}
+
+export interface ItemizadoObraClienteInfo {
+  id: string;
+  estadoPreparacionItemizado: EstadoPreparacionItemizado;
+}
+
+export interface ItemizadosClienteResponse {
+  obra: ItemizadoObraClienteInfo;
+  data: ItemizadoPropuestoCliente[];
+}
+
+export interface ItemizadoConfirmadoCliente {
+  id: string;
+  estadoPreparacionItemizado: EstadoPreparacionItemizado;
+  itemizadoFinalizadoAt: string | null;
+  itemizadoFinalizadoPorId: string | null;
+}
+
 export const clienteAPI = {
   usuariosClientes: async (): Promise<ClienteUsuario[]> => {
     const response = await api.get<ApiResponseEnvelope<ClienteUsuario[]>>("/cliente/usuarios-clientes");
@@ -4161,11 +4385,48 @@ export const clienteAPI = {
     return unwrapClienteRegistrosObra(response.data);
   },
 
-  validarRegistro: async (registroId: string): Promise<ClienteRegistroValidado> => {
+  validarRegistro: async (
+    registroId: string,
+    firma: { pathData: string; canvasWidth: number; canvasHeight: number }
+  ): Promise<ClienteRegistroValidado> => {
     const response = await api.patch<ApiResponseEnvelope<ClienteRegistroValidado> | ClienteRegistroValidado>(
-      `/cliente/registros/${registroId}/validar`
+      `/cliente/registros/${registroId}/validar`,
+      firma
     );
     return unwrapItem(response.data);
+  },
+
+  // Usa el endpoint seguro (GET /cliente/registros/:id/pdf) en vez de abrir
+  // pdfFirmadoUrl directo: valida autenticación + acceso a la obra en el
+  // backend antes de servir el PDF. El backend responde 302 hacia Cloudinary;
+  // axios sigue la redirección y entrega el PDF ya como blob.
+  descargarPdfFirmado: async (registroId: string): Promise<Blob> => {
+    const response = await api.get<Blob>(`/cliente/registros/${registroId}/pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  validarRegistrosMultiple: async (
+    registroIds: string[],
+    firma: { pathData: string; canvasWidth: number; canvasHeight: number }
+  ): Promise<ClienteFirmaMasivaResultado> => {
+    const response = await api.patch<ApiResponseEnvelope<ClienteFirmaMasivaResultado> | ClienteFirmaMasivaResultado>(
+      "/cliente/registros/validar-multiple",
+      { registroIds, ...firma }
+    );
+    return unwrapItem(response.data);
+  },
+
+  // Genera un único PDF consolidado con las páginas de todos los registros
+  // seleccionados, respetando el orden de selección enviado.
+  descargarPdfConsolidado: async (registroIds: string[]): Promise<Blob> => {
+    const response = await api.post<Blob>(
+      "/cliente/registros/pdf-consolidado",
+      { registroIds },
+      { responseType: "blob" }
+    );
+    return response.data;
   },
 
   dashboard: async (params?: ClienteParams): Promise<ClienteDashboardData> => {
@@ -4197,6 +4458,45 @@ export const clienteAPI = {
       registrosPorFecha: (raw.registrosPorFecha ?? []).map((f) => ({ fecha: f.fecha, total: f.cantidad })),
       configuracionVista: raw.configuracionVista,
     };
+  },
+
+  // GET /api/cliente/obras/:obraId/itemizados — mientras la obra está en
+  // PREPARACION el backend responde 409 (aún no fue enviada a revisión); se
+  // normaliza a una respuesta vacía en ese estado para que la pantalla
+  // muestre el estado vacío en vez de un error.
+  obtenerItemizados: async (obraId: string): Promise<ItemizadosClienteResponse> => {
+    try {
+      const response = await api.get<
+        ApiResponseEnvelope<ItemizadoPropuestoCliente[]> & { obra: ItemizadoObraClienteInfo }
+      >(`/cliente/obras/${obraId}/itemizados`);
+      return { obra: response.data.obra, data: unwrapArray(response.data) };
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        return { obra: { id: obraId, estadoPreparacionItemizado: "PREPARACION" }, data: [] };
+      }
+      throw err;
+    }
+  },
+
+  // PATCH /api/cliente/obras/:obraId/itemizados/:itemizadoOpcionId — el cliente solo
+  // puede tocar nombrePersonalizado y/o seleccionadoPorCliente; enviar solo lo que
+  // cambió (omitir el otro campo lo deja intacto en el backend).
+  actualizarItemizadoCliente: async (
+    obraId: string,
+    itemizadoOpcionId: string,
+    cambios: { nombrePersonalizado?: string | null; seleccionadoPorCliente?: boolean }
+  ): Promise<{ itemizadoOpcionId: string; nombrePersonalizado: string | null; seleccionadoPorCliente: boolean }> => {
+    const response = await api.patch<
+      ApiResponseEnvelope<{ itemizadoOpcionId: string; nombrePersonalizado: string | null; seleccionadoPorCliente: boolean }>
+    >(`/cliente/obras/${obraId}/itemizados/${itemizadoOpcionId}`, cambios);
+    return unwrapApiResponse(response.data);
+  },
+
+  confirmarItemizado: async (obraId: string): Promise<ItemizadoConfirmadoCliente> => {
+    const response = await api.patch<ApiResponseEnvelope<ItemizadoConfirmadoCliente>>(
+      `/cliente/obras/${obraId}/itemizado/confirmar`
+    );
+    return unwrapApiResponse(response.data);
   },
 };
 

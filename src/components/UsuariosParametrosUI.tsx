@@ -3,6 +3,7 @@ import { isAxiosError } from "axios";
 import dayjs from "dayjs";
 import { Alert, Button, Card, Form, Input, Modal, Select, Switch, Table, Tag, Tooltip, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { FormInstance } from "antd/es/form";
 import { EditOutlined, KeyOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/useAuth";
 import { usePermisos } from "../hooks/usePermisos";
@@ -144,34 +145,72 @@ const filtrarObrasPorClienteBeck = (
   return obras.filter((obra) => obra.clienteBeckId === clienteBeckId);
 };
 
+// Campo sin render propio: solo mantiene "obraIds" registrado en el Form (para que
+// validateFields/getFieldsValue lo incluyan), mientras el Select y los chips debajo
+// se manejan a mano vía form.setFieldValue.
+const HiddenObraIdsField: React.FC<{ value?: string[]; onChange?: (value: string[]) => void }> = () => null;
+
 const ObrasClienteSelector: React.FC<{
+  form: FormInstance;
   obras: ObraClienteBeckResumen[];
   loading: boolean;
   clienteBeckId?: string;
   disabled?: boolean;
-}> = ({ obras, loading, clienteBeckId, disabled }) => {
+}> = ({ form, obras, loading, clienteBeckId, disabled }) => {
   const selectorDisabled = disabled || !clienteBeckId;
+  const selectedIds: string[] = Form.useWatch("obraIds", form) ?? [];
+  const obrasPorId = useMemo(() => new Map(obras.map((obra) => [obra.id, obra])), [obras]);
+
+  const agregarObra = (obraId: string) => {
+    if (!obraId || selectedIds.includes(obraId)) return;
+    form.setFieldValue("obraIds", [...selectedIds, obraId]);
+  };
+
+  const quitarObra = (obraId: string) => {
+    form.setFieldValue("obraIds", selectedIds.filter((id) => id !== obraId));
+  };
+
   return (
     <>
-      <Form.Item
-        label="Obras visibles para el cliente"
-        name="obraIds"
-        extra="Este cliente solo podr&aacute; visualizar las obras seleccionadas."
-      >
+      <Form.Item label="Obras visibles para el cliente">
         <Select
-          mode="multiple"
-          allowClear
+          value={undefined}
           showSearch
-          placeholder={clienteBeckId ? "Selecciona 0, 1 o varias obras" : "Primero selecciona un Cliente Beck"}
+          allowClear
+          placeholder={clienteBeckId ? "Buscar y agregar una obra" : "Primero selecciona un Cliente Beck"}
           loading={loading}
           disabled={selectorDisabled}
           optionFilterProp="label"
-          options={obras.map((obra) => ({
-            value: obra.id,
-            label: formatObra(obra),
-          }))}
+          onChange={(value) => { if (typeof value === "string") agregarObra(value); }}
+          options={obras
+            .filter((obra) => !selectedIds.includes(obra.id))
+            .map((obra) => ({ value: obra.id, label: formatObra(obra) }))}
         />
       </Form.Item>
+      <Form.Item name="obraIds" hidden>
+        <HiddenObraIdsField />
+      </Form.Item>
+      <div className="mb-1 flex flex-wrap gap-1.5">
+        {selectedIds.length === 0 ? (
+          <span className="text-xs text-slate-400">Sin obras seleccionadas</span>
+        ) : (
+          selectedIds.map((id) => {
+            const obra = obrasPorId.get(id);
+            return (
+              <Tag
+                key={id}
+                closable={!selectorDisabled}
+                onClose={() => quitarObra(id)}
+              >
+                {obra ? formatObra(obra) : id}
+              </Tag>
+            );
+          })
+        )}
+      </div>
+      <p className="mb-2 text-xs text-slate-400">
+        Este cliente solo podrá visualizar las obras seleccionadas.
+      </p>
       {clienteBeckId && !loading && obras.length === 0 && (
         <Alert
           className="mb-2"
@@ -310,33 +349,27 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     setObras([]);
   };
 
+  // Estos efectos solo cargan las OPCIONES (obrasCliente/editObrasCliente) cuando hay
+  // un Cliente Beck seleccionado. Nunca deben limpiar el valor "obraIds" del formulario:
+  // esa limpieza ya la hace explicitamente handleClienteBeckChange cuando el admin cambia
+  // el Cliente Beck, y hacerlo tambien aqui de forma reactiva corre el riesgo de disparar
+  // con un "createClienteBeckId"/"editClienteBeckId" (Form.useWatch) que aun no reflejo
+  // el ultimo form.setFieldsValue, borrando una seleccion recien cargada al abrir "Editar".
   useEffect(() => {
-    if (empresa !== "beck" || !createOpen || createRol !== "cliente") {
-      setObrasCliente([]);
-      return;
-    }
-    if (!createClienteBeckId) {
-      setObrasCliente([]);
-      form.setFieldValue("obraIds", []);
+    if (empresa !== "beck" || !createOpen || createRol !== "cliente" || !createClienteBeckId) {
       return;
     }
     if (obrasCliente.length > 0 || loadingObrasCliente) return;
     void cargarObrasDisponibles("create", createClienteBeckId);
-  }, [createClienteBeckId, createOpen, createRol, empresa, form, loadingObrasCliente, obrasCliente.length]);
+  }, [createClienteBeckId, createOpen, createRol, empresa, loadingObrasCliente, obrasCliente.length]);
 
   useEffect(() => {
-    if (empresa !== "beck" || !editingUsuario || editRol !== "cliente") {
-      setEditObrasCliente([]);
-      return;
-    }
-    if (!editClienteBeckId) {
-      setEditObrasCliente([]);
-      editForm.setFieldValue("obraIds", []);
+    if (empresa !== "beck" || !editingUsuario || editRol !== "cliente" || !editClienteBeckId) {
       return;
     }
     if (editObrasCliente.length > 0 || loadingEditObrasCliente) return;
     void cargarObrasDisponibles("edit", editClienteBeckId);
-  }, [editClienteBeckId, editForm, editObrasCliente.length, editRol, editingUsuario, empresa, loadingEditObrasCliente]);
+  }, [editClienteBeckId, editObrasCliente.length, editRol, editingUsuario, empresa, loadingEditObrasCliente]);
 
   const setSavingState = (id: string, saving: boolean) => {
     setSavingById((prev) => {
@@ -548,34 +581,31 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       }
     }
     const clienteBeckId = usuarioDetalle.clienteBeckId ?? undefined;
-    let obraIds = usuarioDetalle.obraIds ?? usuarioDetalle.obras?.map((obra) => obra.id) ?? [];
+    // usuarioDetalle.obraIds/obras ya vienen completos (sin filtrar por estado) desde
+    // usuariosAPI.obtener(id) — son la fuente de verdad de las obras asignadas.
+    const obraIds = usuarioDetalle.obraIds ?? usuarioDetalle.obras?.map((obra) => obra.id) ?? [];
+    const obrasAsignadas = usuarioDetalle.obras ?? [];
+    let obrasParaOpciones: ObraClienteBeckResumen[] = [];
     if (usuarioDetalle.rol === "cliente") {
       setLoadingEditObrasCliente(true);
       try {
-        const [obrasDisponibles, obrasAsignadas] = await Promise.all([
-          obrasAPI.listar({ activa: true }),
-          usuariosAPI.obtenerObrasUsuario(usuarioDetalle.id),
-        ]);
-        const obrasDelCliente = filtrarObrasPorClienteBeck(obrasDisponibles, clienteBeckId);
-        const obrasPermitidas = new Set(obrasDelCliente.map((obra) => obra.id));
-        const obraIdsAsignadas = obrasAsignadas.map((obra) => obra.id);
-        obraIds = obraIdsAsignadas.filter((obraId) => obrasPermitidas.has(obraId));
-        setEditObrasCliente(obrasDelCliente);
-        if (obraIdsAsignadas.length !== obraIds.length) {
-          message.warning(
-            "Hay obras asignadas previamente que no pertenecen al Cliente Beck seleccionado y no se mostraran como seleccionables."
-          );
+        const obrasDisponibles = await obrasAPI.listar({ activa: true });
+        const obrasActivasDelCliente = filtrarObrasPorClienteBeck(obrasDisponibles, clienteBeckId);
+        // Mostrar como opciones seleccionables las obras activas del Cliente Beck,
+        // mas cualquier obra ya asignada (aunque no este "activa") para no perder la seleccion.
+        const obrasMap = new Map(obrasActivasDelCliente.map((obra) => [obra.id, obra]));
+        for (const obra of obrasAsignadas) {
+          if (!obrasMap.has(obra.id)) obrasMap.set(obra.id, obra);
         }
+        obrasParaOpciones = [...obrasMap.values()];
       } catch (error) {
-        setEditObrasCliente([]);
-        obraIds = [];
-        message.error(getErrorMessage(error, "No se pudieron cargar las obras asignadas"));
+        obrasParaOpciones = obrasAsignadas;
+        message.error(getErrorMessage(error, "No se pudieron cargar las obras disponibles"));
       } finally {
         setLoadingEditObrasCliente(false);
       }
-    } else {
-      setEditObrasCliente([]);
     }
+    setEditObrasCliente(obrasParaOpciones);
     setEditingUsuario(usuarioDetalle);
     editForm.setFieldsValue({
       nombre: usuarioDetalle.nombre,
@@ -684,10 +714,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         prev.map((u) => (u.id === updatedUsuario.id ? updatedUsuario : u))
       );
       await syncCurrentSessionIfNeeded(updatedUsuario);
-
-      if (values.rol === "cliente") {
-        await usuariosAPI.actualizarObrasUsuario(editingUsuario.id, obraIdsCliente ?? []);
-      }
 
       if (hasPassword) {
         await usuariosAPI.cambiarPassword(editingUsuario.id, {
@@ -1396,6 +1422,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                 />
               </Form.Item>
               <ObrasClienteSelector
+                form={form}
                 obras={obrasCliente}
                 loading={loadingObrasCliente}
                 clienteBeckId={createClienteBeckId}
@@ -1469,6 +1496,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                 />
               </Form.Item>
               <ObrasClienteSelector
+                form={editForm}
                 obras={editObrasCliente}
                 loading={loadingEditObrasCliente}
                 clienteBeckId={editClienteBeckId}

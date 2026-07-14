@@ -30,7 +30,15 @@ type Props = {
 type ConfigRow = ItemizadoOpcionConfigItem & {
   _orden: number | null;
   _nombrePersonalizado: string;
+  _rendimientoSellos: number | null;
+  _rendimientoReparacion: number | null;
 };
+
+// Rastrea, por fila (itemizadoOpcionId), qué campos de rendimiento tocó
+// realmente el usuario. Solo esos campos se incluyen en el payload de
+// guardado — evita reenviar (y congelar como override) el valor resuelto
+// (override ?? global) de filas que nadie editó.
+type RendimientoDirtyMap = Record<string, { sellos?: boolean; reparacion?: boolean }>;
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   if (isAxiosError(error)) {
@@ -58,11 +66,15 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dirtyRendimientos, setDirtyRendimientos] = useState<RendimientoDirtyMap>({});
 
   const cargar = async () => {
     if (!obraId) return;
     setLoading(true);
     setError(null);
+    // Cada carga (inicial, "Recargar" o refresco post-guardado) parte de un
+    // snapshot limpio: ningún campo de rendimiento queda marcado como editado.
+    setDirtyRendimientos({});
     try {
       const items = await itemizadoOpcionesAPI.obtenerConfiguracionObra(obraId);
       setRows(
@@ -70,6 +82,9 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
           ...item,
           _orden: item.orden ?? null,
           _nombrePersonalizado: item.nombrePersonalizado ?? "",
+          // Valor efectivo ya resuelto por el backend (override por obra ?? global).
+          _rendimientoSellos: item.itemizadoOpcion?.rendimientoSellosEsperadoDiario ?? null,
+          _rendimientoReparacion: item.itemizadoOpcion?.rendimientoReparacionEsperadoDiario ?? null,
         }))
       );
     } catch (err) {
@@ -106,16 +121,67 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     );
   };
 
+  const updateRendimientoSellos = (id: string, value: number | null) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.itemizadoOpcionId === id ? { ...row, _rendimientoSellos: value } : row
+      )
+    );
+    setDirtyRendimientos((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], sellos: true },
+    }));
+  };
+
+  const updateRendimientoReparacion = (id: string, value: number | null) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.itemizadoOpcionId === id ? { ...row, _rendimientoReparacion: value } : row
+      )
+    );
+    setDirtyRendimientos((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], reparacion: true },
+    }));
+  };
+
   const handleGuardar = async () => {
     if (!obraId) return;
     setSaving(true);
     try {
       await itemizadoOpcionesAPI.guardarConfiguracionObra(obraId, {
-        items: rows.map((row) => ({
-          itemizadoOpcionId: row.itemizadoOpcionId,
-          orden: row._orden,
-          nombrePersonalizado: row._nombrePersonalizado.trim() || null,
-        })),
+        items: rows.map((row) => {
+          const dirty = dirtyRendimientos[row.itemizadoOpcionId];
+
+          // itemizadoOpcionId, orden y nombrePersonalizado mantienen el
+          // comportamiento existente: siempre se envían.
+          const item: {
+            itemizadoOpcionId: string;
+            orden: number | null;
+            nombrePersonalizado: string | null;
+            rendimientoSellosEsperadoDiario?: number | null;
+            rendimientoReparacionEsperadoDiario?: number | null;
+          } = {
+            itemizadoOpcionId: row.itemizadoOpcionId,
+            orden: row._orden,
+            nombrePersonalizado: row._nombrePersonalizado.trim() || null,
+          };
+
+          // Rendimientos: solo se incluye la clave si el usuario tocó ese
+          // campo específico en esta fila. Si no fue tocado, se omite por
+          // completo (no se envía ni siquiera como null) para que el backend
+          // (hasOwnProperty) no cree/actualice un override que nadie pidió.
+          // Si el usuario lo tocó y lo dejó vacío, row._rendimiento* ya vale
+          // null, y ese null sí se envía intencionalmente (limpia el override).
+          if (dirty?.sellos) {
+            item.rendimientoSellosEsperadoDiario = row._rendimientoSellos;
+          }
+          if (dirty?.reparacion) {
+            item.rendimientoReparacionEsperadoDiario = row._rendimientoReparacion;
+          }
+
+          return item;
+        }),
       });
       void message.success("Configuración guardada correctamente");
       await cargar();
@@ -129,6 +195,29 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   };
 
   const columns: ColumnsType<ConfigRow> = [
+    {
+      title: "Itemizado BECK",
+      key: "elementoPasante",
+      render: (_: unknown, record: ConfigRow) => {
+        const v = record.itemizadoOpcion?.elementoPasante;
+        return v || <span className="text-slate-400">—</span>;
+      },
+    },
+    {
+      title: "Itemizado Mandante",
+      key: "nombrePersonalizado",
+      width: 240,
+      render: (_: unknown, record: ConfigRow) => (
+        <Input
+          size="small"
+          value={record._nombrePersonalizado}
+          placeholder="Dejar vacío para usar el itemizado BECK"
+          onChange={(e) =>
+            updateNombre(record.itemizadoOpcionId, e.target.value)
+          }
+        />
+      ),
+    },
     {
       title: "Orden",
       key: "orden",
@@ -146,105 +235,36 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       ),
     },
     {
-      title: "Código BECK",
-      key: "codigoBeck",
+      title: "Rend. Sellos/día",
+      key: "rendimientoSellosEsperadoDiario",
       width: 130,
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.codigoBeck;
-        return (
-          <span className="font-mono text-xs">
-            {v || <span className="text-slate-400">—</span>}
-          </span>
-        );
-      },
-    },
-    {
-      title: "Nombre original",
-      key: "elementoPasante",
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.elementoPasante;
-        return v || <span className="text-slate-400">—</span>;
-      },
-    },
-    {
-      title: "Nombre personalizado para esta obra",
-      key: "nombrePersonalizado",
-      width: 240,
       render: (_: unknown, record: ConfigRow) => (
-        <Input
+        <InputNumber
           size="small"
-          value={record._nombrePersonalizado}
-          placeholder="Dejar vacío para usar nombre original"
-          onChange={(e) =>
-            updateNombre(record.itemizadoOpcionId, e.target.value)
-          }
+          min={0}
+          precision={0}
+          value={record._rendimientoSellos}
+          placeholder="—"
+          style={{ width: 90 }}
+          onChange={(val) => updateRendimientoSellos(record.itemizadoOpcionId, val)}
         />
       ),
     },
     {
-      title: "Nombre final",
-      key: "nombreFinal",
-      render: (_: unknown, record: ConfigRow) => {
-        const nombre =
-          record._nombrePersonalizado.trim() ||
-          record.itemizadoOpcion?.elementoPasante;
-        return nombre ? (
-          <span className="text-sm font-medium text-slate-800">{nombre}</span>
-        ) : (
-          <span className="text-slate-400">—</span>
-        );
-      },
-    },
-    {
-      title: "Tipo",
-      key: "tipo",
-      width: 120,
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.tipo;
-        return v || <span className="text-slate-400">—</span>;
-      },
-    },
-    {
-      title: "Elemento atravesado",
-      key: "elementoPenetra",
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.elementoPenetra;
-        return v || <span className="text-slate-400">—</span>;
-      },
-    },
-    {
-      title: "Materialidad",
-      key: "materialidad",
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.materialidad;
-        return v || <span className="text-slate-400">—</span>;
-      },
-    },
-    {
-      title: "Rendimiento Sellos Esperado diario",
-      key: "rendimientoSellosEsperadoDiario",
-      width: 140,
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.rendimientoSellosEsperadoDiario;
-        return v != null ? (
-          <span className="text-xs text-slate-700">{v}</span>
-        ) : (
-          <span className="text-slate-400">—</span>
-        );
-      },
-    },
-    {
-      title: "Rendimiento Reparación Esperado diario",
+      title: "Rend. Reparación/día",
       key: "rendimientoReparacionEsperadoDiario",
-      width: 160,
-      render: (_: unknown, record: ConfigRow) => {
-        const v = record.itemizadoOpcion?.rendimientoReparacionEsperadoDiario;
-        return v != null ? (
-          <span className="text-xs text-slate-700">{v}</span>
-        ) : (
-          <span className="text-slate-400">—</span>
-        );
-      },
+      width: 140,
+      render: (_: unknown, record: ConfigRow) => (
+        <InputNumber
+          size="small"
+          min={0}
+          precision={0}
+          value={record._rendimientoReparacion}
+          placeholder="—"
+          style={{ width: 90 }}
+          onChange={(val) => updateRendimientoReparacion(record.itemizadoOpcionId, val)}
+        />
+      ),
     },
   ];
 
@@ -291,8 +311,9 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             {obraNombre || "-"}
           </Typography.Title>
           <Typography.Text type="secondary" className="mt-1 block text-xs">
-            Configura el orden y el nombre personalizado de los itemizados
-            visibles para esta obra.
+            Configura el Itemizado Mandante, el orden y los rendimientos de los
+            itemizados visibles para esta obra (confirmados por el cliente o
+            activados manualmente desde Opciones de itemizado).
           </Typography.Text>
         </div>
 
@@ -326,7 +347,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             dataSource={rows}
             size="small"
             pagination={{ pageSize: 25, showSizeChanger: false }}
-            scroll={{ x: 1400 }}
+            scroll={{ x: 700 }}
             locale={{ emptyText: "No hay itemizados visibles para esta obra" }}
           />
         )}

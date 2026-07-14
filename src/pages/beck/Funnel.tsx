@@ -19,6 +19,7 @@
     EditOutlined,
     EyeOutlined,
     FileTextOutlined,
+    SwapOutlined,
     UploadOutlined,
   } from "@ant-design/icons";
   import {
@@ -68,7 +69,7 @@
     type FunnelBeckArchivoTipo,
     type FunnelBeckOpportunity,
     type FunnelBeckUpsertPayload,
-    type HistorialEtapaBeck,
+    type HistorialFunnelBeckEvento,
     type SolicitudOficinaTecnica,
     type UsuarioResumen,
   } from "../../services/api";
@@ -89,10 +90,7 @@
   type FunnelPageProps = {
     themeMode: ThemeMode;
     alertaBell?: React.ReactNode;
-    // Permite embeber solo el tablero Kanban (sin encabezado ni pestanas
-    // propias) dentro de otra pagina, ej. /firemat/funnel cuando su filtro
-    // "Unidad de negocio" no es Firemat. El filtro y el estado de cierre
-    // quedan controlados por quien embebe; ver uso en src/pages/firemat/Funnel.tsx.
+
     embedUnidadNegocio?: "Beck" | "Firemat" | "Mixto" | "Todas";
     embedEstadoCierre?: string;
     onVisibleCountChange?: (count: number) => void;
@@ -188,12 +186,10 @@
     // Cliente Beck
     clienteBeckId: string;
     contactoBeckId: string;
-    // Punto 10
     direccionProyecto: string;
     unidadNegocio: string;
     observaciones: string;
     urgencia: string;
-    // Punto 12 - Campos específicos Beck
     tipoProyecto: string;
     empresaMandante: string;
     necesidadLevantamiento: string;
@@ -215,6 +211,18 @@
     | "documentacion"
     | "cierre";
 
+  // Orden canónico de las secciones del formulario de oportunidad, igual al
+  // avance real de etapas del Funnel. Usado para calcular "etapa actual +
+  // anteriores" al abrir "Editar" desde el detalle.
+  const FUNNEL_EDIT_SECTIONS_ORDER: FunnelEditSection[] = [
+    "prospecto",
+    "visita",
+    "desarrollo",
+    "negociacion",
+    "documentacion",
+    "cierre",
+  ];
+
   type FunnelCotizacionItem = {
     id: string;
     numero: string;
@@ -230,7 +238,8 @@
     estado: string;
     total: number;
     moneda: string;
-    responsable: string;
+    responsableId: string | null;
+    responsableNombre: string;
     notas: string;
     descuento: number;
     aplicaImpuesto: boolean;
@@ -299,6 +308,7 @@
     clientesDisponibles: ClienteBeck[];
     clientesLoading: boolean;
     initialEditSection: FunnelEditSection | null;
+    editVisibleSections: FunnelEditSection[] | null;
     oportunidadId: string | null;
     archivosPorTipo: ArchivosFunnelPorTipo;
     jefesObra: UsuarioResumen[];
@@ -335,9 +345,6 @@
     cerrada: "Cerrada",
   };
 
-  // Etiquetas del tablero comun usado unicamente cuando Unidad de negocio =
-  // "Todas": columnas equivalentes donde conviven oportunidades Beck y
-  // Firemat (ver mapeo en resolverColumnaComun / etapaBackendMap).
   const etapasLabelComun: Record<FunnelStage, string> = {
     prospecto: "Prospección",
     visita: "Primer contacto / Levantamiento",
@@ -973,9 +980,12 @@
       moneda: normalizeMoneda(
         pickValue(source, ["moneda", "moneda_total", "currency"])
       ),
-      responsable: toText(
-        pickValue(source, ["responsable", "usuarioNombre", "usuario_nombre"])
-      ),
+      responsableId:
+        toText(pickValue(source, ["responsableId", "responsable_id"]), "") ||
+        null,
+      responsableNombre: isObjectRecord(source.responsable)
+        ? toText(pickValue(source.responsable, ["nombre"]))
+        : "",
       notas: toText(pickValue(source, ["notas", "observaciones"])),
       descuento,
       aplicaImpuesto,
@@ -1504,6 +1514,7 @@
     clientesDisponibles,
     clientesLoading,
     initialEditSection,
+    editVisibleSections,
     oportunidadId,
     archivosPorTipo,
     jefesObra,
@@ -1728,18 +1739,28 @@
     };
 
     const renderVendedorSelect = () => {
+      // El Select muestra únicamente el nombre (nunca el correo). El correo
+      // solo se usa internamente para poder buscar por él sin mostrarlo.
       const comercialOptions = usuariosComerciales
         .filter((u) => u.nombre || u.email)
         .map((u) => ({
           value: u.nombre || u.email,
-          label: u.nombre ? `${u.nombre} — ${u.email}` : u.email,
+          label: u.nombre || u.email,
+          searchText: `${u.nombre ?? ""} ${u.email ?? ""}`.toLowerCase(),
         }));
       const hasCurrentValue =
         !draft.vendedor ||
         comercialOptions.some((opt) => opt.value === draft.vendedor);
       const options = hasCurrentValue
         ? comercialOptions
-        : [{ value: draft.vendedor, label: draft.vendedor }, ...comercialOptions];
+        : [
+            {
+              value: draft.vendedor,
+              label: draft.vendedor,
+              searchText: draft.vendedor.toLowerCase(),
+            },
+            ...comercialOptions,
+          ];
 
       return (
         <div>
@@ -1762,8 +1783,9 @@
             placeholder="Selecciona un vendedor"
             filterOption={(input, option) => {
               if (!option) return false;
-              const label = typeof option.label === "string" ? option.label : String(option.label ?? "");
-              return label.toLowerCase().includes(input.toLowerCase());
+              const searchText =
+                typeof option.searchText === "string" ? option.searchText : "";
+              return searchText.includes(input.toLowerCase());
             }}
             options={options}
             status={fieldErrors.vendedor ? "error" : undefined}
@@ -1998,32 +2020,46 @@
         value: c.id,
         label: `${c.nombre}${c.cargo ? ` — ${c.cargo}` : ""}`,
       }));
-    const isFocusedStageEdit = mode === "edit" && Boolean(initialEditSection);
-    const showFullForm = !isFocusedStageEdit;
-    const showAllStageSections = mode === "edit" && !isFocusedStageEdit;
+    // Editar desde el detalle pasa editVisibleSections = etapa actual +
+    // anteriores (ver getSectionsUpToStage). Cuando viene seteado, tiene
+    // prioridad exclusiva: no se combina con el formulario completo ni con
+    // el enfoque de sección única de "Rellenar <etapa>" (initialEditSection),
+    // que siguen intactos para sus propios flujos.
+    const isRestrictedEdit = mode === "edit" && Array.isArray(editVisibleSections);
+    const isFocusedStageEdit = mode === "edit" && !isRestrictedEdit && Boolean(initialEditSection);
+    const showFullForm = !isFocusedStageEdit && !isRestrictedEdit;
+    const showAllStageSections = mode === "edit" && !isFocusedStageEdit && !isRestrictedEdit;
+    const sectionVisible = (section: FunnelEditSection) =>
+      isRestrictedEdit ? (editVisibleSections as FunnelEditSection[]).includes(section) : false;
     const showProspectoSection =
       showFullForm ||
-      initialEditSection === "prospecto";
+      initialEditSection === "prospecto" ||
+      sectionVisible("prospecto");
     const showVisitaSection =
       showAllStageSections ||
       initialEditSection === "visita" ||
-      (mode === "create" && draft.etapa === "visita");
+      (mode === "create" && draft.etapa === "visita") ||
+      sectionVisible("visita");
     const showDesarrolloSection =
       showAllStageSections ||
       initialEditSection === "desarrollo" ||
-      (mode === "create" && draft.etapa === "cotizacion");
+      (mode === "create" && draft.etapa === "cotizacion") ||
+      sectionVisible("desarrollo");
     const showNegociacionSection =
       showAllStageSections ||
       initialEditSection === "negociacion" ||
-      (mode === "create" && ["enviada", "negociacion"].includes(draft.etapa));
+      (mode === "create" && ["enviada", "negociacion"].includes(draft.etapa)) ||
+      sectionVisible("negociacion");
     const showDocumentacionSection =
       showAllStageSections ||
       initialEditSection === "documentacion" ||
-      (mode === "create" && draft.etapa === "documentacion");
+      (mode === "create" && draft.etapa === "documentacion") ||
+      sectionVisible("documentacion");
     const showCierreSection =
       showAllStageSections ||
       initialEditSection === "cierre" ||
-      (mode === "create" && draft.etapa === "cerrada");
+      (mode === "create" && draft.etapa === "cerrada") ||
+      sectionVisible("cierre");
     const renderArchivoUploaders = (configs: ArchivoFunnelConfig[]) => {
       if (!oportunidadId) {
         return null;
@@ -3319,6 +3355,12 @@
     const [editingDealId, setEditingDealId] = useState<string | null>(null);
     const [initialEditSection, setInitialEditSection] =
       useState<FunnelEditSection | null>(null);
+    // Lista explícita de secciones visibles cuando se edita desde el botón
+    // "Editar" del detalle: etapa actual + todas las anteriores (oculta las
+    // futuras). null = comportamiento previo (formulario completo o sección
+    // única enfocada vía initialEditSection, sin tocar esos flujos).
+    const [editVisibleSections, setEditVisibleSections] =
+      useState<FunnelEditSection[] | null>(null);
     const [dealSaving, setDealSaving] = useState(false);
     const [dealDeletingId, setDealDeletingId] = useState<string | null>(null);
     const submitLockRef = useRef(false);
@@ -3346,9 +3388,14 @@
     const [ufFecha, setUfFecha] = useState<string | null>(null);
     const [selectedDeal, setSelectedDeal] = useState<FunnelDeal | null>(null);
     const [fullDetailOpen, setFullDetailOpen] = useState(false);
-    const [historialEtapas, setHistorialEtapas] = useState<HistorialEtapaBeck[]>([]);
+    const [historialEtapas, setHistorialEtapas] = useState<HistorialFunnelBeckEvento[]>([]);
     const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
     const [historialEtapasError, setHistorialEtapasError] = useState<string | null>(null);
+    // Modal chico de "Cambiar vendedor" desde el detalle — no reutiliza el
+    // formulario completo de edición (FunnelModal).
+    const [cambiarVendedorModalOpen, setCambiarVendedorModalOpen] = useState(false);
+    const [cambiarVendedorValue, setCambiarVendedorValue] = useState<string | undefined>(undefined);
+    const [cambiarVendedorSaving, setCambiarVendedorSaving] = useState(false);
     const [archivosFunnel, setArchivosFunnel] = useState<FunnelBeckArchivo[]>([]);
     const [archivosFunnelLoading, setArchivosFunnelLoading] = useState(false);
     const [relatedCotizaciones, setRelatedCotizaciones] = useState<
@@ -4235,15 +4282,19 @@
       return ETAPA_HISTORIAL_LABELS[etapa] ?? etapa.replace(/_/g, " ");
     };
 
+    // Carga la línea de tiempo combinada (etapas + cambios de vendedor) desde
+    // el endpoint nuevo GET /funnel-beck/:id/historial. No usa
+    // funnelBeckAPI.getHistorialEtapas (endpoint anterior, se deja intacto
+    // por si algún otro consumidor lo necesita).
     const loadHistorialEtapas = async (id: string) => {
       setHistorialEtapasLoading(true);
       setHistorialEtapasError(null);
       setHistorialEtapas([]);
       try {
-        const data = await funnelBeckAPI.getHistorialEtapas(id);
+        const data = await funnelBeckAPI.getHistorial(id);
         setHistorialEtapas(data);
       } catch {
-        setHistorialEtapasError("No se pudo cargar el historial de etapas");
+        setHistorialEtapasError("No se pudo cargar el historial");
       } finally {
         setHistorialEtapasLoading(false);
       }
@@ -4450,6 +4501,7 @@
           numero: values.numero || undefined,
           clienteNombre: values.cliente,
           funnelBeckId: values.funnelBeckId || null,
+          responsableId: values.responsableId || null,
           subtotal,
           impuesto,
           total,
@@ -4560,15 +4612,17 @@
       }
     };
 
+    // Alimenta el Select de Vendedor. Usa el endpoint dedicado por permiso
+    // efectivo (beck_funnel.puedeEditar) — deliberadamente no
+    // usuariosAPI.listarComerciales() (ese filtra por rol fijo y alimenta
+    // otros consumidores que no deben tocarse en este cambio).
     const loadUsuariosComerciales = async () => {
       try {
         setUsuariosComercialesLoading(true);
-        const usuarios = await usuariosAPI.listarComerciales();
-        console.log("usuariosComerciales state", usuarios);
-        console.log("usuariosComercialesLoading", false);
+        const usuarios = await usuariosAPI.listarVendedoresFunnelBeck();
         setUsuariosComerciales(usuarios);
       } catch (error) {
-        console.error("Error al cargar usuarios comerciales:", error);
+        console.error("Error al cargar vendedores del Funnel Beck:", error);
         message.error(getErrorMessage(error, "No se pudo cargar la lista de vendedores"));
         setUsuariosComerciales([]);
       } finally {
@@ -4729,6 +4783,7 @@
       setFunnelModalMode("create");
       setEditingDealId(null);
       setInitialEditSection(null);
+      setEditVisibleSections(null);
       setDraft(createEmptyDraft());
       setFieldErrors({});
       setShowValidationSummary(false);
@@ -4744,7 +4799,8 @@
 
     const handleEditDeal = async (
       deal: FunnelDeal,
-      focusSection: FunnelEditSection | null = null
+      focusSection: FunnelEditSection | null = null,
+      visibleSections: FunnelEditSection[] | null = null
     ) => {
       if (!canEditFunnel || dealSaving) return;
 
@@ -4764,6 +4820,7 @@
         setFunnelModalMode("edit");
         setEditingDealId(deal.id);
         setInitialEditSection(focusSection);
+        setEditVisibleSections(visibleSections);
         setDraft(dealToDraft(deal));
         setSelectedClienteBeck(clienteForEdit);
         setClienteBeckSearch("");
@@ -4784,6 +4841,7 @@
       setFunnelModalMode("create");
       setEditingDealId(null);
       setInitialEditSection(null);
+      setEditVisibleSections(null);
       setDraft(createEmptyDraft());
       setFieldErrors({});
       setShowValidationSummary(false);
@@ -5578,6 +5636,60 @@
       }
     };
 
+    const openCambiarVendedorModal = () => {
+      if (!selectedDeal) return;
+      setCambiarVendedorValue(selectedDeal.vendedor || undefined);
+      setCambiarVendedorModalOpen(true);
+    };
+
+    const closeCambiarVendedorModal = () => {
+      if (cambiarVendedorSaving) return;
+      setCambiarVendedorModalOpen(false);
+      setCambiarVendedorValue(undefined);
+    };
+
+    // Cambia únicamente el vendedor vía PATCH /funnel-beck/:id/vendedor — no
+    // pasa por el formulario completo de edición (FunnelModal/handleCreateDeal).
+    const handleGuardarCambioVendedor = async () => {
+      if (!selectedDeal || !canEditFunnel || cambiarVendedorSaving) return;
+
+      const nuevoVendedor = (cambiarVendedorValue || "").trim();
+      if (!nuevoVendedor) {
+        message.error("Selecciona un vendedor.");
+        return;
+      }
+
+      try {
+        setCambiarVendedorSaving(true);
+        const savedOpportunity = await funnelBeckAPI.cambiarVendedor(
+          selectedDeal.id,
+          nuevoVendedor
+        );
+        const mappedSavedOpportunity = mapOpportunityToDeal(
+          savedOpportunity as Record<string, unknown>
+        );
+
+        setDeals((current) =>
+          current.map((deal) =>
+            deal.id === mappedSavedOpportunity.id ? mappedSavedOpportunity : deal
+          )
+        );
+        setSelectedDeal(mappedSavedOpportunity);
+
+        setCambiarVendedorModalOpen(false);
+        setCambiarVendedorValue(undefined);
+        message.success("Vendedor actualizado");
+
+        // Refrescar el historial para que aparezca el evento de cambio recién
+        // registrado, sin tener que cerrar y volver a abrir la oportunidad.
+        void loadHistorialEtapas(mappedSavedOpportunity.id);
+      } catch (error) {
+        message.error(getErrorMessage(error, "No se pudo cambiar el vendedor"));
+      } finally {
+        setCambiarVendedorSaving(false);
+      }
+    };
+
     const handleCreateDeal = async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
@@ -5616,6 +5728,10 @@
 
         if (selectedDeal?.id === mappedSavedOpportunity.id) {
           setSelectedDeal(mappedSavedOpportunity);
+          // El detalle (con la línea de tiempo) está abierto para esta misma
+          // oportunidad — se refresca para reflejar el cambio de vendedor
+          // recién guardado sin que el usuario tenga que cerrar y reabrir.
+          void loadHistorialEtapas(mappedSavedOpportunity.id);
         }
 
         await loadDeals();
@@ -5675,7 +5791,7 @@
                 ? editingCotizacion.estado
                 : "Borrador",
             moneda: editingCotizacion.moneda === "USD" ? "USD" : "CLP",
-            responsable: editingCotizacion.responsable,
+            responsableId: editingCotizacion.responsableId,
             notas: editingCotizacion.notas,
             descuento: editingCotizacion.descuento,
             aplicaImpuesto: editingCotizacion.aplicaImpuesto,
@@ -5732,6 +5848,16 @@
       if (etapa === "documentacion") return "documentacion";
       if (etapa === "cerrada") return "cierre";
       return null;
+    };
+
+    // Etapa actual + todas las anteriores (oculta las futuras) para el botón
+    // "Editar" del detalle — a diferencia de getStageEditSection, que da solo
+    // la sección puntual usada por el botón "Rellenar <etapa>".
+    const getSectionsUpToStage = (etapa: FunnelStage): FunnelEditSection[] => {
+      const actual = getStageEditSection(etapa);
+      if (!actual) return FUNNEL_EDIT_SECTIONS_ORDER;
+      const idx = FUNNEL_EDIT_SECTIONS_ORDER.indexOf(actual);
+      return idx === -1 ? FUNNEL_EDIT_SECTIONS_ORDER : FUNNEL_EDIT_SECTIONS_ORDER.slice(0, idx + 1);
     };
 
     const getStageActionLabel = (etapa: FunnelStage) => {
@@ -6463,6 +6589,7 @@
           clientesDisponibles={clientesDisponibles}
           clientesLoading={clientesLoading}
           initialEditSection={initialEditSection}
+          editVisibleSections={editVisibleSections}
           oportunidadId={funnelModalMode === "edit" ? editingDealId : null}
           archivosPorTipo={groupArchivosFunnel(archivosFunnel)}
           jefesObra={jefesObra}
@@ -6710,8 +6837,25 @@
                   {canEditFunnel && (
                     <>
                       <Button
+                        icon={<SwapOutlined />}
+                        onClick={openCambiarVendedorModal}
+                        disabled={dealSaving}
+                      >
+                        Cambiar vendedor
+                      </Button>
+                      <Button
                         icon={<EditOutlined />}
-                        onClick={() => { void handleEditDeal(selectedDeal, null); }}
+                        onClick={() => {
+                          void handleEditDeal(
+                            // Muestra etapa actual + anteriores y hace scroll
+                            // directo a la sección de la etapa actual (lo que
+                            // hay que completar ahora), para revisar lo
+                            // anterior subiendo desde ahí.
+                            selectedDeal,
+                            getStageEditSection(selectedDeal.etapa),
+                            getSectionsUpToStage(selectedDeal.etapa)
+                          );
+                        }}
                         disabled={dealSaving}
                       >
                         Editar
@@ -6946,10 +7090,10 @@
                 </div>
               )}
 
-              {/* ── Historial de etapas ── */}
+              {/* ── Historial (etapas + cambios de vendedor) ── */}
               <div>
                 <h3 className="mb-3 text-sm font-semibold text-slate-900">
-                  Historial de etapas
+                  Historial
                 </h3>
                 {historialEtapasLoading ? (
                   <div className="flex justify-center py-6">
@@ -6959,13 +7103,22 @@
                   <p className="text-xs text-red-500">{historialEtapasError}</p>
                 ) : historialEtapas.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
-                    Sin historial de etapas
+                    Sin historial
                   </div>
                 ) : (
                   <Timeline
                     mode="left"
-                    items={historialEtapas.map((h) => ({
-                      key: h.id,
+                    // El backend (GET /funnel-beck/:id/historial) sigue
+                    // devolviendo los eventos en orden cronológico ascendente
+                    // (sin tocar); acá solo se invierte para la presentación,
+                    // así el evento más reciente queda arriba.
+                    items={[...historialEtapas].reverse().map((h, index) => ({
+                      key: `${h.tipo}-${h.createdAt}-${index}`,
+                      // Icono distinto para cambio de vendedor, para no
+                      // confundirlo visualmente con un cambio de etapa.
+                      dot: h.tipo === "CAMBIO_VENDEDOR" ? (
+                        <SwapOutlined className="text-amber-500" />
+                      ) : undefined,
                       label: (
                         <span className="text-xs text-slate-400">
                           {new Date(h.createdAt).toLocaleString("es-CL", {
@@ -6977,20 +7130,37 @@
                           })}
                         </span>
                       ),
-                      children: (
-                        <div className="pb-1">
-                          <p className="text-sm font-medium text-slate-800">
-                            {h.etapaAnterior
-                              ? `${formatEtapaHistorial(h.etapaAnterior)} → ${formatEtapaHistorial(h.etapaNueva)}`
-                              : `Inicio: ${formatEtapaHistorial(h.etapaNueva)}`}
-                          </p>
-                          {(h.usuarioNombre ?? h.usuarioEmail) && (
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              Por: {h.usuarioNombre ?? h.usuarioEmail}
+                      children:
+                        h.tipo === "CAMBIO_VENDEDOR" ? (
+                          <div className="pb-1">
+                            <p className="text-sm font-medium text-slate-800">
+                              Cambio de vendedor
                             </p>
-                          )}
-                        </div>
-                      ),
+                            <p className="text-sm text-slate-700">
+                              {h.vendedorAnterior
+                                ? `${h.vendedorAnterior} → ${h.vendedorNuevo}`
+                                : h.vendedorNuevo}
+                            </p>
+                            {h.usuario?.nombre && (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                Realizado por {h.usuario.nombre}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="pb-1">
+                            <p className="text-sm font-medium text-slate-800">
+                              {h.etapaAnterior
+                                ? `${formatEtapaHistorial(h.etapaAnterior)} → ${formatEtapaHistorial(h.etapaNueva ?? "")}`
+                                : `Inicio: ${formatEtapaHistorial(h.etapaNueva ?? "")}`}
+                            </p>
+                            {h.usuario?.nombre && (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                Por: {h.usuario.nombre}
+                              </p>
+                            )}
+                          </div>
+                        ),
                     }))}
                   />
                 )}
@@ -7040,6 +7210,67 @@
                 No hay jefes de obra activos disponibles.
               </Typography.Text>
             )}
+          </div>
+        </AntdModal>
+
+        <AntdModal
+          open={cambiarVendedorModalOpen}
+          onCancel={closeCambiarVendedorModal}
+          title="Cambiar vendedor"
+          okText="Guardar"
+          cancelText="Cancelar"
+          onOk={() => {
+            void handleGuardarCambioVendedor();
+          }}
+          okButtonProps={{
+            disabled: !cambiarVendedorValue || cambiarVendedorSaving,
+            loading: cambiarVendedorSaving,
+          }}
+          cancelButtonProps={{ disabled: cambiarVendedorSaving }}
+          width="min(480px, 95vw)"
+        >
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-500">
+                Vendedor actual
+              </p>
+              <Input
+                value={selectedDeal?.vendedor || "-"}
+                disabled
+                readOnly
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-500">
+                Nuevo vendedor
+              </p>
+              <Select
+                showSearch
+                value={cambiarVendedorValue}
+                placeholder="Selecciona un vendedor"
+                loading={usuariosComercialesLoading}
+                disabled={cambiarVendedorSaving}
+                onChange={(value) => setCambiarVendedorValue(value)}
+                className="w-full"
+                // Mismo listado que el Select de Vendedor del formulario de
+                // edición (usuariosAPI.listarVendedoresFunnelBeck vía el
+                // estado usuariosComerciales ya cargado en esta página):
+                // solo nombre visible, búsqueda por nombre y correo.
+                options={usuariosComerciales
+                  .filter((u) => u.nombre || u.email)
+                  .map((u) => ({
+                    value: u.nombre || u.email,
+                    label: u.nombre || u.email,
+                    searchText: `${u.nombre ?? ""} ${u.email ?? ""}`.toLowerCase(),
+                  }))}
+                filterOption={(input, option) => {
+                  if (!option) return false;
+                  const searchText =
+                    typeof option.searchText === "string" ? option.searchText : "";
+                  return searchText.includes(input.toLowerCase());
+                }}
+              />
+            </div>
           </div>
         </AntdModal>
 

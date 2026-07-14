@@ -133,7 +133,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
   }, [opciones]);
 
   const filtered = useMemo(() => {
-    return opciones.filter((o) => {
+    const result = opciones.filter((o) => {
       if (filterCodigo && o.codigoBeck !== filterCodigo) return false;
       if (filterTipo && o.tipo !== filterTipo) return false;
       if (filterPasante && o.elementoPasante !== filterPasante) return false;
@@ -143,6 +143,14 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       if (filterVisible === "oculto" && o.visible) return false;
       return true;
     });
+    // Activos primero, inactivos después (orden estable dentro de cada grupo).
+    return result
+      .map((o, index) => ({ o, index }))
+      .sort((a, b) => {
+        if (a.o.visible === b.o.visible) return a.index - b.index;
+        return a.o.visible ? -1 : 1;
+      })
+      .map(({ o }) => o);
   }, [opciones, filterCodigo, filterTipo, filterPasante, filterPenetra, filterMaterialidad, filterVisible]);
 
   const handleToggleVisible = async (opcion: ItemizadoOpcion, visible: boolean) => {
@@ -237,12 +245,18 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
         elementoPenetra: values.elementoPenetra?.trim() || null,
         materialidad: values.materialidad?.trim() || null,
         visible: values.visible ?? false,
-        rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
-        rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
+        // Rendimientos: solo aplican al catálogo global (sin obraId). Por obra se
+        // editan en "Configurar itemizados", no aquí.
+        ...(obraId
+          ? {}
+          : {
+              rendimientoSellosEsperadoDiario: values.rendimientoSellosEsperadoDiario ?? null,
+              rendimientoReparacionEsperadoDiario: values.rendimientoReparacionEsperadoDiario ?? null,
+            }),
       };
 
       if (editingOpcion) {
-        await itemizadoOpcionesAPI.actualizar(editingOpcion.id, payload);
+        await itemizadoOpcionesAPI.actualizar(editingOpcion.id, payload, obraId);
         message.success("Opción actualizada");
       } else {
         await itemizadoOpcionesAPI.crear(payload);
@@ -278,7 +292,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       render: (v: string | null) => v || <span className="text-slate-400">—</span>,
     },
     {
-      title: "Elemento pasante",
+      title: "Itemizado BECK",
       dataIndex: "elementoPasante",
       key: "elementoPasante",
       render: (v: string | null) => v || <span className="text-slate-400">—</span>,
@@ -563,22 +577,29 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
           <Form.Item name="materialidad" label="Materialidad">
             <Input placeholder="Materialidad" />
           </Form.Item>
-          <Form.Item name="rendimientoSellosEsperadoDiario" label="Rendimiento Sellos Esperado diario">
-            <InputNumber
-              min={0}
-              precision={0}
-              style={{ width: "100%" }}
-              placeholder="Ej: 20"
-            />
-          </Form.Item>
-          <Form.Item name="rendimientoReparacionEsperadoDiario" label="Rendimiento Reparación Esperado diario">
-            <InputNumber
-              min={0}
-              precision={0}
-              style={{ width: "100%" }}
-              placeholder="Ej: 24"
-            />
-          </Form.Item>
+          {/* Los rendimientos por obra ya no se editan aquí, se movieron a
+              "Configurar itemizados". Solo se editan aquí como default del
+              catálogo global (cuando no hay obraId). */}
+          {!obraId && (
+            <>
+              <Form.Item name="rendimientoSellosEsperadoDiario" label="Rendimiento Sellos Esperado diario">
+                <InputNumber
+                  min={0}
+                  precision={0}
+                  style={{ width: "100%" }}
+                  placeholder="Ej: 20"
+                />
+              </Form.Item>
+              <Form.Item name="rendimientoReparacionEsperadoDiario" label="Rendimiento Reparación Esperado diario">
+                <InputNumber
+                  min={0}
+                  precision={0}
+                  style={{ width: "100%" }}
+                  placeholder="Ej: 24"
+                />
+              </Form.Item>
+            </>
+          )}
           <Form.Item name="visible" label="Visible" valuePropName="checked">
             <Switch checkedChildren="Visible" unCheckedChildren="Oculto" />
           </Form.Item>

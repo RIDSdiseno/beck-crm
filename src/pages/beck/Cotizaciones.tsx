@@ -67,7 +67,8 @@ type CotizacionListItem = {
   estado: string;
   total: number;
   moneda: string;
-  responsable: string;
+  responsableId: string | null;
+  responsableNombre: string;
   notas: string;
   descuento: number;
   aplicaImpuesto: boolean;
@@ -369,6 +370,13 @@ const mapCotizacion = (
   const contactoBeckId =
     toText(pickValue(source, ["contactoBeckId", "contacto_beck_id"]), "") ||
     null;
+  const responsableId =
+    toText(pickValue(source, ["responsableId", "responsable_id"]), "") ||
+    null;
+  const responsableSource = source.responsable;
+  const responsableNombre = isObjectRecord(responsableSource)
+    ? toText(pickValue(responsableSource, ["nombre"]))
+    : "";
 
   return {
     id: toText(source.id),
@@ -390,7 +398,8 @@ const mapCotizacion = (
     moneda: normalizeMoneda(
       pickValue(source, ["moneda", "moneda_total", "currency"])
     ),
-    responsable: toText(pickValue(source, ["responsable", "usuarioNombre", "usuario_nombre"])),
+    responsableId,
+    responsableNombre,
     notas: toText(pickValue(source, ["notas", "observaciones"])),
     descuento,
     aplicaImpuesto,
@@ -761,6 +770,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         funnelBeckId: values.funnelBeckId || null,
         clienteBeckId: values.clienteBeckId || null,
         contactoBeckId: values.contactoBeckId || null,
+        responsableId: values.responsableId || null,
         subtotal,
         impuesto,
         total,
@@ -839,7 +849,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
       cotizacion.estado,
       cotizacion.total,
       cotizacion.moneda,
-      cotizacion.responsable,
+      cotizacion.responsableNombre || "Sin responsable asignado",
       cotizacion.notas,
     ]);
 
@@ -885,7 +895,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
             ? editingRecord.estado
             : "Borrador",
         moneda: editingRecord.moneda === "USD" ? "USD" : "CLP",
-        responsable: editingRecord.responsable,
+        responsableId: editingRecord.responsableId,
         notas: editingRecord.notas,
         descuento: editingRecord.descuento,
         aplicaImpuesto: editingRecord.aplicaImpuesto,
@@ -1352,7 +1362,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               {selectedCotizacion.tipo || "-"}
             </Descriptions.Item>
             <Descriptions.Item label="Responsable">
-              {selectedCotizacion.responsable || "-"}
+              {selectedCotizacion.responsableNombre || "Sin responsable asignado"}
             </Descriptions.Item>
             <Descriptions.Item label="Notas">
               {selectedCotizacion.notas || "-"}

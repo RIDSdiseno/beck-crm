@@ -57,6 +57,7 @@ import {
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
+import ClienteItemizadoObra from "./pages/cliente/ItemizadoObra";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import { usePermisos } from "./hooks/usePermisos";
@@ -266,6 +267,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname.startsWith("/trager/")) return access.firemat;
 
   if (pathname === "/cliente/registros-mi-empresa") return access.clienteRegistros;
+  if (pathname === "/cliente/itemizado-obra") return access.clienteRegistros;
   if (pathname.startsWith("/cliente/")) return access.clienteRegistros;
 
   return true;
@@ -305,6 +307,7 @@ const BECK_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/beck/funnel": "beck_funnel",
   "/beck/clientes": "beck_clientes",
   "/cliente/registros-mi-empresa": "beck_vista_cliente",
+  "/cliente/itemizado-obra": "beck_vista_cliente",
   "/beck/usuarios-parametros": "beck_usuarios_parametros",
   "/beck/permisos": "beck_usuarios_parametros",
   "/beck/configuracion-validacion": "beck_reglas_validacion",
@@ -985,6 +988,14 @@ const AppShell: React.FC = () => {
                   element={
                     <PermisosGate modulo="beck_vista_cliente" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <RegistrosMiEmpresa />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/cliente/itemizado-obra"
+                  element={
+                    <PermisosGate modulo="beck_vista_cliente" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <ClienteItemizadoObra />
                     </PermisosGate>
                   }
                 />

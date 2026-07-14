@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, DatePicker, Input, Modal, Segmented, Select, Table, Tag, message } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -12,6 +12,12 @@ import { api, obrasAPI, registrosAPI, inspeccionAPI, type Obra } from "../../ser
 import { usePermisos } from "../../hooks/usePermisos";
 import { useAuth } from "../../context/useAuth";
 import DetalleInspeccionModal from "../../components/DetalleInspeccionModal";
+import {
+  TIPOS_REGISTRO_TERRENO,
+  getTipoRegistroLabel,
+  getTipoRegistroColor,
+  getTipoRegistroBadgeClass,
+} from "../../constants/roles";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -224,21 +230,6 @@ const getMetrosLineales = (registro: { metrosLineales?: number | string | null }
   const value = registro.metrosLineales ?? null;
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
-};
-
-const getTipoRegistroLabel = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") return "Junta lineal espuma";
-  return "Sello cortafuego";
-};
-
-const getTipoRegistroColor = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") return "blue";
-  return "gold";
-};
-
-const getTipoRegistroBadgeClass = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") return "border border-blue-200 bg-blue-50 text-blue-700";
-  return "border border-amber-200 bg-amber-50 text-amber-700";
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -481,7 +472,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [registroDetalle, setRegistroDetalle] = useState<RegistroSello | null>(null);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<"todos" | "sello_cortafuego" | "junta_lineal_espuma">("todos");
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<string>("todos");
   const [filtroEstado, setFiltroEstado] = useState<"activos" | "validado" | "rechazado" | "todos">("activos");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
   const [rechazandoRegistro, setRechazandoRegistro] = useState<RegistroSello | null>(null);
@@ -543,6 +534,32 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   useEffect(() => {
     void cargarResumen();
   }, [cargarResumen]);
+
+  // Refetch al reenfocar la pestaña/ventana: los registros pueden haber
+  // cambiado de estado desde la app móvil (misma base de datos), así que al
+  // volver a esta pantalla se refrescan estado y KPIs. Throttle de 15s para
+  // no refrescar en cada cambio de foco si el usuario alterna rápido entre
+  // pestañas — no es polling, solo reacciona a que la pantalla vuelva a
+  // primer plano.
+  const ultimoRefetchRef = useRef(0);
+  useEffect(() => {
+    const REFETCH_MIN_INTERVAL_MS = 15_000;
+    const refetchSiCorresponde = () => {
+      if (document.visibilityState !== "visible") return;
+      const ahora = Date.now();
+      if (ahora - ultimoRefetchRef.current < REFETCH_MIN_INTERVAL_MS) return;
+      ultimoRefetchRef.current = ahora;
+      void cargarRegistros();
+      void cargarResumen();
+    };
+
+    window.addEventListener("focus", refetchSiCorresponde);
+    document.addEventListener("visibilitychange", refetchSiCorresponde);
+    return () => {
+      window.removeEventListener("focus", refetchSiCorresponde);
+      document.removeEventListener("visibilitychange", refetchSiCorresponde);
+    };
+  }, [cargarRegistros, cargarResumen]);
 
   const obraOptions = useMemo(
     () =>
@@ -755,37 +772,47 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     };
     setSavingDetalle(true);
     try {
-      const response = await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
-      const actualizado = response.data?.data
-        ? normalizeRegistro(response.data.data)
-        : {
-            ...registroDetalle,
-            descripcionMaterial: values.descripcionMaterial,
-            recinto: values.modulo,
-            piso: values.piso,
-            ejeNumerico: values.ejeNumerico,
-            ejeAlfabetico: values.ejeAlfabetico,
-            numeroSello: values.numeroSello,
-            cantidadSellos: Number(values.cantidadSellos || 0),
-            nombreSellador: values.nombreSellador,
-            holguraCm: Number(values.holguraCm || 0),
-            accesibilidad: Number(values.accesibilidad || 0),
-            factorHolgura: normalizeFactorHolgura(Number(values.holguraCm || 0)),
-            cieloModular: normalizeCieloModular(Number(values.accesibilidad || 0)),
-            cantidadSellosConFactor:
-              Number(values.cantidadSellos || 0) *
-              normalizeFactorHolgura(Number(values.holguraCm || 0)),
-            observaciones: values.observaciones,
-            estado: values.estado,
-          };
+      // 1) Guardar. El body de esta respuesta no se usa como fuente de verdad:
+      // el backend recalcula factorPorHolguras/cantidadSellosConFactores/etc.,
+      // y queremos exactamente ese resultado, no una reconstrucción local a
+      // partir de `values` (el payload que enviamos).
+      await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
+
+      // 2) Releer el registro ya actualizado con el endpoint existente.
+      let registroFresco: RegistroIngenieria;
+      try {
+        const detalle = await api.get<RegistroApiRecord>(`/registros/${id}`);
+        registroFresco = normalizeRegistro(detalle.data);
+      } catch (fetchError) {
+        // El guardado sí funcionó; solo falló la relectura. No dejamos el
+        // modal abierto con datos potencialmente obsoletos: lo cerramos y
+        // refrescamos la tabla completa como respaldo.
+        console.error(fetchError);
+        setRegistroDetalle(null);
+        message.warning(
+          "El registro se guardó, pero no se pudo recargar el detalle actualizado. Se refrescó la tabla."
+        );
+        await Promise.all([cargarRegistros(), cargarResumen()]);
+        return;
+      }
+
+      // 3) Reflejar el dato fresco en la fila de la tabla de inmediato.
       setRegistros((prev) =>
-        prev.map((r) => String(r.id) === id ? actualizado : r)
+        prev.map((r) => (String(r.id) === id ? registroFresco : r))
       );
-      setRegistroDetalle(actualizado);
+
+      // 4) Cerrar y reabrir el modal con el registro recién releído — nunca
+      // se reutiliza el objeto anterior en memoria.
+      setRegistroDetalle(null);
       setDetalleMode("view");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      setRegistroDetalle(registroFresco);
+
       await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success("Registro actualizado correctamente");
     } catch (error) {
+      // El PUT falló: el modal permanece abierto (no se toca registroDetalle)
+      // y los datos ingresados por el usuario en el form se conservan.
       console.error(error);
       message.error("No se pudo actualizar el registro");
     } finally {
@@ -1291,7 +1318,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         }
         return (
           <span className="font-medium text-orange-700">
-            {r.cantidadSellos} sellos
+            {r.cantidadSellos}
+            {(r.tipoRegistro ?? "sello_cortafuego") === "sello_cortafuego" ? " sellos" : ""}
           </span>
         );
       },
@@ -1437,10 +1465,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             placeholder="Todos los tipos"
             value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
             onChange={(v) => setTipoSeleccionado(v ?? "todos")}
-            options={[
-              { value: "sello_cortafuego", label: "Sellos Cortafuego" },
-              { value: "junta_lineal_espuma", label: "Junta Lineal Espuma" },
-            ]}
+            options={TIPOS_REGISTRO_TERRENO}
             style={{ width: 200 }}
             size="small"
           />
@@ -1475,7 +1500,10 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         mode={detalleMode}
         canEdit={!!registroDetalle && detalleMode === "edit"}
         saving={savingDetalle}
-        onClose={() => setRegistroDetalle(null)}
+        onClose={() => {
+          if (savingDetalle) return;
+          setRegistroDetalle(null);
+        }}
         onEdit={() => {
           if (normalizeEstado(registroDetalle?.estado) === "en_revision") {
             setDetalleMode("edit");

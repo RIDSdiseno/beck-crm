@@ -37,6 +37,11 @@ const roleBlocks: RoleBlock[] = [
     description: "Campos disponibles para usuarios de terreno.",
   },
   {
+    key: "ingenieria",
+    title: "Ingeniería",
+    description: "Campos disponibles para el equipo de Ingeniería.",
+  },
+  {
     key: "cliente",
     title: "Cliente",
     description: "Campos visibles para usuarios cliente en la vista de registros de su empresa.",
@@ -196,6 +201,7 @@ const clienteConfigurableCampos = new Set([
 const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
   if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoCampos];
   if (role === "cliente") return [...clienteConfigurableCampos];
+  if (role === "ingenieria") return [...jefeObraConfigurableCampos];
   return [...jefeObraConfigurableCampos];
 };
 
@@ -298,7 +304,7 @@ const normalizeFieldForRole = (
   const isTrabajadorProhibido =
     role === "trabajador" && trabajadorProhibidoCampos.has(campo);
   const isConfigurableMatrix =
-    role === "jefeobra"
+    role === "jefeobra" || role === "ingenieria"
       ? jefeObraConfigurableCampos.has(campo)
       : role === "cliente"
       ? clienteConfigurableCampos.has(campo)
@@ -385,6 +391,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     jefeobra: [],
     trabajador: [],
     cliente: [],
+    ingenieria: [],
   });
   const [openPanels, setOpenPanels] = useState<string | string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -396,6 +403,7 @@ const ConfiguracionCamposRegistro: React.FC = () => {
       jefeobra: withCatalogFields("jefeobra", config.jefeobra),
       trabajador: withCatalogFields("trabajador", config.trabajador),
       cliente: withCatalogFields("cliente", config.cliente),
+      ingenieria: withCatalogFields("ingenieria", config.ingenieria),
     };
   }, [config]);
 
@@ -403,15 +411,17 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const [jefeobra, trabajador, cliente] = await Promise.all([
+      const [jefeobra, trabajador, cliente, ingenieria] = await Promise.all([
         configuracionCamposRegistroAPI.obtenerPorRol("jefeobra"),
         configuracionCamposRegistroAPI.obtenerPorRol("trabajador"),
         configuracionCamposRegistroAPI.obtenerPorRol("cliente"),
+        configuracionCamposRegistroAPI.obtenerPorRol("ingenieria"),
       ]);
       setConfig({
         jefeobra,
         trabajador,
         cliente,
+        ingenieria,
       });
     } catch {
       setError(

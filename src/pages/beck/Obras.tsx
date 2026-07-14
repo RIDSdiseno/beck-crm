@@ -52,6 +52,7 @@ import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
 import ConfigurarItemizadosObraDrawer from "./ConfigurarItemizadosObraDrawer";
+import PrepararItemizadoObraDrawer from "./PrepararItemizadoObraDrawer";
 
 type EstadoForm = ObraEstado;
 
@@ -85,6 +86,11 @@ const registroRoleBlocks: RegistroRoleBlock[] = [
     key: "trabajador",
     title: "Trabajador / Terreno",
     description: "Campos disponibles para trabajadores de terreno.",
+  },
+  {
+    key: "ingenieria",
+    title: "Ingeniería",
+    description: "Campos disponibles para el equipo de Ingeniería.",
   },
   {
     key: "cliente",
@@ -241,6 +247,7 @@ const clienteConfigurableCampos = new Set([
 const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
   if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoMatrixCampos];
   if (role === "cliente") return [...clienteConfigurableCampos];
+  if (role === "ingenieria") return [...jefeObraConfigurableCampos];
   return [...jefeObraConfigurableCampos];
 };
 
@@ -359,7 +366,7 @@ const getRegistroCampoColor = (
 
   if (role === "trabajador" && trabajadorProhibidoMatrixCampos.has(campoKey)) return "rojo";
   if (
-    (role === "jefeobra" && jefeObraConfigurableCampos.has(campoKey)) ||
+    ((role === "jefeobra" || role === "ingenieria") && jefeObraConfigurableCampos.has(campoKey)) ||
     (role === "trabajador" && trabajadorConfigurableCampos.has(campoKey)) ||
     (role === "cliente" && clienteConfigurableCampos.has(campoKey)) ||
     configurableCatalogKeys.has(campoKey)
@@ -510,9 +517,11 @@ const Obras: React.FC = () => {
   const [obraItemizado, setObraItemizado] = useState<Obra | null>(null);
   const [configItemizadosOpen, setConfigItemizadosOpen] = useState(false);
   const [obraConfigItemizados, setObraConfigItemizados] = useState<Obra | null>(null);
+  const [prepararItemizadoOpen, setPrepararItemizadoOpen] = useState(false);
+  const [obraPrepararItemizado, setObraPrepararItemizado] = useState<Obra | null>(null);
   const [registroConfig, setRegistroConfig] = useState<
     Record<RolConfiguracionCamposRegistro, CampoConfiguracionRegistro[]>
-  >({ jefeobra: [], trabajador: [], cliente: [] });
+  >({ jefeobra: [], trabajador: [], cliente: [], ingenieria: [] });
   const [registroLoading, setRegistroLoading] = useState(false);
   const [registroSaving, setRegistroSaving] = useState(false);
   const [registroError, setRegistroError] = useState<string | null>(null);
@@ -535,6 +544,7 @@ const Obras: React.FC = () => {
       jefeobra: withCatalogRegistroFields("jefeobra", registroConfig.jefeobra),
       trabajador: withCatalogRegistroFields("trabajador", registroConfig.trabajador),
       cliente: withCatalogRegistroFields("cliente", registroConfig.cliente),
+      ingenieria: withCatalogRegistroFields("ingenieria", registroConfig.ingenieria),
     }),
     [registroConfig]
   );
@@ -608,12 +618,39 @@ const Obras: React.FC = () => {
       nextValues.direccion = oportunidad.clienteBeck.direccion;
     }
 
-    if (!current.region?.trim() && oportunidad.clienteBeck?.region) {
-      nextValues.region = oportunidad.clienteBeck.region;
+    // La región/comuna de la propia oportunidad son obligatorias en el funnel;
+    // las del clienteBeck asociado son opcionales y pueden venir vacías.
+    const regionOportunidad = oportunidad.region || oportunidad.clienteBeck?.region;
+    const comunaOportunidad = oportunidad.comuna || oportunidad.clienteBeck?.comuna;
+
+    if (!current.region?.trim() && regionOportunidad) {
+      nextValues.region = regionOportunidad;
     }
 
-    if (!current.comuna?.trim() && oportunidad.clienteBeck?.comuna) {
-      nextValues.comuna = oportunidad.clienteBeck.comuna;
+    if (!current.comuna?.trim() && comunaOportunidad) {
+      nextValues.comuna = comunaOportunidad;
+    }
+
+    if (!current.clienteBeckId && oportunidad.clienteBeckId) {
+      nextValues.clienteBeckId = oportunidad.clienteBeckId;
+
+      if (
+        oportunidad.clienteBeck &&
+        !clientesBeck.some((c) => c.id === oportunidad.clienteBeckId)
+      ) {
+        setClientesBeck((prev) => [
+          ...prev,
+          {
+            id: oportunidad.clienteBeck!.id,
+            rut: oportunidad.clienteBeck!.rut,
+            razonSocial: oportunidad.clienteBeck!.razonSocial,
+            nombreEmpresa: oportunidad.clienteBeck!.nombreEmpresa ?? null,
+            activo: true,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ]);
+      }
     }
 
     if (Object.keys(nextValues).length > 0) {
@@ -723,18 +760,69 @@ const Obras: React.FC = () => {
         clientesBeckAPI.listar({ activo: true }),
       ]);
       setObraSeleccionada(obraDetalle);
-      setOportunidadesGanadas(oportunidades);
-      setClientesBeck(clientes);
+
+      // La oportunidad ya vinculada a esta obra no viene en "ganadas sin obra"
+      // (ese endpoint solo trae oportunidades que aún no tienen obra asignada),
+      // así que se agrega manualmente para que el Select pueda mostrarla.
+      const oportunidadVinculada = getOportunidadObra(obraDetalle);
+      const yaIncluida =
+        oportunidadVinculada && oportunidades.some((o) => o.id === oportunidadVinculada.id);
+      const oportunidadesConVinculada =
+        oportunidadVinculada && !yaIncluida
+          ? [
+              ...oportunidades,
+              {
+                id: oportunidadVinculada.id,
+                nombreProyecto: oportunidadVinculada.nombreProyecto ?? "",
+                empresa: oportunidadVinculada.empresa ?? "",
+              },
+            ]
+          : oportunidades;
+      setOportunidadesGanadas(oportunidadesConVinculada);
+
+      // Fallback: obras creadas antes de que la obra guardara region/comuna/
+      // clienteBeckId propios (o donde igual quedaron sin completar) heredan
+      // esos valores desde la oportunidad ganada vinculada, solo para precarga
+      // visual del formulario — no se persiste nada por este camino.
+      const regionPrecarga = obraDetalle.region ?? oportunidadVinculada?.region ?? "";
+      const comunaPrecarga = obraDetalle.comuna ?? oportunidadVinculada?.comuna ?? "";
+      const clienteBeckIdPrecarga =
+        obraDetalle.clienteBeckId ?? oportunidadVinculada?.clienteBeckId ?? undefined;
+
+      // Si el cliente asociado (directo o heredado de la oportunidad) no está
+      // en el listado de clientes activos, se agrega manualmente para que el
+      // Select pueda mostrarlo, igual que se hace con la oportunidad vinculada.
+      const clienteBeckVinculado = obraDetalle.clienteBeck ?? oportunidadVinculada?.clienteBeck;
+      const clientesConVinculado =
+        clienteBeckIdPrecarga &&
+        clienteBeckVinculado &&
+        !clientes.some((c) => c.id === clienteBeckIdPrecarga)
+          ? [
+              ...clientes,
+              {
+                id: clienteBeckVinculado.id,
+                rut: clienteBeckVinculado.rut,
+                razonSocial: clienteBeckVinculado.razonSocial,
+                nombreEmpresa: clienteBeckVinculado.nombreEmpresa ?? null,
+                activo: true,
+                createdAt: "",
+                updatedAt: "",
+              },
+            ]
+          : clientes;
+      setClientesBeck(clientesConVinculado);
+
       form.setFieldsValue({
         codigo: obraDetalle.codigo ?? "",
         nombre: obraDetalle.nombre,
         descripcion: obraDetalle.descripcion ?? "",
         direccion: obraDetalle.direccion ?? "",
-        region: obraDetalle.region ?? "",
-        comuna: obraDetalle.comuna ?? "",
+        region: regionPrecarga,
+        comuna: comunaPrecarga,
         cliente: obraDetalle.cliente ?? "",
         estado: getObraEstado(obraDetalle),
-        clienteBeckId: obraDetalle.clienteBeckId ?? undefined,
+        funnelBeckId: obraDetalle.funnelBeckId ?? undefined,
+        clienteBeckId: clienteBeckIdPrecarga,
         tiposRegistro: obraDetalle.tiposRegistro ?? [],
       });
     } catch (error) {
@@ -808,17 +896,18 @@ const Obras: React.FC = () => {
     setRegistroLoading(true);
     setRegistroError(null);
     try {
-      const [jefeobra, trabajador, cliente] = await Promise.all([
+      const [jefeobra, trabajador, cliente, ingenieria] = await Promise.all([
         configuracionCamposRegistroAPI.obtenerPorRol("jefeobra", obra.id),
         configuracionCamposRegistroAPI.obtenerPorRol("trabajador", obra.id),
         configuracionCamposRegistroAPI.obtenerPorRol("cliente", obra.id),
+        configuracionCamposRegistroAPI.obtenerPorRol("ingenieria", obra.id),
       ]);
-      setRegistroConfig({ jefeobra, trabajador, cliente });
+      setRegistroConfig({ jefeobra, trabajador, cliente, ingenieria });
     } catch (error) {
       setRegistroError(
         getErrorMessage(error, "No se pudieron cargar las opciones de registro")
       );
-      setRegistroConfig({ jefeobra: [], trabajador: [], cliente: [] });
+      setRegistroConfig({ jefeobra: [], trabajador: [], cliente: [], ingenieria: [] });
     } finally {
       setRegistroLoading(false);
     }
@@ -1154,6 +1243,21 @@ const Obras: React.FC = () => {
                     >
                       Configurar itemizados
                     </Button>
+                    <Button
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => {
+                        setObraPrepararItemizado(record);
+                        setPrepararItemizadoOpen(true);
+                      }}
+                      className="col-span-2 w-full"
+                    >
+                      {record.estadoPreparacionItemizado === "FINALIZADO"
+                        ? "Ver itemizado confirmado"
+                        : record.estadoPreparacionItemizado === "EN_REVISION_CLIENTE"
+                        ? "Ver itemizado (en revisión)"
+                        : "Preparar itemizado"}
+                    </Button>
                   </>
                 ) : (
                   <Button
@@ -1347,6 +1451,17 @@ const Obras: React.FC = () => {
         }}
       />
 
+      <PrepararItemizadoObraDrawer
+        open={prepararItemizadoOpen}
+        obraId={obraPrepararItemizado?.id}
+        obraNombre={obraPrepararItemizado?.nombre}
+        onClose={() => {
+          setPrepararItemizadoOpen(false);
+          setObraPrepararItemizado(null);
+          void cargarObras();
+        }}
+      />
+
       {/* Modal: Importar itemizado Excel */}
       <Modal
         title="Importar itemizado Excel"
@@ -1466,10 +1581,10 @@ const Obras: React.FC = () => {
             />
           </Form.Item>
 
-          <Form.Item name="clienteBeckId" label="Cliente asociado">
-            <Tooltip
-              title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
-            >
+          <Tooltip
+            title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+          >
+            <Form.Item name="clienteBeckId" label="Cliente asociado">
               <Select
                 allowClear
                 showSearch
@@ -1482,8 +1597,8 @@ const Obras: React.FC = () => {
                   label: `${c.razonSocial}${c.nombreEmpresa ? ` / ${c.nombreEmpresa}` : ""} — ${c.rut}`,
                 }))}
               />
-            </Tooltip>
-          </Form.Item>
+            </Form.Item>
+          </Tooltip>
 
           <Form.Item
             name="nombre"

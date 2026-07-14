@@ -28,12 +28,14 @@ import {
   funnelBeckAPI,
   firematProductosAPI,
   clientesBeckAPI,
+  usuariosAPI,
   type FunnelBeckOpportunity,
   type ProductoFiremat,
   type ClienteBeck,
   type ContactoClienteBeck,
   type ClienteBeckPayload,
   type ContactoClienteBeckPayload,
+  type UsuarioResumen,
 } from "../services/api";
 import { regionesComunasChile } from "../data/regionesComunasChile";
 import type {
@@ -64,7 +66,7 @@ export type CotizacionEditorValues = {
   vigencia: Dayjs;
   estado: EstadoCotizacion;
   moneda: "CLP" | "USD";
-  responsable?: string;
+  responsableId?: string | null;
   notas?: string;
   descuento: number;
   aplicaImpuesto: boolean;
@@ -194,6 +196,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   const [productosLoading, setProductosLoading] = useState(false);
   const [clientes, setClientes] = useState<ClienteBeck[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
+  const [responsables, setResponsables] = useState<UsuarioResumen[]>([]);
+  const [responsablesLoading, setResponsablesLoading] = useState(false);
   const [contactos, setContactos] = useState<ContactoClienteBeck[]>([]);
   const [contactosLoading, setContactosLoading] = useState(false);
   const [modalEmpresaOpen, setModalEmpresaOpen] = useState(false);
@@ -256,7 +260,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       vigencia: baseVigencia,
       estado: initialValues?.estado || "Borrador",
       moneda: initialValues?.moneda || "CLP",
-      responsable: initialValues?.responsable || "",
+      responsableId: initialValues?.responsableId ?? null,
       notas: initialValues?.notas || "",
       descuento: initialValues?.descuento ?? 0,
       aplicaImpuesto: initialValues?.aplicaImpuesto ?? true,
@@ -284,6 +288,30 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     };
 
     void loadOpportunities();
+    return () => { ignore = true; };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let ignore = false;
+
+    const loadResponsables = async () => {
+      try {
+        setResponsablesLoading(true);
+        const data = await usuariosAPI.listarResponsablesCotizaciones();
+        if (!ignore) setResponsables(data);
+      } catch (error) {
+        if (!ignore) {
+          setResponsables([]);
+          void message.error("No se pudieron cargar los responsables");
+        }
+        console.error("Error al cargar responsables de cotizaciones:", error);
+      } finally {
+        if (!ignore) setResponsablesLoading(false);
+      }
+    };
+
+    void loadResponsables();
     return () => { ignore = true; };
   }, [open]);
 
@@ -1187,14 +1215,34 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 </Form.Item>
 
                 <Form.Item<CotizacionEditorValues>
-                  name="responsable"
+                  name="responsableId"
                   label={
                     <span className="text-[11px] text-slate-600">
                       Responsable
                     </span>
                   }
                 >
-                  <Input size="small" placeholder="Ej: Equipo Beck" />
+                  <Select
+                    showSearch
+                    allowClear
+                    size="small"
+                    loading={responsablesLoading}
+                    disabled={submitting}
+                    placeholder="Buscar por nombre o correo"
+                    filterOption={(input, option) =>
+                      (option?.searchText ?? "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                    options={responsables.map((u) => ({
+                      label: u.nombre,
+                      value: u.id,
+                      searchText: `${u.nombre} ${u.email}`,
+                    }))}
+                    notFoundContent={
+                      responsablesLoading ? "Cargando..." : "Sin resultados"
+                    }
+                  />
                 </Form.Item>
 
                 <Form.Item<CotizacionEditorValues>

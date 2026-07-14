@@ -41,6 +41,12 @@ import {
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
 import { usePermisos } from "../../hooks/usePermisos";
+import {
+  TIPOS_REGISTRO_TERRENO,
+  getTipoRegistroLabel,
+  getTipoRegistroColor,
+  getTipoRegistroBadgeClass,
+} from "../../constants/roles";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
@@ -118,10 +124,8 @@ type RegistroApiRecord = {
   cantidadEjecutada?: number | null;
   rendimientoIndividual?: number | null;
   rendimientoIndividualPct?: number | null;
-  estadoValidacionObra?: "pendiente" | "validado" | "rechazado" | null;
-  validacionObraPorId?: string | null;
-  validacionObraAt?: string | null;
-  motivoRechazoObra?: string | null;
+  validadoCliente?: boolean | null;
+  pdfFirmadoUrl?: string | null;
 };
 
 type RegistrosApiResponse = {
@@ -236,44 +240,6 @@ const getEstadoBadgeClass = (estado?: string): string => {
   return "border border-orange-200 bg-orange-50 text-orange-700";
 };
 
-const normalizeEstadoValidacionObra = (
-  estado?: string | null
-): "pendiente" | "validado" | "rechazado" => {
-  if (estado === "validado" || estado === "rechazado") return estado;
-  return "pendiente";
-};
-
-const getEstadoValidacionObraLabel = (estado?: string | null): string => {
-  const normalized = normalizeEstadoValidacionObra(estado);
-  if (normalized === "validado") return "Validado por obra";
-  if (normalized === "rechazado") return "Rechazado por obra";
-  return "Pendiente obra";
-};
-
-const getEstadoValidacionObraColor = (estado?: string | null): string => {
-  const normalized = normalizeEstadoValidacionObra(estado);
-  if (normalized === "validado") return "green";
-  if (normalized === "rechazado") return "red";
-  return "gold";
-};
-
-const getTipoRegistroLabel = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") return "Junta lineal espuma";
-  return "Sello cortafuego";
-};
-
-const getTipoRegistroColor = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") return "blue";
-  return "gold";
-};
-
-const getTipoRegistroBadgeClass = (tipo?: string | null): string => {
-  if (tipo === "junta_lineal_espuma") {
-    return "border border-blue-200 bg-blue-50 text-blue-700";
-  }
-  return "border border-amber-200 bg-amber-50 text-amber-700";
-};
-
 const getTipoRegistro = (registro: { tipoRegistro?: string | null }): string =>
   registro.tipoRegistro ?? "sello_cortafuego";
 
@@ -290,6 +256,7 @@ const getRegistroConfigRole = (
 ): RolConfiguracionCamposRegistro | null => {
   if (rol === "JefeObra") return "jefeobra";
   if (rol === "Terreno") return "trabajador";
+  if (rol === "Ingenieria") return "ingenieria";
   return null;
 };
 
@@ -553,10 +520,8 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     cantidadEjecutada: r.cantidadEjecutada ?? null,
     rendimientoIndividual: r.rendimientoIndividual ?? null,
     rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
-    estadoValidacionObra: normalizeEstadoValidacionObra(r.estadoValidacionObra),
-    validacionObraPorId: r.validacionObraPorId ?? null,
-    validacionObraAt: r.validacionObraAt ?? null,
-    motivoRechazoObra: r.motivoRechazoObra ?? null,
+    validadoCliente: r.validadoCliente ?? false,
+    pdfFirmadoUrl: r.pdfFirmadoUrl ?? null,
   };
 };
 
@@ -598,9 +563,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const canDownloadPdf = canView("beck_registro");
   const [itemizadosMandante, setItemizadosMandante] = useState<ItemizadoMandante[]>([]);
 
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<
-    "todos" | "sello_cortafuego" | "junta_lineal_espuma"
-  >("todos");
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<string>("todos");
 
   const [openDrawer, setOpenDrawer] = useState(false);
   const [exportando, setExportando] = useState(false);
@@ -618,9 +581,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [savingNuevoRegistro, setSavingNuevoRegistro] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
-  const [filtroValidacionObra, setFiltroValidacionObra] = useState<
-    "pendiente" | "validado" | "rechazado" | "todos"
-  >("pendiente");
 
   // Rendimiento acumulado
   const [showRendimientoAcumuladoModal, setShowRendimientoAcumuladoModal] = useState(false);
@@ -677,6 +637,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   // filtros
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
+  const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState<
+    "pendientes_revision" | "validados" | "validados_cliente" | "rechazados" | "todos"
+  >("todos");
+
+  // Selección múltiple — mismo patrón que Vista Cliente (RegistrosMiEmpresa.tsx),
+  // solo activa en el filtro "Validados por cliente".
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [abriendoPdfConsolidado, setAbriendoPdfConsolidado] = useState(false);
 
   // vista compacta / completa
   const [vistaCompleta, setVistaCompleta] = useState(false);
@@ -770,15 +738,48 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           const [start, end] = rangoFechas;
           if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
         }
-        if (
-          filtroValidacionObra !== "todos" &&
-          normalizeEstadoValidacionObra(r.estadoValidacionObra) !== filtroValidacionObra
-        )
-          return false;
+        if (filtroEstadoRegistro === "pendientes_revision") {
+          if (r.estado !== "pendiente" && r.estado !== "en_revision") return false;
+        } else if (filtroEstadoRegistro === "validados") {
+          if (r.estado !== "validado" || r.validadoCliente === true) return false;
+        } else if (filtroEstadoRegistro === "validados_cliente") {
+          if (r.estado !== "validado" || r.validadoCliente !== true) return false;
+        } else if (filtroEstadoRegistro === "rechazados") {
+          if (r.estado !== "rechazado") return false;
+        }
         return true;
       }),
-    [data, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroValidacionObra]
+    [data, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroEstadoRegistro]
   );
+
+  // La selección solo tiene sentido dentro del filtro "Validados por cliente";
+  // al salir de ese filtro (o al cambiar cualquier otro filtro que reduzca el
+  // dataset) se limpia para no arrastrar IDs que ya no están visibles.
+  useEffect(() => {
+    setSelectedRowKeys([]);
+  }, [filtroEstadoRegistro, obraSeleccionada, tipoSeleccionado, rangoFechas]);
+
+  const registrosSeleccionados = useMemo(
+    () => filteredData.filter((r) => selectedRowKeys.includes(r.id)),
+    [filteredData, selectedRowKeys]
+  );
+
+  const handleVerPdfConsolidado = useCallback(async () => {
+    const ids = registrosSeleccionados.map((r) => String(r.id));
+    if (ids.length === 0) return;
+    setAbriendoPdfConsolidado(true);
+    try {
+      const blob = await registrosAPI.descargarPdfConsolidado(ids);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      console.error(err);
+      message.error("No se pudo generar el PDF consolidado");
+    } finally {
+      setAbriendoPdfConsolidado(false);
+    }
+  }, [registrosSeleccionados]);
 
   // KPIs — adaptados por tab
   const resumen = useMemo(() => {
@@ -905,53 +906,49 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
     setSavingDetalle(true);
     try {
-      const response = await api.put<RegistroUpdateResponse>(
-        `/registros/${id}`,
-        payload
-      );
-      const factorHolgura = normalizeFactorHolgura(values.holguraCm);
-      const registroActualizado = response.data.data
-        ? normalizeRegistro(response.data.data)
-        : {
-            ...registroDetalle,
-            descripcionMaterial: values.descripcionMaterial,
-            itemizadoBeck:
-              values.descripcionMaterial || registroDetalle.itemizadoBeck,
-            recinto: values.modulo,
-            piso: values.piso,
-            ejeNumerico: values.ejeNumerico,
-            ejeAlfabetico: values.ejeAlfabetico,
-            numeroSello: values.numeroSello,
-            cantidadSellos: values.cantidadSellos,
-            nombreSellador: values.nombreSellador,
-            holguraCm: values.holguraCm,
-            accesibilidad: values.accesibilidad,
-            factorPorHolguras: values.factorPorHolguras ?? null,
-            cieloModular: normalizeCieloModular(values.cieloModular ?? values.accesibilidad),
-            cantidadSellosConFactores: values.cantidadSellosConFactores ?? null,
-            aislacion: values.aislacion ?? null,
-            cantidadSellosAislacion: values.cantidadSellosAislacion ?? null,
-            reparacionTabique: values.reparacionTabique ?? null,
-            cantidadFinal: values.cantidadFinal ?? null,
-            factorHolgura,
-            cantidadSellosConFactor: values.cantidadSellosConFactores ?? values.cantidadSellos * factorHolgura,
-            observaciones: values.observaciones,
-            estado: values.estado,
-            itemizadoMandanteId: values.itemizadoMandanteId,
-            itemizadoMandanteNombre:
-              itemizadosMandante.find((item) => item.id === values.itemizadoMandanteId)?.nombre ??
-              registroDetalle.itemizadoMandanteNombre,
-            codigoBeck: values.codigoBeck ?? registroDetalle.codigoBeck,
-          };
+      // 1) Guardar. No se usa el body de esta respuesta como fuente de verdad:
+      // el backend recalcula factorPorHolguras/cantidadSellosConFactores/etc.,
+      // y queremos ese resultado, no una reconstrucción local a partir de
+      // `values` (el payload enviado).
+      await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
 
+      // 2) Releer el registro ya actualizado con el endpoint existente.
+      let registroFresco: RegistroSello;
+      try {
+        const detalle = await api.get<RegistroApiRecord>(`/registros/${id}`);
+        registroFresco = normalizeRegistro(detalle.data);
+      } catch (fetchError) {
+        // El guardado sí funcionó; solo falló la relectura. No dejamos el
+        // modal abierto con datos potencialmente obsoletos: lo cerramos y
+        // refrescamos la tabla completa como respaldo.
+        console.error(fetchError);
+        setRegistroDetalle(null);
+        message.warning(
+          "El registro se guardó, pero no se pudo recargar el detalle actualizado. Se refrescó la tabla."
+        );
+        await cargarRegistros();
+        return;
+      }
+
+      // 3) Reflejar el dato fresco en la fila de la tabla de inmediato.
       setData((prev) =>
         prev.map((registro) =>
-          String(registro.id) === id ? registroActualizado : registro
+          String(registro.id) === id ? registroFresco : registro
         )
       );
+
+      // 4) Cerrar y reabrir el modal con el registro recién releído — nunca
+      // se reutiliza el objeto anterior en memoria.
       setRegistroDetalle(null);
+      setDetalleMode("view");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      setRegistroDetalle(registroFresco);
+
+      await cargarRegistros();
       message.success("Registro actualizado correctamente");
     } catch (error) {
+      // El PUT falló: el modal permanece abierto (no se toca registroDetalle)
+      // y los datos ingresados por el usuario en el form se conservan.
       console.error(error);
       message.error("No se pudo guardar el registro");
     } finally {
@@ -1239,7 +1236,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         }
         return (
           <span className="font-medium text-orange-700">
-            {record.cantidadSellos} sellos
+            {record.cantidadSellos}
+            {getTipoRegistro(record) === "sello_cortafuego" ? " sellos" : ""}
           </span>
         );
       },
@@ -1342,31 +1340,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             )}
           </div>
         );
-      },
-    },
-    {
-      title: "Validación Obra",
-      key: "validacionObra",
-      width: 160,
-      render: (_: unknown, record: RegistroSello) => {
-        const estadoObra = record.estadoValidacionObra;
-        const tag = (
-          <Tag
-            className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-            color={getEstadoValidacionObraColor(estadoObra)}
-            style={{ marginInlineEnd: 0 }}
-          >
-            {getEstadoValidacionObraLabel(estadoObra)}
-          </Tag>
-        );
-        if (estadoObra === "rechazado" && record.motivoRechazoObra) {
-          return (
-            <Tooltip title={`Motivo: ${record.motivoRechazoObra}`} placement="topLeft">
-              {tag}
-            </Tooltip>
-          );
-        }
-        return tag;
       },
     },
     {
@@ -2788,6 +2761,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
                 setObraSeleccionada("");
                 setRangoFechas(null);
                 setTipoSeleccionado("todos");
+                setFiltroEstadoRegistro("todos");
               }}
             >
               Limpiar filtros
@@ -2817,10 +2791,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             placeholder="Todos los tipos"
             value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
             onChange={(value) => setTipoSeleccionado(value ?? "todos")}
-            options={[
-              { value: "sello_cortafuego", label: "Sellos Cortafuego" },
-              { value: "junta_lineal_espuma", label: "Junta Lineal Espuma" },
-            ]}
+            options={TIPOS_REGISTRO_TERRENO}
           />
 
           <Select
@@ -2881,8 +2852,50 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             className="w-[205px] shrink-0"
           />
           </div>
+
+          <div className="flex w-full flex-wrap items-center gap-2 text-xs">
+            <Segmented
+              size="small"
+              className="shrink-0"
+              value={filtroEstadoRegistro}
+              onChange={(val) =>
+                setFiltroEstadoRegistro(
+                  val as "pendientes_revision" | "validados" | "validados_cliente" | "rechazados" | "todos"
+                )
+              }
+              options={[
+                { label: "Pendientes / En revisión", value: "pendientes_revision" },
+                { label: "Validados", value: "validados" },
+                { label: "Validados por cliente", value: "validados_cliente" },
+                { label: "Rechazados", value: "rechazados" },
+                { label: "Todos", value: "todos" },
+              ]}
+            />
+          </div>
         </div>
       </Card>
+
+      {/* Barra de selección múltiple — mismo patrón que Vista Cliente, solo
+          visible dentro del filtro "Validados por cliente". */}
+      {filtroEstadoRegistro === "validados_cliente" && selectedRowKeys.length > 0 && (
+        <Card className="border bg-white border-slate-200 shadow-sm" styles={{ body: { padding: 12 } }}>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <span className="font-semibold text-slate-800">
+              {selectedRowKeys.length} registro(s) seleccionado(s)
+            </span>
+            <Button
+              size="small"
+              loading={abriendoPdfConsolidado}
+              onClick={() => void handleVerPdfConsolidado()}
+            >
+              Ver PDF ({selectedRowKeys.length})
+            </Button>
+            <Button size="small" onClick={() => setSelectedRowKeys([])}>
+              Limpiar selección
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Tabla principal */}
       <Card
@@ -2891,11 +2904,11 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <div className="flex items-center gap-2 text-sm">
             <TableOutlined />
             <span>
-              {tipoSeleccionado === "junta_lineal_espuma"
-                ? "Junta Lineal Espuma"
+              {tipoSeleccionado === "todos"
+                ? "Todos los registros"
                 : tipoSeleccionado === "sello_cortafuego"
                 ? "Sellos Cortafuego · Itemizado BECK"
-                : "Todos los registros"}
+                : getTipoRegistroLabel(tipoSeleccionado)}
             </span>
           </div>
         }
@@ -2909,21 +2922,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           body: { padding: 0 },
         }}
       >
-        <div className="border-b border-slate-100 px-4 py-2.5">
-          <Segmented
-            size="small"
-            options={[
-              { label: "Pendientes obra", value: "pendiente" },
-              { label: "Validados obra", value: "validado" },
-              { label: "Rechazados obra", value: "rechazado" },
-              { label: "Todos", value: "todos" },
-            ]}
-            value={filtroValidacionObra}
-            onChange={(v) =>
-              setFiltroValidacionObra(v as "pendiente" | "validado" | "rechazado" | "todos")
-            }
-          />
-        </div>
         <Table
           columns={columnasTabla}
           dataSource={filteredData}
@@ -2932,6 +2930,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           scroll={{ x: "max-content" }}
           tableLayout="auto"
           pagination={{ pageSize: 8 }}
+          rowSelection={
+            filtroEstadoRegistro === "validados_cliente"
+              ? {
+                  selectedRowKeys,
+                  onChange: (keys) => setSelectedRowKeys(keys),
+                  renderCell: (_checked, _record, _index, originNode) => (
+                    <div onClick={(e) => e.stopPropagation()}>{originNode}</div>
+                  ),
+                }
+              : undefined
+          }
           onRow={(record) => ({
             onClick: () => {
               setRegistroDetalle(record);
@@ -3135,7 +3144,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         mode={detalleMode}
         canEdit={registroDetalle?.esCorreccion === true && registroDetalle?.estado !== "en_revision" && canEditRegistro}
         saving={savingDetalle}
-        onClose={() => setRegistroDetalle(null)}
+        onClose={() => {
+          if (savingDetalle) return;
+          setRegistroDetalle(null);
+        }}
         onEdit={() => setDetalleMode("edit")}
         onSave={handleGuardarDetalle}
         onDownloadPdf={canDownloadPdf ? handleDescargarPdf : undefined}

@@ -256,6 +256,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Registros de mi empresa",
       access: access.clienteRegistros,
     },
+    {
+      key: "itemizado-obra",
+      to: "/cliente/itemizado-obra",
+      icon: <BuildOutlined />,
+      label: "Itemizado de la obra",
+      access: access.clienteRegistros,
+    },
   ];
 
   const navItems = isCliente

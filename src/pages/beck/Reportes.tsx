@@ -1,15 +1,17 @@
 // src/pages/beck/Reportes.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Modal, Table, Tag, Select, Spin, Empty, message, Tabs } from "antd";
+import { Button, Card, Modal, Table, Tag, Select, Spin, Empty, message, Tabs, DatePicker } from "antd";
+import type { TableColumnsType } from "antd";
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import {
   BarChartOutlined,
   PartitionOutlined,
   FireOutlined,
+  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 
 import {
   ResponsiveContainer,
@@ -26,9 +28,16 @@ import {
 } from "recharts";
 
 import type { ThemeMode } from "../../hooks/useSystemTheme";
-import { api } from "../../services/api";
+import {
+  api,
+  obrasAPI,
+  registrosAPI,
+  type Obra,
+  type RendimientoAcumuladoItem,
+} from "../../services/api";
 import RegistroDetalleModal from "../../components/RegistroDetalleModal";
 import type { RegistroSello } from "../../types/registroSello";
+import { getTipoRegistroLabel } from "../../constants/roles";
 
 type ReportesProps = {
   themeMode: ThemeMode;
@@ -139,6 +148,47 @@ const ESTADOS = [
   { value: "en_revision", label: "En revisión" },
   { value: "validado", label: "Validado" },
   { value: "rechazado", label: "Rechazado" },
+];
+
+const { RangePicker } = DatePicker;
+
+// Mismo formato usado en Dashboard.tsx para las columnas de rendimiento por
+// trabajador (rendimientoTrabajadorColumns), para que ambas pantallas
+// muestren el mismo dato de forma consistente.
+const rendimientoNumberFormatter = new Intl.NumberFormat("es-CL", {
+  maximumFractionDigits: 1,
+});
+const rendimientoIntegerFormatter = new Intl.NumberFormat("es-CL", {
+  maximumFractionDigits: 0,
+});
+
+const rendimientoTrabajadorColumns: TableColumnsType<RendimientoAcumuladoItem> = [
+  {
+    title: "Trabajador",
+    dataIndex: "nombreSellador",
+    key: "nombreSellador",
+  },
+  {
+    title: "Total de registros",
+    dataIndex: "totalRegistros",
+    key: "totalRegistros",
+    align: "right",
+    render: (value: number) => rendimientoIntegerFormatter.format(Number(value ?? 0)),
+  },
+  {
+    title: "Cantidad ejecutada",
+    dataIndex: "cantidadEjecutadaTotal",
+    key: "cantidadEjecutadaTotal",
+    align: "right",
+    render: (value: number) => rendimientoNumberFormatter.format(Number(value ?? 0)),
+  },
+  {
+    title: "Rendimiento acumulado (%)",
+    dataIndex: "rendimientoAcumuladoPct",
+    key: "rendimientoAcumuladoPct",
+    align: "right",
+    render: (value: number) => `${rendimientoNumberFormatter.format(Number(value ?? 0))}%`,
+  },
 ];
 
 const normalizeFactorHolgura = (value: number): number => {
@@ -287,6 +337,74 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const [registroDetalle, setRegistroDetalle] = useState<RegistroNorm | null>(null);
   const [activeTipoRegistro, setActiveTipoRegistro] = useState<string>("sello_cortafuego");
 
+  // Filtros exclusivos del bloque "Rendimiento por trabajador" — no afectan
+  // ningún otro filtro ni componente del módulo Reportes.
+  const [rendimientoObras, setRendimientoObras] = useState<Obra[]>([]);
+  const [rendimientoObrasLoading, setRendimientoObrasLoading] = useState(false);
+  const [rendimientoObraId, setRendimientoObraId] = useState<string | undefined>(undefined);
+  const [rendimientoFechas, setRendimientoFechas] = useState<[Dayjs, Dayjs]>([
+    dayjs().subtract(30, "day"),
+    dayjs(),
+  ]);
+  const [rendimientoData, setRendimientoData] = useState<RendimientoAcumuladoItem[]>([]);
+  const [rendimientoLoading, setRendimientoLoading] = useState(false);
+  const [rendimientoError, setRendimientoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadObras = async () => {
+      setRendimientoObrasLoading(true);
+      try {
+        const data = await obrasAPI.listar({ activa: true });
+        if (!ignore) setRendimientoObras(data);
+      } catch {
+        if (!ignore) setRendimientoObras([]);
+      } finally {
+        if (!ignore) setRendimientoObrasLoading(false);
+      }
+    };
+
+    void loadObras();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadRendimiento = async () => {
+      const [inicio, fin] = rendimientoFechas;
+      if (!inicio || !fin) return;
+
+      setRendimientoLoading(true);
+      setRendimientoError(null);
+      try {
+        const data = await registrosAPI.getRendimientoAcumulado({
+          fechaInicio: inicio.format("YYYY-MM-DD"),
+          fechaFin: fin.format("YYYY-MM-DD"),
+          obraId: rendimientoObraId,
+        });
+        if (!ignore) setRendimientoData(data);
+      } catch (err) {
+        if (!ignore) {
+          setRendimientoData([]);
+          setRendimientoError(
+            err instanceof Error ? err.message : "No se pudo cargar el rendimiento por trabajador"
+          );
+        }
+      } finally {
+        if (!ignore) setRendimientoLoading(false);
+      }
+    };
+
+    void loadRendimiento();
+    return () => {
+      ignore = true;
+    };
+  }, [rendimientoObraId, rendimientoFechas]);
+
   const openPhotos = (urls: string[], idx = 0) => {
     setPhotoUrls(urls);
     setPhotoIndex(idx);
@@ -341,15 +459,25 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
     [registros]
   );
 
+  const registrosOtros = useMemo(
+    () =>
+      registros.filter(
+        (r) => r.tipoRegistro !== "sello_cortafuego" && r.tipoRegistro !== "junta_lineal_espuma"
+      ),
+    [registros]
+  );
+
   const registrosFiltrados = useMemo(() => {
     const base =
       activeTipoRegistro === "junta_lineal_espuma"
         ? registrosEspuma
-        : registrosCortafuego;
+        : activeTipoRegistro === "sello_cortafuego"
+        ? registrosCortafuego
+        : registrosOtros;
     return filtroEstado === "todos"
       ? base
       : base.filter((r) => r.estado === filtroEstado);
-  }, [activeTipoRegistro, registrosEspuma, registrosCortafuego, filtroEstado]);
+  }, [activeTipoRegistro, registrosEspuma, registrosCortafuego, registrosOtros, filtroEstado]);
 
   const totalSellos = useMemo(
     () => registros.reduce((acc, r) => acc + r.cantidadSellos, 0),
@@ -502,7 +630,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       title: "Tipo registro",
       key: "tipoRegistro",
       width: 160,
-      render: (_: unknown, r: RegistroNorm) => getTipoRegistro(r),
+      render: (_: unknown, r: RegistroNorm) => getTipoRegistroLabel(getTipoRegistro(r)),
     },
     {
       title: "Descripción",
@@ -606,7 +734,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       title: "Tipo registro",
       key: "tipoRegistro",
       width: 160,
-      render: (_: unknown, r: RegistroNorm) => getTipoRegistro(r),
+      render: (_: unknown, r: RegistroNorm) => getTipoRegistroLabel(getTipoRegistro(r)),
     },
     {
       title: "Codigo BECK",
@@ -1112,6 +1240,77 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             </Card>
           </div>
 
+          {/* Rendimiento por trabajador — reutiliza el mismo endpoint/servicio
+              que Dashboard.tsx (GET /registros/rendimiento-acumulado, que a su
+              vez llama a calcularRendimientoPorTrabajador). Los filtros de obra
+              y rango de fechas de este bloque son exclusivos de esta sección:
+              no existen filtros de obra/fecha previos en Reportes para
+              reutilizar, y no afectan ningún otro componente de la pantalla. */}
+          <Card
+            title={
+              <div className="flex items-center gap-2 text-sm">
+                <TeamOutlined className="text-amber-400" />
+                <span>Rendimiento por trabajador</span>
+              </div>
+            }
+            className={`border ${
+              isDark
+                ? "bg-beck-card-dark border-beck-border-dark"
+                : "bg-beck-card-light border-beck-border-light"
+            }`}
+            styles={{ body: { padding: 16 } }}
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <Select
+                size="small"
+                allowClear
+                showSearch
+                loading={rendimientoObrasLoading}
+                placeholder="Todas las obras"
+                style={{ width: 220 }}
+                value={rendimientoObraId}
+                onChange={(value) => setRendimientoObraId(value ?? undefined)}
+                optionFilterProp="label"
+                options={rendimientoObras.map((obra) => ({
+                  label: obra.nombre,
+                  value: obra.id,
+                }))}
+              />
+              <RangePicker
+                size="small"
+                format="DD-MM-YYYY"
+                value={rendimientoFechas}
+                allowClear={false}
+                onChange={(value) => {
+                  if (value && value[0] && value[1]) {
+                    setRendimientoFechas([value[0], value[1]]);
+                  }
+                }}
+              />
+            </div>
+
+            {rendimientoError ? (
+              <Empty
+                description={
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>
+                    {rendimientoError}
+                  </span>
+                }
+              />
+            ) : (
+              <Table
+                size="small"
+                loading={rendimientoLoading}
+                columns={rendimientoTrabajadorColumns}
+                dataSource={rendimientoData}
+                rowKey={(record, index) => `${record.nombreSellador}-${index}`}
+                pagination={false}
+                scroll={{ x: "max-content" }}
+                locale={{ emptyText: "Sin datos para el rango y obra seleccionados" }}
+              />
+            )}
+          </Card>
+
           {/* Reportes Técnicos */}
           <Card
             title={
@@ -1133,7 +1332,11 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
               defaultActiveKey="sellos"
               onChange={(key) =>
                 setActiveTipoRegistro(
-                  key === "espuma" ? "junta_lineal_espuma" : "sello_cortafuego"
+                  key === "espuma"
+                    ? "junta_lineal_espuma"
+                    : key === "otros"
+                    ? "otros"
+                    : "sello_cortafuego"
                 )
               }
               items={[
@@ -1294,6 +1497,46 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
                             scroll={{ x: "max-content" }}
                           />
                         </>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: "otros",
+                  label: (
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <span className="text-purple-400 font-medium">OT</span>
+                      <span>Tabiquería / Otros</span>
+                    </span>
+                  ),
+                  children: (
+                    <>
+                      <div className="flex justify-end mb-3">
+                        <Select
+                          size="small"
+                          value={filtroEstado}
+                          onChange={setFiltroEstado}
+                          options={ESTADOS}
+                          style={{ width: 160 }}
+                        />
+                      </div>
+                      {registrosOtros.length === 0 ? (
+                        <Empty
+                          description={
+                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>
+                              No hay registros de tabiquería u otros tipos cargados desde terreno.
+                            </span>
+                          }
+                        />
+                      ) : (
+                        <Table
+                          size="small"
+                          columns={columnsCortafuego}
+                          dataSource={registrosFiltrados}
+                          rowKey="id"
+                          pagination={{ pageSize: 10 }}
+                          scroll={{ x: "max-content" }}
+                        />
                       )}
                     </>
                   ),

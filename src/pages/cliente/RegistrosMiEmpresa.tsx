@@ -6,7 +6,6 @@ import {
   Card,
   Col,
   DatePicker,
-  Descriptions,
   Empty,
   Image,
   Input,
@@ -20,6 +19,7 @@ import {
   Statistic,
   Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -35,6 +35,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import "dayjs/locale/es";
+import { getTipoRegistroLabel } from "../../constants/roles";
 import {
   Bar,
   BarChart,
@@ -60,6 +61,11 @@ import {
 } from "../../services/api";
 import { useAuth } from "../../context/useAuth";
 import { usePermisos } from "../../hooks/usePermisos";
+import RegistroDetalleFirmaModal, {
+  type RegistroDetalleVisibleField,
+} from "../../components/RegistroDetalleFirmaModal";
+import RegistroFirmaMasivaModal from "../../components/RegistroFirmaMasivaModal";
+import ItemizadoPreviewPanel from "../../components/ItemizadoPreviewPanel";
 
 dayjs.locale("es");
 
@@ -171,6 +177,13 @@ const getColumnaTitle = (columna: ClienteRegistroColumna): string =>
 const isFotoColumn = (key: string, title: string): boolean => {
   const text = `${key} ${title}`.toLowerCase();
   return text.includes("foto") || text.includes("imagen");
+};
+
+type VisibleRegistroColumn = {
+  key: string;
+  title: string;
+  dataIndex: string;
+  isFoto: boolean;
 };
 
 const renderRegistroValue = (
@@ -421,10 +434,17 @@ const RegistrosMiEmpresa: React.FC = () => {
   const [obraSeleccionada, setObraSeleccionada] = useState<ClienteObraResumen | null>(null);
   const [registros, setRegistros] = useState<ClienteRegistroValidado[]>([]);
   const [columnasRegistro, setColumnasRegistro] = useState<ClienteRegistroColumna[]>([]);
+  const [columnasFijasRegistro, setColumnasFijasRegistro] = useState<ClienteRegistroColumna[]>([]);
   const [loadingRegistros, setLoadingRegistros] = useState(false);
   const [validandoRegistroId, setValidandoRegistroId] = useState<string | null>(null);
+  const [abriendoPdfId, setAbriendoPdfId] = useState<string | null>(null);
 
   const [detalle, setDetalle] = useState<ClienteRegistroValidado | null>(null);
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [firmaMasivaOpen, setFirmaMasivaOpen] = useState(false);
+  const [procesandoFirmaMasiva, setProcesandoFirmaMasiva] = useState(false);
+  const [abriendoPdfConsolidado, setAbriendoPdfConsolidado] = useState(false);
 
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<string | undefined>();
@@ -433,6 +453,9 @@ const RegistrosMiEmpresa: React.FC = () => {
 
   // Modal configuración vista
   const [configModalOpen, setConfigModalOpen] = useState(false);
+
+  // Tabs de "Vista Cliente" (solo admin/interno): Registros vs. Itemizado de la obra
+  const [activeTab, setActiveTab] = useState<"registros" | "itemizado">("registros");
 
   const apiParams = necesitaSelector
     ? clienteSeleccionadoId
@@ -460,6 +483,7 @@ const RegistrosMiEmpresa: React.FC = () => {
       setObraSeleccionada(null);
       setRegistros([]);
       setColumnasRegistro([]);
+      setColumnasFijasRegistro([]);
       try {
         const [dash, obrasData] = await Promise.all([
           clienteAPI.dashboard(params),
@@ -501,6 +525,7 @@ const RegistrosMiEmpresa: React.FC = () => {
       setObraSeleccionada(null);
       setRegistros([]);
       setColumnasRegistro([]);
+      setColumnasFijasRegistro([]);
       setErrorDatos(null);
     }
   }, [necesitaSelector, clienteSeleccionadoId, cargarDatos]);
@@ -514,6 +539,7 @@ const RegistrosMiEmpresa: React.FC = () => {
       setFiltroTipo(undefined);
       setFiltroPiso(undefined);
       setFiltroFechas(null);
+      setSelectedRowKeys([]);
       setLoadingRegistros(true);
       try {
         const data = await clienteAPI.registrosPorObra(obra.id, apiParams);
@@ -527,8 +553,12 @@ const RegistrosMiEmpresa: React.FC = () => {
         const colsToUse = (
           data.columnasConfigurables?.length ? data.columnasConfigurables : (data.columnas ?? [])
         ).filter((c) => !esFija(c));
+        const columnasFijas = data.columnasFijas?.length
+          ? data.columnasFijas
+          : [...(data.columnasConfigurables ?? []), ...(data.columnas ?? [])].filter(esFija);
         console.log("COLUMNAS A USAR (colsToUse)", colsToUse);
         setColumnasRegistro(colsToUse);
+        setColumnasFijasRegistro(columnasFijas);
       } catch (err) {
         void message.error("No se pudieron cargar los registros: " + getErrorMessage(err));
       } finally {
@@ -539,69 +569,189 @@ const RegistrosMiEmpresa: React.FC = () => {
     [clienteSeleccionadoId]
   );
 
-  const validarRegistro = useCallback((registro: ClienteRegistroValidado) => {
-    Modal.confirm({
-      title: "Validar registro",
-      content: "¿Confirmas que deseas validar este registro?",
-      okText: "Validar",
-      cancelText: "Cancelar",
-      onOk: async () => {
-        setValidandoRegistroId(registro.id);
-        try {
-          const updated = await clienteAPI.validarRegistro(registro.id);
-          setRegistros((prev) =>
-            prev.map((item) =>
-              item.id === registro.id
-                ? {
-                    ...item,
-                    ...updated,
-                    estado: updated.estado ?? "Validado",
-                    validadoCliente: updated.validadoCliente ?? true,
-                    acciones: {
-                      ...(item.acciones ?? {}),
-                      ...(updated.acciones ?? {}),
-                      puedeValidar: false,
-                    },
-                  }
-                : item
-            )
-          );
-          setDetalle((prev) =>
-            prev?.id === registro.id
+  const confirmarValidacionConFirma = useCallback(
+    async (firma: { pathData: string; canvasWidth: number; canvasHeight: number }) => {
+      if (!detalle) return;
+      const registro = detalle;
+      setValidandoRegistroId(registro.id);
+      try {
+        const updated = await clienteAPI.validarRegistro(registro.id, firma);
+        setRegistros((prev) =>
+          prev.map((item) =>
+            item.id === registro.id
               ? {
-                  ...prev,
+                  ...item,
                   ...updated,
                   estado: updated.estado ?? "Validado",
                   validadoCliente: updated.validadoCliente ?? true,
+                  pdfFirmadoUrl: updated.pdfFirmadoUrl ?? item.pdfFirmadoUrl,
                   acciones: {
-                    ...(prev.acciones ?? {}),
+                    ...(item.acciones ?? {}),
                     ...(updated.acciones ?? {}),
                     puedeValidar: false,
                   },
                 }
-              : prev
-          );
-          void message.success("Registro validado correctamente");
-        } catch (err) {
-          const status = (err as { response?: { status?: number } })?.response?.status;
-          if (status === 409) {
-            void message.error("Este registro ya fue validado.");
-          } else if (status === 403) {
-            void message.error("No tienes permiso para validar este registro.");
-          } else {
-            void message.error("No se pudo validar el registro: " + getErrorMessage(err));
-          }
-        } finally {
-          setValidandoRegistroId(null);
+              : item
+          )
+        );
+        void message.success("Registro validado correctamente. El PDF firmado ya está disponible.");
+        // Cierra el modal y refresca: la fila de la tabla ya quedó actualizada
+        // arriba; al reabrir el detalle se usará ese dato ya refrescado.
+        setDetalle(null);
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          void message.error("Este registro ya fue validado.");
+        } else if (status === 403) {
+          void message.error("No tienes permiso para validar este registro.");
+        } else if (status === 400) {
+          void message.error(getErrorMessage(err));
+        } else {
+          void message.error("No se pudo validar el registro: " + getErrorMessage(err));
         }
-      },
-    });
+        // No cerramos el modal en caso de error: se mantiene la firma dibujada
+        // para que el cliente pueda reintentar sin volver a firmar.
+      } finally {
+        setValidandoRegistroId(null);
+      }
+    },
+    [detalle]
+  );
+
+  // Abre el PDF firmado a través del endpoint seguro del backend (valida
+  // autenticación y acceso a la obra) en vez de navegar directo a la URL de
+  // Cloudinary guardada en pdfFirmadoUrl.
+  const abrirPdfFirmado = useCallback(async (registroId: string) => {
+    setAbriendoPdfId(registroId);
+    try {
+      const blob = await clienteAPI.descargarPdfFirmado(registroId);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        void message.error("No tienes acceso a este registro.");
+      } else if (status === 404) {
+        void message.error("Este registro todavía no tiene un PDF firmado.");
+      } else {
+        void message.error("No se pudo abrir el PDF firmado: " + getErrorMessage(err));
+      }
+    } finally {
+      setAbriendoPdfId(null);
+    }
   }, []);
+
+  const registrosSeleccionados = useMemo(
+    () => registros.filter((r) => selectedRowKeys.includes(r.id)),
+    [registros, selectedRowKeys]
+  );
+
+  // Firma masiva: la selección puede ser mixta (pendientes + ya firmados). Se
+  // firman solo los pendientes y los ya firmados se omiten sin tocarlos —
+  // misma clasificación que aplica el backend (validadoCliente).
+  const registrosPendientesSeleccionados = useMemo(
+    () => registrosSeleccionados.filter((r) => !r.validadoCliente),
+    [registrosSeleccionados]
+  );
+  const registrosYaFirmadosSeleccionados = useMemo(
+    () => registrosSeleccionados.filter((r) => Boolean(r.validadoCliente)),
+    [registrosSeleccionados]
+  );
+
+  const confirmarFirmaMasiva = useCallback(
+    async (firma: { pathData: string; canvasWidth: number; canvasHeight: number }) => {
+      // Solo se envían los IDs pendientes: los ya firmados en la selección se
+      // omiten localmente y nunca viajan en el request.
+      const ids = registrosPendientesSeleccionados.map((r) => r.id);
+      if (ids.length === 0) return;
+      setProcesandoFirmaMasiva(true);
+      try {
+        const resultado = await clienteAPI.validarRegistrosMultiple(ids, firma);
+
+        if (resultado.totalExitosos > 0) {
+          const exitososPorId = new Map(resultado.exitosos.map((e) => [e.id, e]));
+          setRegistros((prev) =>
+            prev.map((item) => {
+              const exito = exitososPorId.get(item.id);
+              if (!exito) return item;
+              return {
+                ...item,
+                validadoCliente: true,
+                pdfFirmadoUrl: exito.pdfFirmadoUrl,
+                estado: "Validado",
+                acciones: { ...(item.acciones ?? {}), puedeValidar: false },
+              };
+            })
+          );
+        }
+
+        const partes: string[] = [`${resultado.totalExitosos} registro(s) firmado(s) correctamente`];
+        if (resultado.totalOmitidos > 0) {
+          partes.push(`${resultado.totalOmitidos} omitido(s) por estar ya firmado(s)`);
+        }
+        if (resultado.totalFallidos > 0) {
+          partes.push(`${resultado.totalFallidos} fallaron`);
+        }
+        const resumen = partes.join(", ") + ".";
+
+        if (resultado.totalFallidos === 0) {
+          void message.success(resumen);
+          setSelectedRowKeys([]);
+          setFirmaMasivaOpen(false);
+        } else {
+          void message.warning(resumen);
+          // Deja seleccionados solo los que realmente fallaron (condición de
+          // carrera), para poder reintentar sin tener que volver a marcar los
+          // que ya se firmaron u omitir de nuevo los que ya estaban firmados.
+          setSelectedRowKeys(resultado.fallidos.map((f) => f.id));
+          setFirmaMasivaOpen(false);
+        }
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          void message.error("Uno o más registros ya fueron validados por el cliente.");
+        } else if (status === 403) {
+          void message.error("No tienes permiso para validar uno o más de estos registros.");
+        } else if (status === 400) {
+          void message.error(getErrorMessage(err));
+        } else {
+          void message.error("No se pudo procesar la firma masiva: " + getErrorMessage(err));
+        }
+        throw err;
+      } finally {
+        setProcesandoFirmaMasiva(false);
+      }
+    },
+    [registrosPendientesSeleccionados]
+  );
+
+  // Igual patrón que abrirPdfFirmado: abre el PDF consolidado en una pestaña
+  // nueva vía blob + URL temporal, en vez de forzar una descarga con <a
+  // download>. Así el usuario decide desde el visor del navegador si lo
+  // guarda, imprime o solo lo revisa.
+  const handleVerPdfConsolidado = useCallback(async () => {
+    const ids = registrosSeleccionados.map((r) => r.id);
+    if (ids.length === 0) return;
+    setAbriendoPdfConsolidado(true);
+    try {
+      const blob = await clienteAPI.descargarPdfConsolidado(ids);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      void message.error("No se pudo generar el PDF consolidado: " + getErrorMessage(err));
+    } finally {
+      setAbriendoPdfConsolidado(false);
+    }
+  }, [registrosSeleccionados]);
 
   const volver = useCallback(() => {
     setObraSeleccionada(null);
     setRegistros([]);
     setColumnasRegistro([]);
+    setColumnasFijasRegistro([]);
+    setSelectedRowKeys([]);
   }, []);
 
   const tiposUnicos = useMemo(
@@ -730,59 +880,142 @@ const RegistrosMiEmpresa: React.FC = () => {
   ];
 
   // ── Columnas tabla registros ──
-  const columnasRegistrosDinamicas: ColumnsType<ClienteRegistroValidado> = useMemo(() => {
+  const visibleRegistroColumns = useMemo<VisibleRegistroColumn[]>(() => {
     console.log("COLUMNAS DINAMICAS RENDER - columnasRegistro state", columnasRegistro);
-    const configurables = columnasRegistro.reduce<ColumnsType<ClienteRegistroValidado>>((acc, columna) => {
+    return columnasRegistro.reduce<VisibleRegistroColumn[]>((acc, columna) => {
         if (columna.visible === false) return acc;
         const key = getColumnaKey(columna);
         if (!key || COLUMNAS_FIJAS_KEYS.has(key.toLowerCase())) return acc;
         const title = getColumnaTitle(columna);
-        const camelKey = snakeToCamel(key);
         acc.push({
           title,
           key,
-          dataIndex: camelKey,
-          width: isFotoColumn(key, title) ? 110 : 150,
-          render: (_value: unknown, record: ClienteRegistroValidado) =>
-            renderRegistroValue(getRegistroValue(record, key), record, key, title),
+          dataIndex: snakeToCamel(key),
+          isFoto: isFotoColumn(key, title),
         });
         return acc;
       }, []);
+  }, [columnasRegistro]);
+
+  const estadoColumnConfig = useMemo(
+    () => columnasFijasRegistro.find((columna) => getColumnaKey(columna).toLowerCase() === "estado"),
+    [columnasFijasRegistro]
+  );
+  const estadoVisible = estadoColumnConfig?.visible !== false;
+  const estadoTitle = estadoColumnConfig ? getColumnaTitle(estadoColumnConfig) : "Estado";
+
+  const columnasRegistrosDinamicas: ColumnsType<ClienteRegistroValidado> = useMemo(() => {
+    const configurables = visibleRegistroColumns.map((columna) => ({
+      title: columna.title,
+      key: columna.key,
+      dataIndex: columna.dataIndex,
+      width: columna.isFoto ? 110 : 150,
+      render: (_value: unknown, record: ClienteRegistroValidado) =>
+        renderRegistroValue(getRegistroValue(record, columna.key), record, columna.key, columna.title),
+    }));
 
     return [
       ...configurables,
-      {
-        title: "Estado",
-        key: "estado",
-        width: 130,
-        render: (_value: unknown, record: ClienteRegistroValidado) => {
-          const estado = record.estado ?? (record.validadoCliente ? "Validado" : "No validado");
-          return <Tag color={estado === "Validado" ? "green" : "default"}>{estado}</Tag>;
-        },
-      },
+      ...(estadoVisible
+        ? [
+            {
+              title: estadoTitle,
+              key: "estado",
+              width: 130,
+              render: (_value: unknown, record: ClienteRegistroValidado) => {
+                const estado = record.estado ?? (record.validadoCliente ? "Validado" : "No validado");
+                return <Tag color={estado === "Validado" ? "green" : "default"}>{estado}</Tag>;
+              },
+            },
+          ]
+        : []),
       {
         title: "Acciones",
         key: "acciones",
-        width: 130,
-        render: (_value: unknown, record: ClienteRegistroValidado) =>
-          record.acciones?.puedeValidar ? (
-            <Button
-              size="small"
-              type="primary"
-              loading={validandoRegistroId === record.id}
-              onClick={(event) => {
-                event.stopPropagation();
-                validarRegistro(record);
-              }}
-            >
-              Validar
-            </Button>
-          ) : (
-            <Text type="secondary">-</Text>
-          ),
+        width: 150,
+        render: (_value: unknown, record: ClienteRegistroValidado) => {
+          if (record.acciones?.puedeValidar) {
+            return (
+              <Button
+                size="small"
+                type="primary"
+                loading={validandoRegistroId === record.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  // Siempre abre el detalle primero (paso 1) — la firma solo se
+                  // alcanza tras revisar el detalle y presionar "Validar con firma"
+                  // dentro del modal único.
+                  setDetalle(record);
+                }}
+              >
+                Validar con firma
+              </Button>
+            );
+          }
+
+          if (record.validadoCliente && record.pdfFirmadoUrl) {
+            return (
+              <Button
+                size="small"
+                loading={abriendoPdfId === record.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void abrirPdfFirmado(record.id);
+                }}
+              >
+                Ver PDF
+              </Button>
+            );
+          }
+
+          if (record.validadoCliente) {
+            // Anomalía: quedó validado pero sin PDF (ej. registro validado
+            // antes de existir esta funcionalidad) — nunca dejar la celda vacía.
+            return (
+              <Tag color="warning" title="Este registro fue validado pero no tiene un PDF firmado asociado.">
+                Sin PDF firmado
+              </Tag>
+            );
+          }
+
+          return <Text type="secondary">-</Text>;
+        },
       },
     ];
-  }, [columnasRegistro, validarRegistro, validandoRegistroId]);
+  }, [estadoTitle, estadoVisible, validandoRegistroId, abriendoPdfId, abrirPdfFirmado, visibleRegistroColumns]);
+
+  const detalleVisibleFields = useMemo<RegistroDetalleVisibleField[]>(() => {
+    if (!detalle) return [];
+
+    const fields = visibleRegistroColumns
+      .filter((columna) => !columna.isFoto)
+      .map((columna) => ({
+        key: columna.key,
+        label: columna.title,
+        value: renderRegistroValue(
+          getRegistroValue(detalle, columna.key),
+          detalle,
+          columna.key,
+          columna.title
+        ),
+      }));
+
+    if (estadoVisible) {
+      const estado = detalle.estado ?? (detalle.validadoCliente ? "Validado" : "No validado");
+      fields.push({
+        key: "estado",
+        label: estadoTitle,
+        value: <Tag color={estado === "Validado" ? "green" : "default"}>{estado}</Tag>,
+      });
+    }
+
+    return fields;
+  }, [detalle, estadoTitle, estadoVisible, visibleRegistroColumns]);
+
+  const mostrarFotosDetalle = useMemo(
+    () => visibleRegistroColumns.some((columna) => columna.isFoto),
+    [visibleRegistroColumns]
+  );
 
   const encabezado = (
     <div className="space-y-3">
@@ -855,11 +1088,8 @@ const RegistrosMiEmpresa: React.FC = () => {
   );
 
   // ── Vista: detalle de obra con registros ──
-  if (obraSeleccionada) {
-    return (
+  const registrosBody = obraSeleccionada ? (
       <div className="w-full min-w-0 space-y-4">
-        {encabezado}
-
         <div className="flex items-center gap-3">
           <Button icon={<ArrowLeftOutlined />} onClick={volver}>
             Volver a obras
@@ -890,7 +1120,7 @@ const RegistrosMiEmpresa: React.FC = () => {
               onChange={setFiltroTipo}
               allowClear
               style={{ width: 200 }}
-              options={tiposUnicos.map((t) => ({ value: t, label: t }))}
+              options={tiposUnicos.map((t) => ({ value: t, label: getTipoRegistroLabel(t) }))}
             />
             <Select
               placeholder="Piso"
@@ -909,8 +1139,32 @@ const RegistrosMiEmpresa: React.FC = () => {
           </Space>
         </Card>
 
+        {selectedRowKeys.length > 0 && (
+          <Card size="small">
+            <Space wrap align="center">
+              <Text strong>{selectedRowKeys.length} registro(s) seleccionado(s)</Text>
+              {registrosPendientesSeleccionados.length > 0 && (
+                <Button type="primary" onClick={() => setFirmaMasivaOpen(true)}>
+                  Firmar seleccionados ({registrosPendientesSeleccionados.length})
+                </Button>
+              )}
+              <Button loading={abriendoPdfConsolidado} onClick={() => void handleVerPdfConsolidado()}>
+                Ver PDF ({selectedRowKeys.length})
+              </Button>
+              <Button onClick={() => setSelectedRowKeys([])}>Limpiar selección</Button>
+            </Space>
+          </Card>
+        )}
+
         <Table
           rowKey="id"
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+            renderCell: (_checked, _record, _index, originNode) => (
+              <div onClick={(e) => e.stopPropagation()}>{originNode}</div>
+            ),
+          }}
           columns={columnasRegistrosDinamicas}
           dataSource={registrosFiltrados}
           loading={loadingRegistros}
@@ -924,63 +1178,24 @@ const RegistrosMiEmpresa: React.FC = () => {
           locale={{ emptyText: <Empty description="Sin registros validados" /> }}
         />
 
-        <Modal
+        <RegistroDetalleFirmaModal
           open={detalle !== null}
-          onCancel={() => setDetalle(null)}
-          footer={<Button onClick={() => setDetalle(null)}>Cerrar</Button>}
-          title="Detalle del registro"
-          width={700}
-        >
-          {detalle && (
-            <div className="space-y-4">
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="Fecha">
-                  {detalle.fecha ? dayjs(detalle.fecha).format("DD/MM/YYYY") : "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Tipo">{detalle.tipoRegistro ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Piso">{detalle.piso ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Módulo">{detalle.modulo ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Recinto">{detalle.recinto ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Eje">{detalle.eje ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="N° Sello">{detalle.numeroSello ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Cantidad">
-                  {detalle.cantidad?.toLocaleString("es-CL") ?? "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Cantidad final">
-                  {detalle.cantidadFinal?.toLocaleString("es-CL") ?? "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Material">{detalle.material ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Sellador">{detalle.sellador ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label="Itemizado Beck" span={2}>
-                  {detalle.itemizadoBeck ?? "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Itemizado Mandante" span={2}>
-                  {detalle.itemizadoMandante ?? "-"}
-                </Descriptions.Item>
-              </Descriptions>
+          registro={detalle}
+          visibleFields={detalleVisibleFields}
+          showFotos={mostrarFotosDetalle}
+          validando={detalle ? validandoRegistroId === detalle.id : false}
+          onClose={() => setDetalle(null)}
+          onConfirmarFirma={confirmarValidacionConFirma}
+        />
 
-              {getFotos(detalle).length > 0 && (
-                <div>
-                  <Text strong style={{ display: "block", marginBottom: 8 }}>Fotos</Text>
-                  <Image.PreviewGroup>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {getFotos(detalle).map((url, i) => (
-                        <Image
-                          key={i}
-                          src={url}
-                          width={120}
-                          height={90}
-                          style={{ objectFit: "cover", borderRadius: 6 }}
-                          fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABmJLR0QA/wD/AP+gvaeTAAAATElEQVRoge3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBxAABHgAAAABJRU5ErkJggg=="
-                        />
-                      ))}
-                    </div>
-                  </Image.PreviewGroup>
-                </div>
-              )}
-            </div>
-          )}
-        </Modal>
+        <RegistroFirmaMasivaModal
+          open={firmaMasivaOpen}
+          registros={registrosPendientesSeleccionados}
+          registrosOmitidos={registrosYaFirmadosSeleccionados}
+          procesando={procesandoFirmaMasiva}
+          onClose={() => setFirmaMasivaOpen(false)}
+          onConfirmarFirma={confirmarFirmaMasiva}
+        />
 
         {necesitaSelector && (
           <ConfigVistaModal
@@ -993,14 +1208,8 @@ const RegistrosMiEmpresa: React.FC = () => {
           />
         )}
       </div>
-    );
-  }
-
-  // ── Vista principal ──
-  return (
+  ) : (
     <div className="w-full min-w-0 space-y-6">
-      {encabezado}
-
       {/* Admin/interno sin cliente seleccionado */}
       {necesitaSelector && !clienteSeleccionadoId && (
         <Card>
@@ -1207,6 +1416,39 @@ const RegistrosMiEmpresa: React.FC = () => {
           saveConfig={saveConfig}
         />
       )}
+    </div>
+  );
+
+  if (!necesitaSelector) {
+    return (
+      <div className="w-full min-w-0 space-y-4">
+        {encabezado}
+        {registrosBody}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-w-0 space-y-4">
+      {encabezado}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as "registros" | "itemizado")}
+        items={[
+          { key: "registros", label: "Registros", children: registrosBody },
+          {
+            key: "itemizado",
+            label: "Itemizado de la obra",
+            children: (
+              <ItemizadoPreviewPanel
+                clienteSeleccionadoId={clienteSeleccionadoId}
+                obras={obras}
+                loadingObras={loadingObras}
+              />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 };

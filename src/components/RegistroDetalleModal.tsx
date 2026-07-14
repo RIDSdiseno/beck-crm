@@ -13,6 +13,12 @@ import {
 import dayjs from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
 import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
+import {
+  getTipoRegistroLabel,
+  getTipoRegistroColor,
+  getTipoRegistroBadgeClass,
+  getCantidadLabelPorTipo,
+} from "../constants/roles";
 
 export type RegistroDetalleUpdateValues = {
   descripcionMaterial: string;
@@ -60,11 +66,15 @@ type RegistroDetalleModalProps = {
   showRendimientoIndividual?: boolean;
 };
 
+// "Validado" y "Rechazado" se eliminaron deliberadamente de este selector
+// genérico: esas transiciones exigen que el registro esté en "en_revision"
+// (regla que ahora también aplica el backend en PUT /registros/:id) y deben
+// hacerse únicamente desde los botones dedicados de Procesamiento
+// Ingeniería ("Validar"/"Rechazar"), que además dejan el rastro correcto en
+// procesamiento_ingenieria.
 const estadoOptions = [
   { label: "Pendiente", value: "pendiente" },
   { label: "En revisión", value: "en_revision" },
-  { label: "Validado", value: "validado" },
-  { label: "Rechazado", value: "rechazado" },
 ];
 
 const normalizeEstado = (
@@ -94,23 +104,6 @@ const getEstadoLabel = (estado?: string): string => {
   if (normalized === "validado") return "Validado";
   if (normalized === "rechazado") return "Rechazado";
   return "Pendiente";
-};
-
-const getTipoLabel = (tipoRegistro?: string | null): string => {
-  if (tipoRegistro === "junta_lineal_espuma") return "Junta lineal espuma";
-  return "Sello cortafuego";
-};
-
-const getTipoColor = (tipoRegistro?: string | null): string => {
-  if (tipoRegistro === "junta_lineal_espuma") return "blue";
-  return "gold";
-};
-
-const getTipoBadgeClass = (tipoRegistro?: string | null): string => {
-  if (tipoRegistro === "junta_lineal_espuma") {
-    return "border border-blue-200 bg-blue-50 text-blue-700";
-  }
-  return "border border-amber-200 bg-amber-50 text-amber-700";
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -256,7 +249,7 @@ const renderDetalleSelloCortafuego = (
       {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
       <FieldView label="N° DEL SELLO" value={r.numeroSello} />
       <FieldView
-        label="Cantidad de Sellos"
+        label={getCantidadLabelPorTipo(r.tipoRegistro)}
         value={r.cantidadSellos != null ? String(r.cantidadSellos) : "-"}
       />
       {showCampo("holgura") && (
@@ -449,13 +442,13 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
         <div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Tag
-              className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoBadgeClass(
+              className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoRegistroBadgeClass(
                 registro.tipoRegistro
               )}`}
-              color={getTipoColor(registro.tipoRegistro)}
+              color={getTipoRegistroColor(registro.tipoRegistro)}
               style={{ marginInlineEnd: 0 }}
             >
-              {getTipoLabel(registro.tipoRegistro)}
+              {getTipoRegistroLabel(registro.tipoRegistro)}
             </Tag>
             {registro.esCorreccion && (
               <Tag
@@ -495,7 +488,10 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
           ) : (
             <div className="flex items-center gap-1 text-orange-700">
               <FireOutlined />
-              <span>{registro.cantidadSellos} sellos</span>
+              <span>
+                {registro.cantidadSellos}
+                {registro.tipoRegistro === "sello_cortafuego" || !registro.tipoRegistro ? " sellos" : ""}
+              </span>
             </div>
           )}
           <Tag color={getEstadoColor(registro.estado)} className="m-0 text-[11px]">
@@ -660,13 +656,13 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                     </div>
                   ) : (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-slate-500">Cantidad de sellos</p>
+                      <p className="text-slate-500">{getCantidadLabelPorTipo(registro.tipoRegistro)}</p>
                       <p className="text-base font-semibold text-slate-900">
                         {registro.cantidadSellos}
                       </p>
                     </div>
                   )}
-                  {!esEspuma && (
+                  {!esEspuma && (!registro.tipoRegistro || registro.tipoRegistro === "sello_cortafuego") && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                       <p className="text-slate-500">Sellos ponderados</p>
                       <p className="text-base font-semibold text-emerald-600">
@@ -789,7 +785,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                 <InputNumber min={0} step={0.1} className="w-full" />
               </Form.Item>
             ) : (
-              <Form.Item name="cantidadSellos" label="Cantidad sellos" className="mb-3">
+              <Form.Item name="cantidadSellos" label={getCantidadLabelPorTipo(registro.tipoRegistro)} className="mb-3">
                 <InputNumber min={0} className="w-full" />
               </Form.Item>
             )}
@@ -928,6 +924,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3">
           {onDownloadPdf && (
             <Button
+              disabled={saving}
               onClick={() => {
                 void onDownloadPdf(registro);
               }}
@@ -942,25 +939,26 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               <Button
                 type="primary"
                 loading={reenviarRevisionLoading}
-                disabled={registro.estado === "en_revision"}
+                disabled={saving || registro.estado === "en_revision"}
                 onClick={() => void onReenviarRevision(registro)}
               >
                 Reenviar a revisión
               </Button>
             </Tooltip>
           )}
-          <Button onClick={onClose}>Cerrar</Button>
+          <Button disabled={saving} onClick={onClose}>Cerrar</Button>
           {canEditRegistro && (
             <Button
               type="primary"
               loading={saving}
+              disabled={saving}
               onClick={() => form.submit()}
             >
               Guardar cambios
             </Button>
           )}
           {!canEditRegistro && canEdit && (
-            <Button type="primary" onClick={onEdit}>
+            <Button disabled={saving} type="primary" onClick={onEdit}>
               Editar
             </Button>
           )}
