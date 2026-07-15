@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, Image, Modal, Spin, Table, Tag, message } from "antd";
+import { Button, Image, Input, Modal, Spin, Table, Tag, message } from "antd";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -15,9 +15,9 @@ interface Props {
   registroId: string | null;
   open: boolean;
   onClose: () => void;
-  /** El usuario actual puede confirmar una corrección enviada por el Supervisor. */
-  puedeConfirmarCorreccion?: boolean;
-  /** Se llama tras confirmar la corrección, para que la tabla que abrió el modal se refresque. */
+  /** El usuario actual puede confirmar o rechazar una corrección enviada por el Supervisor. */
+  puedeRevisarCorreccion?: boolean;
+  /** Se llama tras confirmar o rechazar la corrección, para que la tabla que abrió el modal se refresque. */
   onRevisado?: () => void;
 }
 
@@ -96,12 +96,15 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   registroId,
   open,
   onClose,
-  puedeConfirmarCorreccion,
+  puedeRevisarCorreccion,
   onRevisado,
 }) => {
   const [loading, setLoading] = useState(false);
   const [detalle, setDetalle] = useState<InspeccionDetalle | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  const [rechazando, setRechazando] = useState(false);
+  const [mostrarMotivoRechazoCorreccion, setMostrarMotivoRechazoCorreccion] = useState(false);
+  const [motivoRechazoCorreccion, setMotivoRechazoCorreccion] = useState("");
 
   const cargarDetalle = async () => {
     if (!registroId) return;
@@ -120,6 +123,8 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   useEffect(() => {
     if (!open || !registroId) {
       setDetalle(null);
+      setMostrarMotivoRechazoCorreccion(false);
+      setMotivoRechazoCorreccion("");
       return;
     }
 
@@ -146,8 +151,8 @@ const DetalleInspeccionModal: React.FC<Props> = ({
     if (!registroId) return;
     setConfirmando(true);
     try {
-      await inspeccionAPI.revisarInspeccion(registroId, "validar");
-      message.success("Corrección confirmada");
+      await inspeccionAPI.revisarCorreccionInspeccion(registroId, "confirmar");
+      message.success("Corrección confirmada. El control queda conforme.");
       await cargarDetalle();
       onRevisado?.();
     } catch (error) {
@@ -158,14 +163,40 @@ const DetalleInspeccionModal: React.FC<Props> = ({
     }
   };
 
+  const handleRechazarCorreccion = async () => {
+    if (!registroId) return;
+    if (!motivoRechazoCorreccion.trim()) {
+      message.error("Indica el motivo del rechazo");
+      return;
+    }
+    setRechazando(true);
+    try {
+      await inspeccionAPI.revisarCorreccionInspeccion(
+        registroId,
+        "rechazar",
+        motivoRechazoCorreccion.trim(),
+      );
+      message.success("Corrección rechazada, vuelve a la cola del Supervisor");
+      setMostrarMotivoRechazoCorreccion(false);
+      setMotivoRechazoCorreccion("");
+      onRevisado?.();
+      onClose();
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo rechazar la corrección");
+    } finally {
+      setRechazando(false);
+    }
+  };
+
   const estado = (detalle?.inspeccionEstado ?? "no_enviado") as InspeccionEstado;
   const enviadoPor = detalle ? getNombre([detalle.seleccionadoInspeccionPor]) : null;
   const supervisor = detalle ? getNombre([detalle.supervisorInspeccion]) : null;
   const observaciones = detalle?.observaciones ?? detalle?.observacion ?? null;
   const fotos = detalle ? getFotos(detalle) : [];
   const parametros = detalle?.parametros ?? [];
-  const mostrarConfirmarCorreccion =
-    !!puedeConfirmarCorreccion &&
+  const puedeAccionarCorreccion =
+    !!puedeRevisarCorreccion &&
     !!detalle?.correccionEnviadaAt &&
     (detalle?.inspeccionRevisionEstado ?? "pendiente") === "pendiente";
 
@@ -230,10 +261,15 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="flex gap-2">
-            {mostrarConfirmarCorreccion && (
-              <Button type="primary" loading={confirmando} onClick={handleConfirmarCorreccion}>
-                Confirmar corrección
-              </Button>
+            {puedeAccionarCorreccion && !mostrarMotivoRechazoCorreccion && (
+              <>
+                <Button type="primary" loading={confirmando} onClick={handleConfirmarCorreccion}>
+                  Confirmar corrección
+                </Button>
+                <Button danger disabled={confirmando} onClick={() => setMostrarMotivoRechazoCorreccion(true)}>
+                  Rechazar corrección
+                </Button>
+              </>
             )}
           </div>
           <Button type="primary" onClick={onClose}>
@@ -352,6 +388,31 @@ const DetalleInspeccionModal: React.FC<Props> = ({
                 <div className="mt-2">
                   <span className="font-medium text-slate-600">Motivo de rechazo:</span>{" "}
                   {detalle.motivoRechazoInspeccion}
+                </div>
+              )}
+
+              {puedeAccionarCorreccion && mostrarMotivoRechazoCorreccion && (
+                <div className="mt-3 space-y-2">
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="Motivo del rechazo (obligatorio)"
+                    value={motivoRechazoCorreccion}
+                    onChange={(e) => setMotivoRechazoCorreccion(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button danger loading={rechazando} onClick={handleRechazarCorreccion}>
+                      Confirmar rechazo
+                    </Button>
+                    <Button
+                      disabled={rechazando}
+                      onClick={() => {
+                        setMostrarMotivoRechazoCorreccion(false);
+                        setMotivoRechazoCorreccion("");
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

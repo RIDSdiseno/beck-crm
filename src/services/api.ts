@@ -4362,6 +4362,17 @@ export const inspeccionAPI = {
       motivo,
     });
   },
+
+  revisarCorreccionInspeccion: async (
+    registroId: string,
+    accion: "confirmar" | "rechazar",
+    motivo?: string
+  ): Promise<void> => {
+    await api.patch(`/registros/${registroId}/inspeccion/correccion`, {
+      accion,
+      motivo,
+    });
+  },
 };
 
 // ── Itemizado de la obra (revisión del cliente) ───────────────────────────────
