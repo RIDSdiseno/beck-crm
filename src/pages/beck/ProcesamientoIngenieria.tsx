@@ -1520,7 +1520,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         registroId={verInspeccionRegistroId}
         open={!!verInspeccionRegistroId}
         onClose={() => setVerInspeccionRegistroId(null)}
-        puedeRevisar={canEditIngenieria}
+        puedeConfirmarCorreccion={canEditIngenieria}
         onRevisado={() => {
           void Promise.all([cargarRegistros(), cargarResumen()]);
         }}
