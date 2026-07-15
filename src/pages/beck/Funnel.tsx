@@ -60,6 +60,7 @@
     funnelUnificadoAPI,
     oficinaTecnicaPreventaAPI,
     usuariosAPI,
+    type CambioVendedorAutomatico,
     type ClienteBeck,
     type ContactoClienteBeck,
     type CotizacionApiRecord,
@@ -4991,8 +4992,8 @@
         montoFinalGanado?: number;
         fechaCierre?: string;
       }
-    ) => {
-      if (!canEditFunnel || dealSaving) return;
+    ): Promise<CambioVendedorAutomatico> => {
+      if (!canEditFunnel || dealSaving) return null;
 
       const response = await fetchWithAuth(`/funnel-beck/${dealId}/etapa`, {
         method: "PATCH",
@@ -5022,6 +5023,58 @@
         setAdvertenciasGuardado(advertenciasRecibidas);
         setAdvertenciasGuardadoOpen(true);
       }
+
+      return (result.cambioVendedor as CambioVendedorAutomatico) ?? null;
+    };
+
+    // Aplica un cambio automático de vendedor confirmado por el backend:
+    // refresca vendedor en la tarjeta/detalle seleccionados, refresca el
+    // historial, y muestra una notificación no bloqueante. No hace nada si
+    // el backend no confirmó un cambio real (cambioVendedor === null).
+    const aplicarCambioVendedorAutomatico = (
+      dealId: string,
+      cambioVendedor: CambioVendedorAutomatico
+    ) => {
+      if (!cambioVendedor) return;
+
+      setDeals((current) =>
+        current.map((deal) =>
+          deal.id === dealId ? { ...deal, vendedor: cambioVendedor.nuevo } : deal
+        )
+      );
+      setSelectedDeal((current) =>
+        current && current.id === dealId
+          ? { ...current, vendedor: cambioVendedor.nuevo }
+          : current
+      );
+      void loadHistorialEtapas(dealId);
+
+      // motivo llega como "Cambio de etapa: Visita / Levantamiento →
+      // Prospecto identificado" — se separa en label + detalle para el modal.
+      const separadorMotivo = cambioVendedor.motivo.indexOf(":");
+      const motivoLabel =
+        separadorMotivo === -1
+          ? cambioVendedor.motivo
+          : cambioVendedor.motivo.slice(0, separadorMotivo).trim();
+      const motivoDetalle =
+        separadorMotivo === -1
+          ? null
+          : cambioVendedor.motivo.slice(separadorMotivo + 1).trim();
+
+      AntdModal.success({
+        title: "Vendedor reasignado automáticamente",
+        content: (
+          <div>
+            <p className="mb-2">
+              {cambioVendedor.anterior} → {cambioVendedor.nuevo}
+            </p>
+            <p className="mb-0 font-medium">Motivo</p>
+            <p className="mb-0">{motivoLabel}</p>
+            {motivoDetalle && <p className="mb-0">{motivoDetalle}</p>}
+          </div>
+        ),
+        okText: "Aceptar",
+      });
     };
 
     // "descartada" es exclusivo de Firemat y nunca se asigna desde el cierre
@@ -5044,13 +5097,14 @@
       // backend rechaza el cambio, no se toco el estado local, por lo que la
       // tarjeta permanece donde estaba sin necesidad de revertir nada.
       try {
-        await updateDealStage(dealId, {
+        const cambioVendedor = await updateDealStage(dealId, {
           etapa: etapaFrontendToBackendMap[etapa],
         });
 
         setDeals((current) =>
           current.map((deal) => (deal.id === dealId ? { ...deal, etapa, etapaTablero: etapa } : deal))
         );
+        aplicarCambioVendedorAutomatico(dealId, cambioVendedor);
         void loadDeals();
       } catch (error) {
         if (isBeckBloqueoException(error)) {
@@ -5079,7 +5133,7 @@
 
       try {
         setUpdatingStage(true);
-        await updateDealStage(selectedDeal.id, {
+        const cambioVendedor = await updateDealStage(selectedDeal.id, {
           etapa: etapaFrontendToBackendMap[nuevaEtapa],
         });
         setSelectedDeal((current) =>
@@ -5091,6 +5145,7 @@
           )
         );
         message.success("Etapa actualizada");
+        aplicarCambioVendedorAutomatico(selectedDeal.id, cambioVendedor);
         void loadDeals();
       } catch (error) {
         if (isBeckBloqueoException(error)) {
@@ -5701,7 +5756,18 @@
       try {
         setDealSaving(true);
 
-        const payload = buildFunnelUpsertPayloadForDraft(draft);
+        // Señal explícita para el backend: solo se envía en el guardado
+        // enfocado de "Rellenar <etapa>" (isFocusedStageEdit), nunca desde el
+        // botón general "Editar" (que setea editVisibleSections).
+        const isFocusedStageEdit =
+          funnelModalMode === "edit" &&
+          !Array.isArray(editVisibleSections) &&
+          Boolean(initialEditSection);
+
+        const payload: FunnelBeckUpsertPayload = {
+          ...buildFunnelUpsertPayloadForDraft(draft),
+          ...(isFocusedStageEdit && { origenEdicion: "ETAPA_ENFOCADA" }),
+        };
         console.log("[BECK CREATE] submit payload", payload);
         console.log("[BECK CREATE] calling backend");
 
@@ -5721,6 +5787,8 @@
 
         const savedAdvertencias =
           Array.isArray(savedRawRecord.advertencias) ? (savedRawRecord.advertencias as string[]) : [];
+        const savedCambioVendedor =
+          (savedRawRecord.cambioVendedor as CambioVendedorAutomatico | undefined) ?? null;
 
         const mappedSavedOpportunity = mapOpportunityToDeal(
           savedOpportunity as Record<string, unknown>
@@ -5732,6 +5800,10 @@
           // oportunidad — se refresca para reflejar el cambio de vendedor
           // recién guardado sin que el usuario tenga que cerrar y reabrir.
           void loadHistorialEtapas(mappedSavedOpportunity.id);
+        }
+
+        if (savedCambioVendedor) {
+          aplicarCambioVendedorAutomatico(mappedSavedOpportunity.id, savedCambioVendedor);
         }
 
         await loadDeals();

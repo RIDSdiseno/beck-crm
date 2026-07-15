@@ -182,12 +182,20 @@ export interface ApiError {
   details?: unknown;
 }
 
+export type CambioVendedorAutomatico = {
+  anterior: string;
+  nuevo: string;
+  motivo: string;
+  automatico: true;
+} | null;
+
 interface ApiResponseEnvelope<T> {
   success: boolean;
   data: T;
   message?: string;
   error?: string;
   advertencias?: string[];
+  cambioVendedor?: CambioVendedorAutomatico;
 }
 
 interface ApiResponseWithTotal<T> {
@@ -415,6 +423,10 @@ export interface FunnelBeckUpsertPayload {
   garantiasRequeridas?: string | null;
   estadoDocumentacionVenta?: string | null;
   esReactivacion?: boolean;
+  // Señal explícita para el backend: solo se envía desde los botones
+  // "Rellenar <etapa>" (guardado enfocado en la sección de la etapa actual).
+  // El botón general "Editar" no debe enviarla.
+  origenEdicion?: "ETAPA_ENFOCADA";
 }
 
 export type BeckCamposCriticosError = {
@@ -601,6 +613,8 @@ export type HistorialFunnelBeckEvento = {
   etapaNueva?: string | null;
   vendedorAnterior?: string | null;
   vendedorNuevo?: string | null;
+  motivo?: string | null;
+  automatico?: boolean;
 };
 
 export type HistorialEtapaFiremat = {
@@ -655,7 +669,12 @@ export const funnelBeckAPI = {
       `/funnel-beck/${id}`,
       payload
     );
-    return unwrapApiResponse(response.data);
+    const data = unwrapApiResponse(response.data);
+    // cambioVendedor viaja como hermano de "data" en el sobre de respuesta
+    // (igual que advertencias); unwrapApiResponse solo devuelve "data", así
+    // que se adjunta acá para que el llamador pueda leerlo.
+    (data as Record<string, unknown>).cambioVendedor = response.data.cambioVendedor ?? null;
+    return data;
   },
 
   eliminar: async (id: string): Promise<void> => {
