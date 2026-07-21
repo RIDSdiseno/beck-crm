@@ -44,6 +44,7 @@ export type RegistroSello = {
   fechaRechazo?: string | null;
   rechazadoPor?: { id?: string; nombre: string } | null;
   esCorreccion?: boolean;
+  devueltoATecnico?: boolean;
   registroOrigenId?: string | null;
   registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
   rendimientoSellosEsperadoDiario?: number | null;

@@ -1,4 +1,3 @@
-// src/pages/RegistroSellos.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
@@ -47,9 +46,19 @@ import {
   getTipoRegistroColor,
   getTipoRegistroBadgeClass,
 } from "../../constants/roles";
+import { ordenarColumnasRegistro } from "../../constants/registroColumnOrder";
 
 type RegistroSellosProps = {
   themeMode: ThemeMode;
+};
+
+type RegistroExcelCellValue =
+  | string
+  | number
+  | null
+  | { text: string; hyperlink: string; tooltip?: string };
+type RegistroTableColumn = ColumnsType<RegistroSello>[number] & {
+  excel?: false | ((record: RegistroSello) => RegistroExcelCellValue);
 };
 
 type RegistroApiRecord = {
@@ -112,6 +121,8 @@ type RegistroApiRecord = {
   codigoBeck?: string | null;
   codigo_beck?: string | null;
   obra?: { nombre?: string | null; rendimientoSellosEsperadoDiario?: number | null; rendimientoReparacionEsperadoDiario?: number | null } | null;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
   obra_nombre?: string | null;
   usuario?: { nombre?: string | null } | null;
   usuario_nombre?: string | null;
@@ -119,6 +130,7 @@ type RegistroApiRecord = {
   fechaRechazo?: string | null;
   rechazadoPor?: { id?: string; nombre?: string | null } | null;
   esCorreccion?: boolean | null;
+  devuelto_a_tecnico?: boolean | null;
   registroOrigenId?: string | null;
   registroOrigen?: { id?: string; motivoRechazo?: string | null } | null;
   cantidadEjecutada?: number | null;
@@ -209,6 +221,18 @@ const normalizeEstado = (estado?: string | null): RegistroEstado => {
   }
   return "pendiente";
 };
+
+const estaEnCorreccionPendiente = (
+  registro: Pick<RegistroSello, "devueltoATecnico">
+): boolean => registro.devueltoATecnico === true;
+
+const estaValidadoPorIngenieria = (
+  registro: Pick<RegistroSello, "estado" | "devueltoATecnico">
+): boolean => normalizeEstado(registro.estado) === "validado" && !estaEnCorreccionPendiente(registro);
+
+const estaValidadoPorCliente = (
+  registro: Pick<RegistroSello, "validadoCliente">
+): boolean => registro.validadoCliente === true;
 
 const getEstadoLabel = (estado?: string): string => {
   const normalized = normalizeEstado(estado);
@@ -317,8 +341,6 @@ const normalizeSearchText = (value?: string | null): string =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-// Lee el primer valor no-nulo/vac\u00edo entre los aliases dados (soporta camelCase y snake_case)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getRegistroValue = (registro: Record<string, any>, aliases: string[]): unknown => {
   for (const alias of aliases) {
     const val = registro[alias];
@@ -327,7 +349,6 @@ const getRegistroValue = (registro: Record<string, any>, aliases: string[]): unk
   return undefined;
 };
 
-// Aliases centralizados por campo (camelCase y snake_case)
 const REGISTRO_COLUMN_ALIASES: Record<string, string[]> = {
   tipo_registro:                  ["tipoRegistro", "tipo_registro"],
   codigo_beck:                    ["codigoBeck", "codigo_beck"],
@@ -367,7 +388,6 @@ const getEjeNumerico = (r: { ejeNumerico?: number | string | null; eje_numerico?
     : "-";
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotoUrl = (foto: any): string | null => {
   if (!foto) return null;
 
@@ -393,7 +413,6 @@ const getFotoUrl = (foto: any): string | null => {
   return null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotosRegistro = (record: any): string[] => {
   const raw = [
     ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),
@@ -420,6 +439,56 @@ const displayValue = (value: unknown): string => {
   if (str === "" || str.toLowerCase() === "no aplica") return "-";
   return str;
 };
+
+const toExcelCellValue = (value: unknown): RegistroExcelCellValue => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const str = String(value).trim();
+  return str === "" || str.toLowerCase() === "no aplica" || str === "-" ? null : str;
+};
+
+const getColumnTitleText = (column: RegistroTableColumn): string => {
+  if (typeof column.title === "string" || typeof column.title === "number") {
+    return String(column.title);
+  }
+  return column.key ? String(column.key) : "";
+};
+
+const getColumnDataValue = (record: RegistroSello, dataIndex: unknown): unknown => {
+  if (typeof dataIndex === "string" || typeof dataIndex === "number") {
+    return (record as unknown as Record<string, unknown>)[String(dataIndex)];
+  }
+  if (Array.isArray(dataIndex)) {
+    return dataIndex.reduce<unknown>((current, key) => {
+      if (current && typeof current === "object") {
+        return (current as Record<string, unknown>)[String(key)];
+      }
+      return undefined;
+    }, record as unknown);
+  }
+  return undefined;
+};
+
+const getExcelColumnLetter = (columnNumber: number): string => {
+  let n = columnNumber;
+  let result = "";
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result;
+};
+
+const getFotosRegistroNormalizado = (record: Pick<RegistroSello, "fotosUrls" | "fotoUrl">): string[] => {
+  if (Array.isArray(record.fotosUrls)) {
+    return record.fotosUrls;
+  }
+  return record.fotoUrl ? [record.fotoUrl] : [];
+};
+
+const getFotoRegistroText = (fotos: string[]): string =>
+  fotos.length === 0 ? "Sin foto" : fotos.length > 1 ? `Ver fotos (${fotos.length})` : "Ver";
 
 const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
   if (value === 1.2 || value === 1.4 || value === 1.8) return value;
@@ -452,7 +521,6 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     r.cantidadSellosAislacion ?? r.cantidad_sellos_aislacion ?? null;
   const reparacionTabique = r.reparacionTabique ?? r.reparacion_tabique ?? null;
   const cantidadFinal = r.cantidadFinal ?? r.cantidad_final ?? null;
-  // Accept all possible field names for metros lineales
   const metrosLinealesRaw =
     r.metrosLineales ?? r.metros_lineales ?? r.longitud ?? r.longitud_m ?? 0;
   const metrosLineales = Number(metrosLinealesRaw);
@@ -513,10 +581,13 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     fechaRechazo: r.fechaRechazo ?? null,
     rechazadoPor: r.rechazadoPor ? { nombre: r.rechazadoPor.nombre ?? "" } : null,
     esCorreccion: r.esCorreccion ?? false,
+    devueltoATecnico: r.devuelto_a_tecnico ?? false,
     registroOrigenId: r.registroOrigenId ?? null,
     registroOrigen: r.registroOrigen ?? null,
-    rendimientoSellosEsperadoDiario: r.obra?.rendimientoSellosEsperadoDiario ?? null,
-    rendimientoReparacionEsperadoDiario: r.obra?.rendimientoReparacionEsperadoDiario ?? null,
+    rendimientoSellosEsperadoDiario:
+      r.rendimientoSellosEsperadoDiario ?? r.obra?.rendimientoSellosEsperadoDiario ?? null,
+    rendimientoReparacionEsperadoDiario:
+      r.rendimientoReparacionEsperadoDiario ?? r.obra?.rendimientoReparacionEsperadoDiario ?? null,
     cantidadEjecutada: r.cantidadEjecutada ?? null,
     rendimientoIndividual: r.rendimientoIndividual ?? null,
     rendimientoIndividualPct: r.rendimientoIndividualPct ?? null,
@@ -525,32 +596,6 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   };
 };
 
-const fetchImageAsBase64 = async (
-  url: string
-): Promise<{ base64: string; ext: "jpeg" | "png" | "gif" } | null> => {
-  try {
-    const response = await fetch(url, { mode: "cors" });
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    const ext: "jpeg" | "png" | "gif" = blob.type.includes("png")
-      ? "png"
-      : blob.type.includes("gif")
-      ? "gif"
-      : "jpeg";
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(",")[1];
-        resolve(base64 ? { base64, ext } : null);
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-};
 
 const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   void themeMode;
@@ -566,7 +611,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [tipoSeleccionado, setTipoSeleccionado] = useState<string>("todos");
 
   const [openDrawer, setOpenDrawer] = useState(false);
-  const [exportando, setExportando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
   const [importResult, setImportResult] = useState<ImportarResponse | null>(null);
@@ -582,7 +626,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
 
-  // Rendimiento acumulado
   const [showRendimientoAcumuladoModal, setShowRendimientoAcumuladoModal] = useState(false);
   const [rendimientoAcumuladoLoading, setRendimientoAcumuladoLoading] = useState(false);
   const [rendimientoAcumuladoData, setRendimientoAcumuladoData] = useState<RendimientoAcumuladoItem[]>([]);
@@ -634,22 +677,28 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     void cargarRegistros();
   }, [cargarRegistros]);
 
-  // filtros
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
   const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState<
     "pendientes_revision" | "validados" | "validados_cliente" | "rechazados" | "todos"
   >("todos");
 
-  // Selección múltiple — mismo patrón que Vista Cliente (RegistrosMiEmpresa.tsx),
-  // solo activa en el filtro "Validados por cliente".
+  const [descargaObra, setDescargaObra] = useState<string>("");
+  const [descargaValidacionIngenieria, setDescargaValidacionIngenieria] = useState<
+    "todos" | "validados" | "no_validados"
+  >("todos");
+  const [descargaValidacionCliente, setDescargaValidacionCliente] = useState<
+    "todos" | "validados" | "no_validados"
+  >("todos");
+  const [descargandoTodo, setDescargandoTodo] = useState(false);
+  const [descargandoSegunFiltros, setDescargandoSegunFiltros] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [abriendoPdfConsolidado, setAbriendoPdfConsolidado] = useState(false);
 
-  // vista compacta / completa
   const [vistaCompleta, setVistaCompleta] = useState(false);
 
-  // detalle modal
   const [registroDetalle, setRegistroDetalle] = useState<RegistroSello | null>(
     null
   );
@@ -752,9 +801,35 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     [data, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroEstadoRegistro]
   );
 
-  // La selección solo tiene sentido dentro del filtro "Validados por cliente";
-  // al salir de ese filtro (o al cambiar cualquier otro filtro que reduzca el
-  // dataset) se limpia para no arrastrar IDs que ya no están visibles.
+  const registrosExportables = useMemo(
+    () => data.filter((r) => estaValidadoPorIngenieria(r)),
+    [data]
+  );
+
+  const datosDescargaTodo = useMemo(
+    () => registrosExportables.filter((r) => estaValidadoPorCliente(r)),
+    [registrosExportables]
+  );
+
+  const datosDescargaSegunFiltros = useMemo(
+    () =>
+      registrosExportables.filter((r) => {
+        if (
+          descargaObra &&
+          normalizeSearchText(r.obraNombre) !== normalizeSearchText(descargaObra)
+        )
+          return false;
+        const validadoIngenieria = estaValidadoPorIngenieria(r);
+        const validadoCliente = estaValidadoPorCliente(r);
+        if (descargaValidacionIngenieria === "validados" && !validadoIngenieria) return false;
+        if (descargaValidacionIngenieria === "no_validados" && validadoIngenieria) return false;
+        if (descargaValidacionCliente === "validados" && !validadoCliente) return false;
+        if (descargaValidacionCliente === "no_validados" && validadoCliente) return false;
+        return true;
+      }),
+    [registrosExportables, descargaObra, descargaValidacionIngenieria, descargaValidacionCliente]
+  );
+
   useEffect(() => {
     setSelectedRowKeys([]);
   }, [filtroEstadoRegistro, obraSeleccionada, tipoSeleccionado, rangoFechas]);
@@ -781,7 +856,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     }
   }, [registrosSeleccionados]);
 
-  // KPIs — adaptados por tab
   const resumen = useMemo(() => {
     const totalRegistros = filteredData.length;
     const totalSellos = filteredData.reduce(
@@ -809,7 +883,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     };
   }, [filteredData]);
 
-  // Métricas extra (chips)
   const extraMetrics = useMemo(() => {
     const pisos = new Set(filteredData.map((r) => r.piso)).size;
     const selladores = new Set(filteredData.map((r) => r.nombreSellador)).size;
@@ -906,21 +979,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
     setSavingDetalle(true);
     try {
-      // 1) Guardar. No se usa el body de esta respuesta como fuente de verdad:
-      // el backend recalcula factorPorHolguras/cantidadSellosConFactores/etc.,
-      // y queremos ese resultado, no una reconstrucción local a partir de
-      // `values` (el payload enviado).
       await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
 
-      // 2) Releer el registro ya actualizado con el endpoint existente.
       let registroFresco: RegistroSello;
       try {
         const detalle = await api.get<RegistroApiRecord>(`/registros/${id}`);
         registroFresco = normalizeRegistro(detalle.data);
       } catch (fetchError) {
-        // El guardado sí funcionó; solo falló la relectura. No dejamos el
-        // modal abierto con datos potencialmente obsoletos: lo cerramos y
-        // refrescamos la tabla completa como respaldo.
         console.error(fetchError);
         setRegistroDetalle(null);
         message.warning(
@@ -930,15 +995,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         return;
       }
 
-      // 3) Reflejar el dato fresco en la fila de la tabla de inmediato.
       setData((prev) =>
         prev.map((registro) =>
           String(registro.id) === id ? registroFresco : registro
         )
       );
 
-      // 4) Cerrar y reabrir el modal con el registro recién releído — nunca
-      // se reutiliza el objeto anterior en memoria.
       setRegistroDetalle(null);
       setDetalleMode("view");
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -947,8 +1009,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       await cargarRegistros();
       message.success("Registro actualizado correctamente");
     } catch (error) {
-      // El PUT falló: el modal permanece abierto (no se toca registroDetalle)
-      // y los datos ingresados por el usuario en el form se conservan.
       console.error(error);
       message.error("No se pudo guardar el registro");
     } finally {
@@ -956,8 +1016,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     }
   };
 
-  // columnas tabla — orden exacto de la planilla de terreno Beck
-  const todasLasColumnas: ColumnsType<RegistroSello> = [
+  const todasLasColumnas: RegistroTableColumn[] = ordenarColumnasRegistro([
     {
       title: "Obra",
       dataIndex: "obraNombre",
@@ -969,6 +1028,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "tipoRegistro",
       key: "tipoRegistro",
       width: 150,
+      excel: (record) => getTipoRegistroLabel(record.tipoRegistro),
       render: (value: string | undefined) => (
         <Tag
           className={`rounded-full px-3 py-0.5 text-[11px] font-semibold ${getTipoRegistroBadgeClass(
@@ -981,12 +1041,12 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </Tag>
       ),
     },
-    // ── Planilla de terreno (orden exacto) ──────────────────────────────────
     {
       title: "Código BECK",
       dataIndex: "codigoBeck",
       key: "codigoBeck",
       width: 140,
+      excel: (record) => toExcelCellValue(displayValue(record.codigoBeck)),
       render: (text?: string) => displayValue(text),
     },
     {
@@ -994,6 +1054,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "itemizadoBeck",
       key: "itemizadoBeck",
       width: 220,
+      excel: (record) => toExcelCellValue(displayValue(record.itemizadoBeck)),
       render: (text: string) => (
         <div className="max-w-[220px] truncate">
           <span className="font-semibold text-orange-700">{displayValue(text)}</span>
@@ -1005,6 +1066,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "itemizadoMandanteNombre",
       key: "itemizadoMandanteNombre",
       width: 220,
+      excel: (record) => toExcelCellValue(displayValue(record.itemizadoMandanteNombre)),
       render: (text?: string) => displayValue(text),
     },
     {
@@ -1012,6 +1074,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "fechaEjecucion",
       key: "fechaEjecucion",
       width: 155,
+      excel: (record) => toExcelCellValue(formatFecha(record.fechaEjecucion)),
       render: (value: string) => (value ? dayjs(value).format("DD-MM-YYYY") : "-"),
     },
     {
@@ -1019,6 +1082,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "dia",
       key: "dia",
       width: 90,
+      excel: (record) => toExcelCellValue(displayValue(record.dia)),
       render: (value?: string) => displayValue(value),
     },
     {
@@ -1026,6 +1090,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "piso",
       key: "piso",
       width: 90,
+      excel: (record) => toExcelCellValue(displayValue(record.piso)),
       render: (value?: string) => displayValue(value),
     },
     {
@@ -1033,12 +1098,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "ejeAlfabetico",
       key: "eje_alfabetico",
       width: 110,
+      excel: (record) => toExcelCellValue(displayValue(record.ejeAlfabetico)),
       render: (value?: string) => displayValue(value),
     },
     {
       title: "Eje Numérico",
       key: "eje_numerico",
       width: 110,
+      excel: (record) => toExcelCellValue(getEjeNumerico(record)),
       render: (_: unknown, r: RegistroSello) => getEjeNumerico(r),
     },
     {
@@ -1046,6 +1113,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "nombreSellador",
       key: "nombreSellador",
       width: 150,
+      excel: (record) => toExcelCellValue(displayValue(record.nombreSellador)),
       render: (value?: string) => displayValue(value),
     },
     {
@@ -1053,8 +1121,17 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "fotoUrl",
       key: "foto",
       width: 160,
+      excel: (record) => {
+        const fotos = getFotosRegistroNormalizado(record);
+        if (fotos.length === 0) return "Sin foto";
+        return {
+          text: getFotoRegistroText(fotos),
+          hyperlink: fotos[0],
+          tooltip: fotos.length > 1 ? "Ver primera foto. Todas las fotos están en la hoja Fotos." : "Abrir foto",
+        };
+      },
       render: (_value: RegistroSello["fotoUrl"], record: RegistroSello) => {
-        const fotos = getFotosRegistro(record);
+        const fotos = getFotosRegistroNormalizado(record);
         const count = fotos.length;
         if (count === 0) {
           return <span className="text-slate-400">-</span>;
@@ -1084,7 +1161,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               }}
               className="p-0 text-[11px]"
             >
-              {count > 1 ? `Ver fotos (${count})` : "Ver"}
+              {getFotoRegistroText(fotos)}
             </Button>
           </div>
         );
@@ -1095,18 +1172,29 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "recinto",
       key: "recinto",
       width: 160,
+      excel: (record) => toExcelCellValue(displayValue(record.recinto)),
       render: (value?: string) => displayValue(value),
     },
     {
       title: "Módulo o edificio",
       key: "modulo_edificio",
       width: 160,
+      excel: (record) => toExcelCellValue(displayValue(record.recinto)),
       render: (_: unknown, r: RegistroSello) => displayValue(r.recinto),
     },
     {
       title: "N° DEL SELLO",
       key: "numero_sello",
       width: 120,
+      excel: (record) =>
+        toExcelCellValue(
+          displayValue(
+            getRegistroValue(record as unknown as Record<string, unknown>, [
+              "numeroSello",
+              "numero_sello",
+            ])
+          )
+        ),
       render: (_: unknown, record: RegistroSello) =>
         displayValue(
           getRegistroValue(record as unknown as Record<string, unknown>, [
@@ -1119,6 +1207,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Cantidad de Sellos",
       key: "cantidad_sellos",
       width: 140,
+      excel: (record) =>
+        record.cantidadSellos != null && record.cantidadSellos !== 0
+          ? Number(record.cantidadSellos)
+          : null,
       render: (_: unknown, record: RegistroSello) =>
         record.cantidadSellos != null && record.cantidadSellos !== 0 ? (
           <span className="font-medium text-orange-700">{record.cantidadSellos}</span>
@@ -1129,11 +1221,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "holguraCm",
       key: "holgura",
       width: 100,
+      excel: (record) => toExcelCellValue(record.holguraCm),
     },
     {
       title: "Factor por Holguras",
       key: "factor_por_holguras",
       width: 130,
+      excel: (record) => {
+        const value = Number(record.factorPorHolguras ?? record.factorHolgura ?? 1);
+        return `F = ${formatDecimal(value)}`;
+      },
       render: (_: unknown, record: RegistroSello) => {
         const value = Number(record.factorPorHolguras ?? record.factorHolgura ?? 1);
         return (
@@ -1157,6 +1254,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Accesibilidad",
       key: "accesibilidad",
       width: 150,
+      excel: (record) => {
+        const value = Number(record.accesibilidad ?? record.cieloModular ?? 1);
+        return value === 1
+          ? "F=1 Acceso normal"
+          : value === 2
+          ? "F=2 Americano / estructurado"
+          : "F=3 Cielo duro / gateras";
+      },
       render: (_: unknown, record: RegistroSello) => {
         const value = Number(record.accesibilidad ?? record.cieloModular ?? 1);
         const label =
@@ -1172,6 +1277,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Cantidad de Sellos con Factores",
       key: "cantidad_sellos_con_factores",
       width: 200,
+      excel: (record) =>
+        toExcelCellValue(formatDecimal(record.cantidadSellosConFactores ?? record.cantidadSellosConFactor, 2)),
       render: (_: unknown, record: RegistroSello) =>
         formatDecimal(record.cantidadSellosConFactores ?? record.cantidadSellosConFactor, 2),
     },
@@ -1179,12 +1286,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Aislación",
       key: "aislacion",
       width: 110,
+      excel: (record) => toExcelCellValue(formatDecimal(record.aislacion, 2)),
       render: (_: unknown, record: RegistroSello) => formatDecimal(record.aislacion, 2),
     },
     {
       title: "Cantidad de Sellos Aislación",
       key: "cantidad_sellos_aislacion",
       width: 195,
+      excel: (record) => toExcelCellValue(formatDecimal(record.cantidadSellosAislacion, 2)),
       render: (_: unknown, record: RegistroSello) =>
         formatDecimal(record.cantidadSellosAislacion, 2),
     },
@@ -1192,12 +1301,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Reparación de tabique",
       key: "reparacion_tabique",
       width: 160,
+      excel: (record) => toExcelCellValue(formatDecimal(record.reparacionTabique, 2)),
       render: (_: unknown, record: RegistroSello) => formatDecimal(record.reparacionTabique, 2),
     },
     {
       title: "Cantidad final",
       key: "cantidad_final",
       width: 130,
+      excel: (record) => toExcelCellValue(formatDecimal(record.cantidadFinal, 2)),
       render: (_: unknown, record: RegistroSello) => formatDecimal(record.cantidadFinal, 2),
     },
     {
@@ -1206,12 +1317,22 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "observaciones",
       width: 220,
       ellipsis: true,
+      excel: (record) => toExcelCellValue(displayValue(record.observaciones)),
       render: (value?: string) => displayValue(value),
     },
     {
       title: "FOLIO",
       key: "folio",
       width: 110,
+      excel: (record) =>
+        toExcelCellValue(
+          displayValue(
+            getRegistroValue(record as unknown as Record<string, unknown>, [
+              "numeroSello",
+              "folio",
+            ])
+          )
+        ),
       render: (_: unknown, record: RegistroSello) =>
         displayValue(
           getRegistroValue(record as unknown as Record<string, unknown>, [
@@ -1220,11 +1341,19 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           ]) as string
         ),
     },
-    // ── Columnas de gestión (fuera del orden de planilla) ───────────────────
     {
       title: "Cantidad / Metros",
       key: "cantidadMetros",
       width: 140,
+      excel: (record) => {
+        if (getTipoRegistro(record) === "junta_lineal_espuma") {
+          const metros = getMetrosLineales(record);
+          return metros !== null ? `${metros.toFixed(2)} m` : null;
+        }
+        return record.cantidadSellos != null
+          ? `${record.cantidadSellos}${getTipoRegistro(record) === "sello_cortafuego" ? " sellos" : ""}`
+          : null;
+      },
       render: (_value: unknown, record: RegistroSello) => {
         if (getTipoRegistro(record) === "junta_lineal_espuma") {
           const metros = getMetrosLineales(record);
@@ -1246,6 +1375,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Metros lineales",
       key: "metros_lineales",
       width: 120,
+      excel: (record) => {
+        const metros = getMetrosLineales(record);
+        return metros !== null ? `${metros.toFixed(2)} m` : null;
+      },
       render: (_: unknown, record: RegistroSello) => {
         const metros = getMetrosLineales(record);
         return metros !== null ? (
@@ -1257,6 +1390,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Rend. esperado diario",
       key: "rendimientoSellos",
       width: 150,
+      excel: (record) =>
+        record.rendimientoSellosEsperadoDiario != null
+          ? `${record.rendimientoSellosEsperadoDiario} sellos/día`
+          : "Sin definir",
       render: (_: unknown, record: RegistroSello) => {
         const v = record.rendimientoSellosEsperadoDiario;
         return v != null ? (
@@ -1270,6 +1407,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Rend. reparación diario",
       key: "rendimientoReparacion",
       width: 160,
+      excel: (record) =>
+        record.rendimientoReparacionEsperadoDiario != null
+          ? `${record.rendimientoReparacionEsperadoDiario} reparaciones/día`
+          : "Sin definir",
       render: (_: unknown, record: RegistroSello) => {
         const v = record.rendimientoReparacionEsperadoDiario;
         return v != null ? (
@@ -1283,6 +1424,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Cantidad ejecutada",
       key: "cantidadEjecutada",
       width: 140,
+      excel: (record) =>
+        record.cantidadEjecutada != null ? Number(record.cantidadEjecutada).toFixed(2) : "Sin calcular",
       render: (_: unknown, record: RegistroSello) => {
         const v = record.cantidadEjecutada;
         return v != null ? (
@@ -1296,6 +1439,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Rendimiento individual",
       key: "rendimientoIndividual",
       width: 160,
+      excel: (record) =>
+        record.rendimientoIndividualPct != null
+          ? `${Number(record.rendimientoIndividualPct).toFixed(2)}%`
+          : "Sin calcular",
       render: (_: unknown, record: RegistroSello) => {
         const v = record.rendimientoIndividualPct;
         return v != null ? (
@@ -1310,6 +1457,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       dataIndex: "estado",
       key: "estado",
       width: 150,
+      excel: false,
       render: (value: string, record: RegistroSello) => {
         const tag = (
           <Tag
@@ -1346,6 +1494,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Acciones",
       key: "acciones",
       width: 260,
+      excel: false,
       render: (_value: unknown, record: RegistroSello) => {
         const esCorreccionEditable =
           record.esCorreccion === true && record.estado !== "en_revision";
@@ -1405,9 +1554,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         );
       },
     },
-  ];
+  ]);
 
-  // ── Columnas exclusivas para Junta Lineal Espuma ─────────────────────────
   const columnasJuntaLineal: ColumnsType<RegistroSello> = [
     {
       title: "Descripción",
@@ -1456,7 +1604,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "fotoJunta",
       width: 160,
       render: (_: unknown, r: RegistroSello) => {
-        const fotos = getFotosRegistro(r);
+        const fotos = getFotosRegistroNormalizado(r);
         const count = fotos.length;
         if (count === 0) {
           return <span className="text-[11px] text-slate-500">Sin foto</span>;
@@ -1486,7 +1634,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               }}
               className="p-0 text-[11px]"
             >
-              {count > 1 ? `Ver fotos (${count})` : "Ver foto"}
+              {getFotoRegistroText(fotos)}
             </Button>
           </div>
         );
@@ -1524,10 +1672,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   void columnasJuntaLineal;
 
-  // Todas las columnas de la planilla de terreno son obligatorias en ambas vistas
   const clavesCompactas = new Set([
     "obraNombre",
-    // Planilla de terreno (orden exacto, siempre visibles)
     "tipoRegistro",
     "codigoBeck",
     "itemizadoBeck",
@@ -1553,7 +1699,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "cantidad_final",
     "observaciones",
     "folio",
-    // Columnas de gestión
     "cantidadMetros",
     "rendimientoSellos",
     "rendimientoReparacion",
@@ -1566,7 +1711,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const columnasTabla = useMemo(
     () => {
-      // Claves ocultas según configuración del rol
       const hiddenKeys = new Set(
         camposConfigurados
           .map((field) => ({
@@ -1577,7 +1721,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           .map((field) => field.key)
       );
 
-      // Devuelve true si algún registro filtrado tiene valor no-vacío en alguno de los aliases
       const hasValue = (aliases: string[]): boolean =>
         filteredData.some((r) => {
           const rec = r as unknown as Record<string, unknown>;
@@ -1600,41 +1743,32 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       return baseColumns.filter((column) => {
         const key = column.key ? String(column.key) : "";
 
-        // recinto y modulo_edificio comparten la misma clave de configuración
         if (key === "recinto" || key === "modulo_edificio")
           return !hiddenKeys.has("recinto") && !hiddenKeys.has("modulo");
 
-        // En vista completa se oculta la columna combinada (se usan las independientes)
         if (key === "cantidadMetros" && vistaCompleta) return false;
 
-        // Columnas planilla obligatorias — mostrar siempre, solo respetan hiddenKeys de rol
         if (key === "folio" || key === "numero_sello")
           return !hiddenKeys.has("folio");
         if (key === "cantidad_sellos")
           return !hiddenKeys.has("cantidad_sellos");
 
-        // metros_lineales solo si hay juntas lineales o datos reales
         if (key === "metros_lineales") {
           if (hiddenKeys.has("metros_lineales")) return false;
           return juntaLinealActive || hasValue(["metrosLineales", "metros_lineales"]);
         }
 
-        // Rendimientos obra — solo Administrador e Ingeniería
         if (key === "rendimientoSellos" || key === "rendimientoReparacion")
           return user?.rol === "Administrador" || user?.rol === "Ingenieria";
 
-        // Rendimiento individual ejecutado — solo Administrador e Ingeniería
         if (key === "cantidadEjecutada" || key === "rendimientoIndividual")
           return user?.rol === "Administrador" || user?.rol === "Ingenieria";
 
-        // itemizadoMandante: clave de columna ≠ clave de configuración (solo aplica para jefeobra)
         if (key === "itemizadoMandanteNombre") return !hiddenKeys.has("itemizado_mandante");
 
-        // Filtro general por configuración del rol
         return !hiddenKeys.has(key);
       });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [vistaCompleta, camposConfigurados, filteredData, tipoSeleccionado, user?.rol]
   );
 
@@ -1833,7 +1967,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         ws.views = [{ state: "frozen", ySplit: 2 }];
       };
 
-      // ── Hoja 1: SELLOS CORTAFUEGOS ─────────────────────────────
       const sellosHeaders = [
         "Codigo BECK",
         "Itemizado BECK",
@@ -1894,7 +2027,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         ["Codigo BECK", "Eje Alfabético", "Eje Numérico", "N° DEL SELLO", "FOLIO"]
       );
 
-      // ── Hoja 2: JUNTA LINEAL ESPUMA ────────────────────────────
       const juntaHeaders = [
         "Descripción",
         "Fecha ejecucion sello",
@@ -1931,7 +2063,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         ["Eje Alfabético", "Eje Numérico", "FOLIO"]
       );
 
-      // ── Hoja 3: INSTRUCCIONES ──────────────────────────────────
       const instrWs = workbook.addWorksheet("INSTRUCCIONES");
       instrWs.getColumn(1).width = 100;
 
@@ -1966,7 +2097,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         '10. Los valores "No aplica", "N/A" o vacío se interpretan como campo vacío.',
         '11. Eje Alfabético: ingresar el rango entre ejes, ejemplos válidos: A-B, B-C, C-D.',
         '12. Eje Numérico: ingresar el rango entre ejes, ejemplos válidos: 1-2, 2-3, 3-4.',
-        '13. Cuando la plantilla esté completa, súbela usando el botón "Importar Excel" en la vista de Registro.',
+        '13. Cuando la plantilla está completa, súbela usando el botón "Importar Excel" en la vista de Registro.',
       ];
 
       instructions.forEach((text, i) => {
@@ -2003,11 +2134,43 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     }
   };
 
-  const handleExportExcel = async () => {
-    const baseExportData = filteredData;
-    if (!baseExportData.length) return;
+  const handleExportExcel = async (
+    dataset: RegistroSello[],
+    setLoading: (loading: boolean) => void
+  ): Promise<boolean> => {
+    const baseExportData = dataset;
+    if (!baseExportData.length) {
+      message.warning("No hay registros que cumplan los criterios seleccionados");
+      return false;
+    }
 
-    setExportando(true);
+    const exportColumns = columnasTabla
+      .filter((column): column is RegistroTableColumn => {
+        const title = getColumnTitleText(column);
+        return column.excel !== false && Boolean(column.key) && Boolean(title);
+      })
+      .map((column) => ({
+        header: getColumnTitleText(column),
+        key: String(column.key),
+        width: Math.max(12, Math.min(Math.round(Number(column.width ?? 140) / 8), 32)),
+        getValue:
+          typeof column.excel === "function"
+            ? column.excel
+            : (record: RegistroSello) =>
+                toExcelCellValue(
+                  getColumnDataValue(
+                    record,
+                    (column as { dataIndex?: unknown }).dataIndex
+                  )
+                ),
+      }));
+
+    if (!exportColumns.length) {
+      message.warning("No hay columnas visibles para exportar");
+      return false;
+    }
+
+    setLoading(true);
     const hide = message.loading("Generando Excel profesional…", 0);
 
     try {
@@ -2035,491 +2198,149 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             const img = new Image();
             img.onload = () => {
               if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                logoH = Math.min(Math.round(LOGO_W * img.naturalHeight / img.naturalWidth), 90);
+                logoH = Math.min(Math.round((LOGO_W * img.naturalHeight) / img.naturalWidth), 90);
               }
               URL.revokeObjectURL(objUrl);
               resolve();
             };
-            img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(); };
+            img.onerror = () => {
+              URL.revokeObjectURL(objUrl);
+              resolve();
+            };
             img.src = objUrl;
           });
         }
-      } catch { /* logo no disponible */ }
+      } catch {
+        // logo no disponible
+      }
 
-      // ── Separar por tipo ──────────────────────────────────────────────────
-      const sellos = baseExportData.filter((r) => getTipoRegistro(r) === "sello_cortafuego");
-      const juntas = baseExportData.filter((r) => getTipoRegistro(r) === "junta_lineal_espuma");
-      const exportHiddenKeys = new Set(
-        camposConfigurados
-          .map((field) => ({ key: getCampoKey(field), visible: Boolean(field.visible) }))
-          .filter((field) => field.key && !field.visible)
-          .map((field) => field.key)
-      );
-      const exportFieldVisible = (key: string) => !exportHiddenKeys.has(key);
+      const sheet = workbook.addWorksheet("Registro");
+      const bannerHeight = Math.max(60, logoH + 14);
+      sheet.columns = exportColumns.map((column) => ({ key: column.key, width: column.width }));
+      sheet.mergeCells(1, 1, 1, exportColumns.length);
+      sheet.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
+      sheet.getRow(1).height = bannerHeight;
 
-      // ── Thumbnails separados ──────────────────────────────────────────────
-      const sellosThumbs = await Promise.all(
-        sellos.map((r) => {
-          const url = r.fotosUrls?.[0] ?? r.fotoUrl ?? null;
-          return url ? fetchImageAsBase64(url) : Promise.resolve(null);
-        })
-      );
-      const juntasThumbs = await Promise.all(
-        juntas.map((r) => {
-          const url = r.fotosUrls?.[0] ?? r.fotoUrl ?? null;
-          return url ? fetchImageAsBase64(url) : Promise.resolve(null);
-        })
-      );
-
-      type ColDef = { header: string; key: string; width: number };
-      type ImgData = { base64: string; ext: "jpeg" | "png" | "gif" } | null;
-
-      const BANNER_H = Math.max(60, logoH + 14);
-
-      // ── Helper: banner con logo ───────────────────────────────────────────
-      const addBanner = (ws: ExcelJS.Worksheet, ncols: number) => {
-        ws.mergeCells(1, 1, 1, ncols);
-        ws.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-        ws.getRow(1).height = BANNER_H;
-        if (logoBase64) {
-          const logoId = workbook.addImage({ base64: logoBase64, extension: "png" });
-          ws.addImage(logoId, {
-            tl: { col: 0.2, row: 0.15 },
-            ext: { width: LOGO_W, height: logoH },
-            editAs: "oneCell",
-          } as unknown as ExcelJS.ImageRange);
-        }
-      };
-
-      // ── Helper: headers amarillos + freeze + autoFilter ───────────────────
-      const addHeaders = (ws: ExcelJS.Worksheet, cols: ColDef[]) => {
-        ws.columns = cols.map((c) => ({ key: c.key, width: c.width }));
-        ws.getRow(2).height = 10;
-        const hRow = ws.getRow(3);
-        hRow.height = 28;
-        cols.forEach((col, i) => {
-          const cell = hRow.getCell(i + 1);
-          cell.value = col.header;
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFACC15" } };
-          cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
-          cell.border = {
-            top:    { style: "thin",   color: { argb: "FFD97706" } },
-            left:   { style: "thin",   color: { argb: "FFD97706" } },
-            bottom: { style: "medium", color: { argb: "FFD97706" } },
-            right:  { style: "thin",   color: { argb: "FFD97706" } },
-          };
-          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-        });
-        ws.views = [{ state: "frozen", ySplit: 3 }];
-        const lastColLetter = String.fromCharCode(64 + cols.length);
-        ws.autoFilter = `A3:${lastColLetter}3`;
-      };
-
-      // ── Helper: filas de datos con thumbnails ─────────────────────────────
-      const fillDataRows = (
-        ws: ExcelJS.Worksheet,
-        cols: ColDef[],
-        data: RegistroSello[],
-        thumbs: ImgData[],
-        getValues: (r: RegistroSello) => Record<string, string | number | null>,
-        fotoKey: string,
-        numericKeys: Set<string>
-      ) => {
-        const fotoColIdx = cols.findIndex((c) => c.key === fotoKey);
-        data.forEach((r, idx) => {
-          const rowNum = 4 + idx;
-          const values = getValues(r);
-          const dataRow = ws.getRow(rowNum);
-          dataRow.height = 62;
-          cols.forEach((col, i) => {
-            const cell = dataRow.getCell(i + 1);
-            cell.value = values[col.key] ?? null;
-            cell.border = {
-              top:    { style: "thin", color: { argb: "FFE5E7EB" } },
-              left:   { style: "thin", color: { argb: "FFE5E7EB" } },
-              bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-              right:  { style: "thin", color: { argb: "FFE5E7EB" } },
-            };
-            if (numericKeys.has(col.key)) {
-              cell.alignment = { horizontal: "center", vertical: "middle" };
-              if (typeof cell.value === "number") {
-                cell.numFmt = (col.key === "longitud" || col.key === "metros") ? "#,##0.00" : "#,##0";
-              }
-            } else if (col.key === fotoKey) {
-              cell.alignment = { horizontal: "center", vertical: "bottom" };
-              cell.font = { size: 9, italic: true, color: { argb: "FF64748B" } };
-            } else {
-              cell.alignment = { vertical: "middle", wrapText: col.key === "observaciones" };
-            }
-          });
-          const img = thumbs[idx];
-          if (img && fotoColIdx >= 0) {
-            const imageId = workbook.addImage({ base64: img.base64, extension: img.ext });
-            ws.addImage(imageId, {
-              tl:     { col: fotoColIdx, row: rowNum - 1 },
-              ext:    { width: 90, height: 46 },
-              editAs: "oneCell",
-            } as unknown as ExcelJS.ImageRange);
-          }
-        });
-      };
-
-      // ══════════════════════════════════════════════════════════════════════
-      // HOJA 1 · SELLOS CORTAFUEGOS
-      // ══════════════════════════════════════════════════════════════════════
-      const wsSellos = workbook.addWorksheet("SELLOS CORTAFUEGOS");
-      const SELLOS_COLS: ColDef[] = [
-        { header: "Código",          key: "codigo",         width: 14 },
-        { header: "Tipo",            key: "tipo",           width: 14 },
-        { header: "Obra",            key: "obra",           width: 20 },
-        { header: "Fecha",           key: "fecha",          width: 13 },
-        { header: "Piso",            key: "piso",           width: 10 },
-        ...(exportFieldVisible("eje_alfabetico")
-          ? [{ header: "Eje alfabético", key: "ejeAlfa", width: 12 }]
-          : []),
-        ...(exportFieldVisible("eje_numerico")
-          ? [{ header: "Eje numérico", key: "ejeNum", width: 12 }]
-          : []),
-        { header: "Sellador",        key: "sellador",       width: 20 },
-        ...(exportFieldVisible("recinto") || exportFieldVisible("modulo")
-          ? [{ header: "Recinto", key: "recinto", width: 18 }]
-          : []),
-        { header: "Cant. sellos",    key: "sellos",         width: 14 },
-        { header: "Metros lineales", key: "metros",         width: 14 },
-        ...(exportFieldVisible("holgura")
-          ? [{ header: "Holgura (cm)", key: "holgura", width: 13 }]
-          : []),
-        ...(exportFieldVisible("accesibilidad")
-          ? [{ header: "Accesibilidad", key: "accesibilidad", width: 16 }]
-          : []),
-        ...(exportFieldVisible("factor_por_holguras")
-          ? [{ header: "Factor por holguras", key: "factorPorHolguras", width: 18 }]
-          : []),
-        ...(exportFieldVisible("cantidad_sellos_con_factores")
-          ? [{ header: "Cantidad sellos con factores", key: "cantidadSellosConFactores", width: 24 }]
-          : []),
-        ...(exportFieldVisible("aislacion")
-          ? [{ header: "Aislación", key: "aislacion", width: 14 }]
-          : []),
-        ...(exportFieldVisible("cantidad_sellos_aislacion")
-          ? [{ header: "Cantidad sellos aislación", key: "cantidadSellosAislacion", width: 22 }]
-          : []),
-        ...(exportFieldVisible("reparacion_tabique")
-          ? [{ header: "Reparación tabique", key: "reparacionTabique", width: 18 }]
-          : []),
-        ...(exportFieldVisible("cantidad_final")
-          ? [{ header: "Cantidad final", key: "cantidadFinal", width: 16 }]
-          : []),
-        { header: "Estado",          key: "estado",         width: 14 },
-        { header: "Observaciones",   key: "observaciones",  width: 30 },
-        ...(exportFieldVisible("folio")
-          ? [{ header: "FOLIO", key: "folio", width: 14 }]
-          : []),
-        { header: "Foto",            key: "foto",           width: 18 },
-      ];
-      addBanner(wsSellos, SELLOS_COLS.length);
-      addHeaders(wsSellos, SELLOS_COLS);
-      fillDataRows(
-        wsSellos,
-        SELLOS_COLS,
-        sellos,
-        sellosThumbs,
-        (r) => {
-          const totalFotos = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
-          const extra = Math.max(0, totalFotos - 1);
-          return {
-            codigo:         r.codigo ?? `REG-${String(r.id).slice(0, 6)}`,
-            tipo:           getTipoRegistroLabel(r.tipoRegistro),
-            obra:           r.obraNombre ?? "",
-            fecha:          dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
-            piso:           r.piso,
-            ejeAlfa:        r.ejeAlfabetico,
-            ejeNum:         getEjeNumerico(r),
-            sellador:       r.nombreSellador,
-            recinto:        r.recinto,
-            sellos:         r.cantidadSellos,
-            metros:         getMetrosLineales(r) ?? null,
-            holgura:        r.holguraCm,
-            accesibilidad:  r.accesibilidad ?? null,
-            factorPorHolguras: r.factorPorHolguras != null ? Number(r.factorPorHolguras) : null,
-            cantidadSellosConFactores:
-              r.cantidadSellosConFactores != null ? Number(r.cantidadSellosConFactores) : null,
-            aislacion: r.aislacion != null ? Number(r.aislacion) : null,
-            cantidadSellosAislacion:
-              r.cantidadSellosAislacion != null ? Number(r.cantidadSellosAislacion) : null,
-            reparacionTabique:
-              r.reparacionTabique != null ? Number(r.reparacionTabique) : null,
-            cantidadFinal: r.cantidadFinal != null ? Number(r.cantidadFinal) : null,
-            estado:         getEstadoLabel(r.estado),
-            observaciones:  r.observaciones ?? "",
-            folio:          r.numeroSello || "-",
-            foto:           totalFotos === 0 ? "Sin foto" : extra > 0 ? `+${extra} fotos` : "",
-          };
-        },
-        "foto",
-        new Set([
-          "sellos",
-          "metros",
-          "holgura",
-          "accesibilidad",
-          "factorPorHolguras",
-          "cantidadSellosConFactores",
-          "aislacion",
-          "cantidadSellosAislacion",
-          "reparacionTabique",
-          "cantidadFinal",
-        ])
-      );
-
-      // ══════════════════════════════════════════════════════════════════════
-      // HOJA 2 · JUNTA LINEAL ESPUMA
-      // ══════════════════════════════════════════════════════════════════════
-      const wsJuntas = workbook.addWorksheet("JUNTA LINEAL ESPUMA");
-      const JUNTAS_COLS: ColDef[] = [
-        { header: "Descripción",           key: "descripcion",   width: 26 },
-        { header: "Fecha ejecucion sello", key: "fecha",         width: 18 },
-        { header: "Día",                   key: "dia",           width: 12 },
-        { header: "Piso",                  key: "piso",          width: 10 },
-        ...(exportFieldVisible("eje_alfabetico")
-          ? [{ header: "Eje Alfabético", key: "ejeAlfa", width: 12 }]
-          : []),
-        ...(exportFieldVisible("eje_numerico")
-          ? [{ header: "Eje Numérico", key: "ejeNum", width: 12 }]
-          : []),
-        { header: "Nombre sellador",       key: "sellador",      width: 20 },
-        { header: "Foto",                  key: "foto",          width: 18 },
-        ...(exportFieldVisible("recinto") || exportFieldVisible("modulo")
-          ? [{ header: "Recinto", key: "recinto", width: 18 }]
-          : []),
-        { header: "Longitud (m)",          key: "longitud",      width: 13 },
-        { header: "Observaciones",         key: "observaciones", width: 30 },
-        ...(exportFieldVisible("folio")
-          ? [{ header: "FOLIO", key: "folio", width: 14 }]
-          : []),
-      ];
-      addBanner(wsJuntas, JUNTAS_COLS.length);
-      addHeaders(wsJuntas, JUNTAS_COLS);
-      fillDataRows(
-        wsJuntas,
-        JUNTAS_COLS,
-        juntas,
-        juntasThumbs,
-        (r) => {
-          const totalFotos = r.fotosUrls?.length ?? (r.fotoUrl ? 1 : 0);
-          return {
-            descripcion:   r.descripcionMaterial || "-",
-            fecha:         dayjs(r.fechaEjecucion).format("DD-MM-YYYY"),
-            dia:           r.dia || "-",
-            piso:          r.piso,
-            ejeAlfa:       r.ejeAlfabetico,
-            ejeNum:        getEjeNumerico(r),
-            sellador:      r.nombreSellador,
-            foto:          totalFotos === 0 ? "Sin foto" : totalFotos > 1 ? `Ver fotos (${totalFotos})` : "Ver hoja Fotos",
-            recinto:       r.recinto,
-            longitud:      getMetrosLineales(r) ?? null,
-            observaciones: r.observaciones ?? "",
-            folio:         r.numeroSello || "-",
-          };
-        },
-        "foto",
-        new Set(["longitud"])
-      );
-
-      // ══════════════════════════════════════════════════════════════════════
-      // HOJA · Fotos (ambos tipos)
-      // ══════════════════════════════════════════════════════════════════════
-      const fotosWs = workbook.addWorksheet("Fotos");
-      fotosWs.columns = [
-        { key: "col_a", width: 46 },
-        { key: "col_b", width: 20 },
-        { key: "col_c", width: 20 },
-        { key: "col_d", width: 18 },
-      ];
-
-      const allImgsData = await Promise.all(
-        baseExportData.map((r) => {
-          const urls: string[] = r.fotosUrls?.length
-            ? r.fotosUrls
-            : r.fotoUrl
-            ? [r.fotoUrl]
-            : [];
-          return Promise.all(urls.slice(0, 6).map((u) => fetchImageAsBase64(u)));
-        })
-      );
-
-      const FOTO_IMG_W     = 320;
-      const FOTO_IMG_H     = 220;
-      const FOTO_IMG_ROW_H = 168;
-      const FOTO_HDR_H     = 36;
-      const FOTO_SUB_H     = 22;
-      const FOTO_SPACER_H  = 10;
-
-      fotosWs.mergeCells(1, 1, 1, 4);
-      fotosWs.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-      fotosWs.getRow(1).height = BANNER_H;
       if (logoBase64) {
-        const fotosLogoId = workbook.addImage({ base64: logoBase64, extension: "png" });
-        fotosWs.addImage(fotosLogoId, {
+        const logoId = workbook.addImage({ base64: logoBase64, extension: "png" });
+        sheet.addImage(logoId, {
           tl: { col: 0.2, row: 0.15 },
           ext: { width: LOGO_W, height: logoH },
           editAs: "oneCell",
         } as unknown as ExcelJS.ImageRange);
       }
-      let fotoRow = 2;
 
-      for (let i = 0; i < baseExportData.length; i++) {
-        const r    = baseExportData[i];
-        const imgs = allImgsData[i];
-        const codigo = r.codigo ?? `REG-${String(r.id).slice(0, 6)}`;
-
-        fotosWs.mergeCells(fotoRow, 1, fotoRow, 4);
-        const hdrCell = fotosWs.getCell(fotoRow, 1);
-        hdrCell.value = `${codigo}  ·  ${r.obraNombre ?? ""}`;
-        hdrCell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-        hdrCell.font  = { bold: true, size: 11, color: { argb: "FFFACC15" } };
-        hdrCell.alignment = { horizontal: "left", vertical: "middle" };
-        hdrCell.border = {
-          top:   { style: "medium", color: { argb: "FFFACC15" } },
-          left:  { style: "medium", color: { argb: "FFFACC15" } },
-          right: { style: "medium", color: { argb: "FFFACC15" } },
-        };
-        fotosWs.getRow(fotoRow).height = FOTO_HDR_H;
-        fotoRow++;
-
-        fotosWs.mergeCells(fotoRow, 1, fotoRow, 4);
-        const subCell = fotosWs.getCell(fotoRow, 1);
-        subCell.value = `Tipo: ${getTipoRegistroLabel(r.tipoRegistro)}   ·   Fecha: ${dayjs(r.fechaEjecucion).format("DD-MM-YYYY")}   ·   Estado: ${getEstadoLabel(r.estado)}`;
-        subCell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } };
-        subCell.font  = { size: 9, color: { argb: "FFC4C4C4" } };
-        subCell.alignment = { horizontal: "left", vertical: "middle" };
-        subCell.border = {
-          left:   { style: "medium", color: { argb: "FFFACC15" } },
-          right:  { style: "medium", color: { argb: "FFFACC15" } },
-          bottom: { style: "thin",   color: { argb: "FF374151" } },
-        };
-        fotosWs.getRow(fotoRow).height = FOTO_SUB_H;
-        fotoRow++;
-
-        if (imgs.length === 0) {
-          fotosWs.mergeCells(fotoRow, 1, fotoRow, 4);
-          const noCell = fotosWs.getCell(fotoRow, 1);
-          noCell.value = "Registro sin fotografías";
-          noCell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
-          noCell.font  = { italic: true, size: 10, color: { argb: "FF94A3B8" } };
-          noCell.alignment = { horizontal: "center", vertical: "middle" };
-          noCell.border = {
-            left:   { style: "medium", color: { argb: "FFFACC15" } },
-            right:  { style: "medium", color: { argb: "FFFACC15" } },
-            bottom: { style: "thin",   color: { argb: "FFE2E8F0" } },
-          };
-          fotosWs.getRow(fotoRow).height = 32;
-          fotoRow++;
-        } else {
-          for (let j = 0; j < imgs.length; j++) {
-            const imgData = imgs[j];
-            fotosWs.mergeCells(fotoRow, 1, fotoRow, 4);
-            const imgCell = fotosWs.getCell(fotoRow, 1);
-            imgCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
-            imgCell.border = {
-              left:   { style: "medium", color: { argb: "FFFACC15" } },
-              right:  { style: "medium", color: { argb: "FFFACC15" } },
-              top:    { style: "thin",   color: { argb: "FFE2E8F0" } },
-              bottom: { style: "thin",   color: { argb: "FFE2E8F0" } },
-            };
-            fotosWs.getRow(fotoRow).height = FOTO_IMG_ROW_H;
-
-            if (imgData) {
-              const imgId = workbook.addImage({ base64: imgData.base64, extension: imgData.ext });
-              fotosWs.addImage(imgId, {
-                tl:     { col: 0, row: fotoRow - 1 },
-                ext:    { width: FOTO_IMG_W, height: FOTO_IMG_H },
-                editAs: "oneCell",
-              } as unknown as ExcelJS.ImageRange);
-            } else {
-              imgCell.value = "Error cargando imagen";
-              imgCell.font  = { italic: true, size: 10, color: { argb: "FFEF4444" } };
-              imgCell.alignment = { horizontal: "center", vertical: "middle" };
-            }
-            fotoRow++;
-          }
-        }
-
-        fotosWs.mergeCells(fotoRow, 1, fotoRow, 4);
-        const spacerCell = fotosWs.getCell(fotoRow, 1);
-        spacerCell.fill   = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDDDDD" } };
-        spacerCell.border = { bottom: { style: "thin", color: { argb: "FFCCCCCC" } } };
-        fotosWs.getRow(fotoRow).height = FOTO_SPACER_H;
-        fotoRow++;
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // HOJA · Resumen
-      // ══════════════════════════════════════════════════════════════════════
-      const summaryWs = workbook.addWorksheet("Resumen");
-      summaryWs.columns = [
-        { key: "metrica", width: 36 },
-        { key: "valor",   width: 16 },
-      ];
-
-      summaryWs.mergeCells("A1:B1");
-      const titleCell = summaryWs.getCell("A1");
-      titleCell.value = "RESUMEN · Beck CRM";
-      titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
-      titleCell.font = { bold: true, size: 13, color: { argb: "FFFACC15" } };
-      titleCell.alignment = { horizontal: "center", vertical: "middle" };
-      summaryWs.getRow(1).height = 36;
-
-      summaryWs.getRow(2).height = 6;
-
-      const sHeader = summaryWs.getRow(3);
-      sHeader.height = 24;
-      ["Métrica", "Valor"].forEach((label, i) => {
-        const cell = sHeader.getCell(i + 1);
-        cell.value = label;
+      sheet.getRow(2).height = 10;
+      const headerRow = sheet.getRow(3);
+      headerRow.height = 28;
+      exportColumns.forEach((column, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = column.header;
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFACC15" } };
-        cell.font = { bold: true, size: 10 };
+        cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
         cell.border = {
-          top: { style: "thin" }, left: { style: "thin" },
-          bottom: { style: "medium" }, right: { style: "thin" },
+          top: { style: "thin", color: { argb: "FFD97706" } },
+          left: { style: "thin", color: { argb: "FFD97706" } },
+          bottom: { style: "medium", color: { argb: "FFD97706" } },
+          right: { style: "thin", color: { argb: "FFD97706" } },
         };
-        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
       });
 
-      const summaryData = [
-        { metrica: "Total registros",                 valor: baseExportData.length },
-        { metrica: "Sellos cortafuego (registros)",   valor: sellos.length },
-        { metrica: "Junta lineal espuma (registros)", valor: juntas.length },
-        { metrica: "Total sellos (cantidad)",         valor: sellos.reduce((a, r) => a + r.cantidadSellos, 0) },
-        { metrica: "Total metros lineales",           valor: Number(juntas.reduce((a, r) => a + (getMetrosLineales(r) ?? 0), 0).toFixed(2)) },
-        { metrica: "Validados",                       valor: baseExportData.filter((r) => r.estado === "validado").length },
-        { metrica: "Pendientes",                      valor: baseExportData.filter((r) => r.estado === "pendiente").length },
-        { metrica: "En revisión",                     valor: baseExportData.filter((r) => r.estado === "en_revision").length },
-        { metrica: "Rechazados",                      valor: baseExportData.filter((r) => r.estado === "rechazado").length },
-      ];
+      sheet.views = [{ state: "frozen", ySplit: 3 }];
+      sheet.autoFilter = `A3:${getExcelColumnLetter(exportColumns.length)}3`;
 
-      summaryData.forEach((item, i) => {
-        const row = summaryWs.getRow(4 + i);
-        row.height = 22;
-        const mCell = row.getCell(1);
-        const vCell = row.getCell(2);
-        mCell.value = item.metrica;
-        vCell.value = item.valor;
-        [mCell, vCell].forEach((c) => {
-          c.border = {
-            top:    { style: "thin", color: { argb: "FFE5E7EB" } },
-            left:   { style: "thin", color: { argb: "FFE5E7EB" } },
+      baseExportData.forEach((record, rowIndex) => {
+        const row = sheet.getRow(4 + rowIndex);
+        row.height = 24;
+        exportColumns.forEach((column, columnIndex) => {
+          const cell = row.getCell(columnIndex + 1);
+          const value = column.getValue(record);
+          cell.value = value;
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE5E7EB" } },
+            left: { style: "thin", color: { argb: "FFE5E7EB" } },
             bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-            right:  { style: "thin", color: { argb: "FFE5E7EB" } },
+            right: { style: "thin", color: { argb: "FFE5E7EB" } },
           };
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: typeof value === "number" ? "center" : "left",
+            wrapText: column.key === "observaciones",
+          };
+          if (typeof value === "number") {
+            cell.numFmt = Number.isInteger(value) ? "#,##0" : "#,##0.00";
+          } else if (value && typeof value === "object" && "hyperlink" in value) {
+            cell.font = { color: { argb: "FF2563EB" }, underline: true };
+          }
         });
-        mCell.alignment = { vertical: "middle" };
-        mCell.font = { size: 10 };
-        vCell.alignment = { horizontal: "center", vertical: "middle" };
-        vCell.font = { bold: true, size: 11 };
-        if (typeof item.valor === "number") {
-          vCell.numFmt = "#,##0.##";
-        }
       });
+
+      const fotosExport = baseExportData.flatMap((record) => {
+        const fotos = getFotosRegistroNormalizado(record);
+        return fotos.map((url, index) => ({
+          codigo: record.codigoBeck ?? record.codigo ?? `REG-${String(record.id).slice(0, 6)}`,
+          obra: record.obraNombre ?? "",
+          foto: index + 1,
+          total: fotos.length,
+          url,
+        }));
+      });
+
+      if (fotosExport.length > 0) {
+        const fotosSheet = workbook.addWorksheet("Fotos");
+        fotosSheet.columns = [
+          { key: "codigo", width: 18 },
+          { key: "obra", width: 32 },
+          { key: "foto", width: 12 },
+          { key: "url", width: 70 },
+        ];
+
+        const fotosHeaders = ["Código BECK", "Obra", "Foto", "Abrir imagen"];
+        const fotosHeaderRow = fotosSheet.getRow(1);
+        fotosHeaderRow.height = 24;
+        fotosHeaders.forEach((header, index) => {
+          const cell = fotosHeaderRow.getCell(index + 1);
+          cell.value = header;
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFACC15" } };
+          cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFD97706" } },
+            left: { style: "thin", color: { argb: "FFD97706" } },
+            bottom: { style: "medium", color: { argb: "FFD97706" } },
+            right: { style: "thin", color: { argb: "FFD97706" } },
+          };
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+        });
+
+        fotosExport.forEach((item, index) => {
+          const row = fotosSheet.getRow(index + 2);
+          row.height = 22;
+          row.getCell(1).value = item.codigo;
+          row.getCell(2).value = item.obra;
+          row.getCell(3).value = `${item.foto} de ${item.total}`;
+          const linkCell = row.getCell(4);
+          linkCell.value = {
+            text: `Abrir foto ${item.foto}`,
+            hyperlink: item.url,
+            tooltip: item.url,
+          };
+          linkCell.font = { color: { argb: "FF2563EB" }, underline: true };
+          for (let col = 1; col <= 4; col += 1) {
+            const cell = row.getCell(col);
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE5E7EB" } },
+              left: { style: "thin", color: { argb: "FFE5E7EB" } },
+              bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
+              right: { style: "thin", color: { argb: "FFE5E7EB" } },
+            };
+            cell.alignment = { vertical: "middle", wrapText: col === 4 };
+          }
+        });
+
+        fotosSheet.views = [{ state: "frozen", ySplit: 1 }];
+        fotosSheet.autoFilter = "A1:D1";
+      }
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fileName = `BECK_registros_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`;
@@ -2530,13 +2351,24 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         fileName
       );
       message.success("Excel generado correctamente");
+      return true;
     } catch (error) {
       console.error(error);
       message.error("Error al generar el Excel");
+      return false;
     } finally {
       hide();
-      setExportando(false);
+      setLoading(false);
     }
+  };
+  const handleDescargarTodo = async () => {
+    const ok = await handleExportExcel(datosDescargaTodo, setDescargandoTodo);
+    if (ok) setExportModalOpen(false);
+  };
+
+  const handleDescargarSegunFiltros = async () => {
+    const ok = await handleExportExcel(datosDescargaSegunFiltros, setDescargandoSegunFiltros);
+    if (ok) setExportModalOpen(false);
   };
 
   return (
@@ -2615,10 +2447,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <Button
             icon={<DownloadOutlined />}
             className="text-xs"
-            loading={exportando}
-            onClick={() => void handleExportExcel()}
+            onClick={() => setExportModalOpen(true)}
           >
-            Exportar vista a Excel
+            Exportar registros
           </Button>
         </div>
       </div>
@@ -2949,6 +2780,103 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           })}
         />
       </Card>
+
+      {/* Modal exportar registros */}
+      <Modal
+        title="Exportar registros"
+        open={exportModalOpen}
+        onCancel={() => {
+          if (!descargandoTodo && !descargandoSegunFiltros) setExportModalOpen(false);
+        }}
+        closable={!descargandoTodo && !descargandoSegunFiltros}
+        maskClosable={!descargandoTodo && !descargandoSegunFiltros}
+        footer={[
+          <Button
+            key="cancelar"
+            disabled={descargandoTodo || descargandoSegunFiltros}
+            onClick={() => setExportModalOpen(false)}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="todo"
+            loading={descargandoTodo}
+            disabled={descargandoSegunFiltros}
+            onClick={() => void handleDescargarTodo()}
+          >
+            Descargar todo
+          </Button>,
+          <Button
+            key="filtros"
+            type="primary"
+            className="bg-amber-400 hover:bg-amber-500 border-none text-slate-900"
+            loading={descargandoSegunFiltros}
+            disabled={descargandoTodo}
+            onClick={() => void handleDescargarSegunFiltros()}
+          >
+            Descargar según filtros
+          </Button>,
+        ]}
+      >
+        <div className="flex flex-col gap-3 text-xs">
+          <div>
+            <p className="mb-1 font-medium text-slate-700">Obra</p>
+            <Select
+              showSearch
+              allowClear
+              className="beck-obra-filter-select w-full"
+              placeholder="Todas las obras"
+              value={descargaObra || undefined}
+              onChange={(value) => setDescargaObra(String(value ?? ""))}
+              options={obrasDisponibles}
+              optionFilterProp="label"
+              notFoundContent={obrasLoading ? "Cargando obras..." : "Sin obras"}
+              filterOption={(input, opt) =>
+                normalizeSearchText(opt?.label?.toString()).includes(
+                  normalizeSearchText(input)
+                )
+              }
+            />
+          </div>
+
+          <div>
+            <p className="mb-1 font-medium text-slate-700">Validación de Ingeniería</p>
+            <Segmented
+              block
+              value={descargaValidacionIngenieria}
+              onChange={(val) =>
+                setDescargaValidacionIngenieria(val as "todos" | "validados" | "no_validados")
+              }
+              options={[
+                { label: "Todos", value: "todos" },
+                { label: "Validados", value: "validados" },
+                { label: "No validados", value: "no_validados" },
+              ]}
+            />
+          </div>
+
+          <div>
+            <p className="mb-1 font-medium text-slate-700">Validación de Cliente</p>
+            <Segmented
+              block
+              value={descargaValidacionCliente}
+              onChange={(val) =>
+                setDescargaValidacionCliente(val as "todos" | "validados" | "no_validados")
+              }
+              options={[
+                { label: "Todos", value: "todos" },
+                { label: "Validados", value: "validados" },
+                { label: "No validados", value: "no_validados" },
+              ]}
+            />
+          </div>
+
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-700">
+            "Descargar todo" ignora los filtros y descarga registros validados por
+            Ingeniería y Cliente de todas las obras.
+          </p>
+        </div>
+      </Modal>
 
       {/* Modal resultado importación */}
       <Modal

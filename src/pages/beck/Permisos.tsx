@@ -49,12 +49,10 @@ const MODULOS_FIREMAT: Array<{ key: ModuloBeck; label: string }> = [
   { key: "firemat_cambiar_empresa", label: "Cambiar empresa" },
 ];
 
-// Modules shown in the Firemat modal (excludes firemat_cambiar_empresa, controlled by main switch)
 const MODULOS_FIREMAT_MODAL = MODULOS_FIREMAT.filter(
   (m) => m.key !== "firemat_cambiar_empresa",
 );
 
-// Modules shown in "Permisos del rol" and "Editar excepción" (Beck only, excludes cambiar_empresa)
 const MODULOS_BECK_VISIBLE = MODULOS_BECK.filter(
   (m) => m.key !== "beck_cambiar_empresa",
 );
@@ -110,19 +108,15 @@ const BeckPermisos: React.FC = () => {
 
   const [usuarioPermisosCache, setUsuarioPermisosCache] = useState<Record<string, PermisoModulo[]>>({});
   const [loadingPermisosCache, setLoadingPermisosCache] = useState(false);
-  // Per-module: tracks which specific switch shows the loading spinner
   const [savingPermisoRapido, setSavingPermisoRapido] = useState<Record<string, boolean>>({});
-  // Per-user: true while ANY save is in progress for that user — disables ALL their switches
   const [savingUsuario, setSavingUsuario] = useState<Record<string, boolean>>({});
 
-  // Exception modal
   const [excepcionUsuario, setExcepcionUsuario] = useState<UsuarioApi | null>(null);
   const [excepcionDetalle, setExcepcionDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
   const [excepcionPermisos, setExcepcionPermisos] = useState<PermisoModulo[]>([]);
   const [loadingExcepcion, setLoadingExcepcion] = useState(false);
   const [savingExcepcion, setSavingExcepcion] = useState(false);
 
-  // Firemat permissions modal
   const [firermatModalUsuario, setFirematModalUsuario] = useState<UsuarioConOverride | null>(null);
 
   const fetchRoles = useCallback(async () => {
@@ -271,16 +265,13 @@ const BeckPermisos: React.FC = () => {
     }
   };
 
-  // Controls both beck_cambiar_empresa and firemat_cambiar_empresa together
   const toggleCambiarEmpresa = async (usuarioId: string, value: boolean) => {
-    // Guard: prevent parallel saves for the same user
     if (savingUsuario[usuarioId]) return;
 
     const savingKey = `${usuarioId}-cambiar_empresa`;
     setSavingUsuario((prev) => ({ ...prev, [usuarioId]: true }));
     setSavingPermisoRapido((prev) => ({ ...prev, [savingKey]: true }));
     try {
-      // Always fetch fresh permissions from server — never use stale cache as base
       const detalle = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
       const currentPermisos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
 
@@ -296,7 +287,6 @@ const BeckPermisos: React.FC = () => {
       await permisosUsuarioAPI.actualizar(usuarioId, payload);
       message.success("Permiso actualizado correctamente");
 
-      // Re-fetch after save to update cache with real server state
       const detalleRefrescado = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
       const permisosRefrescados = detalleRefrescado.permisosEfectivos ?? detalleRefrescado.permisos ?? [];
       setUsuarioPermisosCache((prev) => ({ ...prev, [usuarioId]: permisosRefrescados }));

@@ -204,7 +204,6 @@ const FirematVentas: React.FC = () => {
   const [estado, setEstado] = useState("");
   const [rango, setRango] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
 
-  // Modal state
   const [modalAbierto, setModalAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);

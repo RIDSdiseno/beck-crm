@@ -37,8 +37,6 @@ const TIPO_REGISTRO_BADGE_CLASSES: Record<string, string> = {
 export const getTipoRegistroBadgeClass = (tipo?: string | null): string =>
   (tipo && TIPO_REGISTRO_BADGE_CLASSES[tipo]) || TIPO_REGISTRO_BADGE_CLASSES.sello_cortafuego;
 
-// Etiqueta del campo de cantidad según el tipo de registro (mismo campo cantidadSellos en backend,
-// salvo junta_lineal_espuma que usa metrosLineales).
 export const getCantidadLabelPorTipo = (tipo?: string | null): string => {
   if (tipo === "junta_lineal_espuma") return "Metros lineales";
   if (tipo === "tabiqueria") return "Cantidad";

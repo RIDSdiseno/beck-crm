@@ -11,7 +11,6 @@ import {
 
 const { Title } = Typography;
 
-// ── Etapa ─────────────────────────────────────────────────────────────────────
 const ETAPA_LABELS: Record<string, string> = {
   PROSPECTO: "Prospecto",
   PROSPECTO_IDENTIFICADO: "Prospecto identificado",
@@ -41,7 +40,6 @@ const formatEtapa = (etapa?: string | null): string => {
   return ETAPA_LABELS[etapa.toUpperCase()] ?? etapaFallback(etapa);
 };
 
-// ── Regla ─────────────────────────────────────────────────────────────────────
 const REGLA_LABELS: Record<string, string> = {
   CLIENTE_REQUERIDO: "Cliente requerido",
   CONTACTO_REQUERIDO: "Contacto requerido",
@@ -78,7 +76,6 @@ const formatRegla = (regla?: string | null): string => {
   return reglaFallback(regla);
 };
 
-// ── Campo ─────────────────────────────────────────────────────────────────────
 const CAMPO_LABELS: Record<string, string> = {
   empresa: "Empresa",
   cliente: "Cliente",
@@ -112,7 +109,6 @@ const formatCampo = (campo?: string | null): string => {
   return CAMPO_LABELS[campo] ?? campo;
 };
 
-// ── Fecha ─────────────────────────────────────────────────────────────────────
 const formatFecha = (value?: string | null): string => {
   if (!value) return "-";
   try {
@@ -128,7 +124,6 @@ const formatFecha = (value?: string | null): string => {
   }
 };
 
-// ── Componente ────────────────────────────────────────────────────────────────
 const ConfiguracionValidacionPage: React.FC = () => {
   const { pathname } = useLocation();
   const moduloActual: "BECK" | "FIREMAT" = pathname.startsWith("/firemat") ? "FIREMAT" : "BECK";
@@ -191,7 +186,6 @@ const ConfiguracionValidacionPage: React.FC = () => {
     [data, moduloActual]
   );
 
-  // Filtros dinámicos de etapa a partir de los datos del módulo actual
   const etapaFilters = useMemo(() => {
     const etapas = [...new Set(filteredData.map((r) => r.etapa ?? ""))];
     return etapas.map((e) => ({ text: formatEtapa(e) || "Sin etapa", value: e }));
@@ -321,7 +315,6 @@ const ConfiguracionValidacionPage: React.FC = () => {
         },
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [updatingId, etapaFilters]
   );
 

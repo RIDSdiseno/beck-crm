@@ -8,6 +8,7 @@ import {
   Collapse,
   Descriptions,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -23,10 +24,13 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { MenuProps } from "antd";
 import {
   DeleteOutlined,
+  DownOutlined,
   EditOutlined,
   FileExcelOutlined,
+  FileTextOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -52,7 +56,7 @@ import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
 import ConfigurarItemizadosObraDrawer from "./ConfigurarItemizadosObraDrawer";
-import PrepararItemizadoObraDrawer from "./PrepararItemizadoObraDrawer";
+import EstadosAvanceObraDrawer from "./EstadosAvanceObraDrawer";
 
 type EstadoForm = ObraEstado;
 
@@ -185,7 +189,6 @@ const matrixCampoLabels: Record<string, string> = {
   reparacion_tabique: "Reparación tabique",
 };
 
-// Label overrides applied only when role === "cliente"
 const clienteCampoLabels: Record<string, string> = {
   holgura: "Separación (cm)",
   factor_por_holguras: "Factor por separación",
@@ -263,15 +266,11 @@ const normalizeRegistroText = (value: unknown): string =>
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
-// Maps stripped keys (lowercase, no underscores/spaces) to canonical snake_case.
-// Covers both camelCase (codigoBeck) and snake_case (codigo_beck) since stripping "_" yields
-// the same key for both variants.
 const CAMPO_ALIAS_MAP: Record<string, string> = {
   codigobeck: "codigo_beck",
   itemizadobeck: "itemizado_beck",
   itemizadomandante: "itemizado_mandante",
   fechaejecucionsello: "fecha_ejecucion_sello",
-  // dia / dia_semana / diaSemana all canonicalize to "diaSemana"
   dia: "diaSemana",
   diasemana: "diaSemana",
   ejealfabetico: "eje_alfabetico",
@@ -279,11 +278,8 @@ const CAMPO_ALIAS_MAP: Record<string, string> = {
   nombresellador: "nombre_sellador",
   numerosello: "numero_sello",
   cantidadsellos: "cantidad_sellos",
-  // separacion_cm / separacionCm are aliases for holgura (same concept, different name)
   separacioncm: "holgura",
-  // factor_separacion / factorSeparacion are aliases for factor_por_holguras
   factorseparacion: "factor_por_holguras",
-  // accesibilidad_cielo_modular variants all canonicalize to "accesibilidad"
   accesibilidadcielomodular: "accesibilidad",
   cantidadsellosconfactores: "cantidad_sellos_con_factores",
   cantidadsellosaislacion: "cantidad_sellos_aislacion",
@@ -295,7 +291,6 @@ const CAMPO_ALIAS_MAP: Record<string, string> = {
 const normalizeRegistroCampoKey = (value: unknown): string => {
   const raw = textFrom(value);
   if (!raw) return "";
-  // Alias lookup covers camelCase and snake_case variants via stripped key
   const fromAlias = CAMPO_ALIAS_MAP[raw.toLowerCase().replace(/[^a-z0-9]/g, "")];
   if (fromAlias) return fromAlias;
   const normalized = normalizeRegistroText(value)
@@ -429,7 +424,6 @@ const withCatalogRegistroFields = (
         })
       ),
   ];
-  // Dedup by normalized campo key — keeps first occurrence (backend state wins over catalog default)
   const seen = new Set<string>();
   return merged.filter((field) => {
     if (seen.has(field.campo)) return false;
@@ -517,8 +511,8 @@ const Obras: React.FC = () => {
   const [obraItemizado, setObraItemizado] = useState<Obra | null>(null);
   const [configItemizadosOpen, setConfigItemizadosOpen] = useState(false);
   const [obraConfigItemizados, setObraConfigItemizados] = useState<Obra | null>(null);
-  const [prepararItemizadoOpen, setPrepararItemizadoOpen] = useState(false);
-  const [obraPrepararItemizado, setObraPrepararItemizado] = useState<Obra | null>(null);
+  const [estadosAvanceOpen, setEstadosAvanceOpen] = useState(false);
+  const [obraEstadosAvance, setObraEstadosAvance] = useState<Obra | null>(null);
   const [registroConfig, setRegistroConfig] = useState<
     Record<RolConfiguracionCamposRegistro, CampoConfiguracionRegistro[]>
   >({ jefeobra: [], trabajador: [], cliente: [], ingenieria: [] });
@@ -618,8 +612,6 @@ const Obras: React.FC = () => {
       nextValues.direccion = oportunidad.clienteBeck.direccion;
     }
 
-    // La región/comuna de la propia oportunidad son obligatorias en el funnel;
-    // las del clienteBeck asociado son opcionales y pueden venir vacías.
     const regionOportunidad = oportunidad.region || oportunidad.clienteBeck?.region;
     const comunaOportunidad = oportunidad.comuna || oportunidad.clienteBeck?.comuna;
 
@@ -761,9 +753,6 @@ const Obras: React.FC = () => {
       ]);
       setObraSeleccionada(obraDetalle);
 
-      // La oportunidad ya vinculada a esta obra no viene en "ganadas sin obra"
-      // (ese endpoint solo trae oportunidades que aún no tienen obra asignada),
-      // así que se agrega manualmente para que el Select pueda mostrarla.
       const oportunidadVinculada = getOportunidadObra(obraDetalle);
       const yaIncluida =
         oportunidadVinculada && oportunidades.some((o) => o.id === oportunidadVinculada.id);
@@ -780,18 +769,11 @@ const Obras: React.FC = () => {
           : oportunidades;
       setOportunidadesGanadas(oportunidadesConVinculada);
 
-      // Fallback: obras creadas antes de que la obra guardara region/comuna/
-      // clienteBeckId propios (o donde igual quedaron sin completar) heredan
-      // esos valores desde la oportunidad ganada vinculada, solo para precarga
-      // visual del formulario — no se persiste nada por este camino.
       const regionPrecarga = obraDetalle.region ?? oportunidadVinculada?.region ?? "";
       const comunaPrecarga = obraDetalle.comuna ?? oportunidadVinculada?.comuna ?? "";
       const clienteBeckIdPrecarga =
         obraDetalle.clienteBeckId ?? oportunidadVinculada?.clienteBeckId ?? undefined;
 
-      // Si el cliente asociado (directo o heredado de la oportunidad) no está
-      // en el listado de clientes activos, se agrega manualmente para que el
-      // Select pueda mostrarlo, igual que se hace con la oportunidad vinculada.
       const clienteBeckVinculado = obraDetalle.clienteBeck ?? oportunidadVinculada?.clienteBeck;
       const clientesConVinculado =
         clienteBeckIdPrecarga &&
@@ -1194,84 +1176,76 @@ const Obras: React.FC = () => {
             title: "Acciones",
             key: "acciones",
             width: 300,
-            render: (_: unknown, record: Obra) => (
-              <div className="grid grid-cols-[1fr_auto] gap-1">
-                <Button
-                  size="small"
-                  icon={<SettingOutlined />}
-                  onClick={() => openOpcionesRegistro(record)}
-                  className="w-full"
-                >
-                  Opciones de registro
-                </Button>
-                <Button
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => void openEditar(record)}
-                >
-                  Editar
-                </Button>
-                {canManageItemizado ? (
-                  <>
-                    <Button
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={() => {
-                        setObraItemizado(record);
-                        setItemizadoDrawerOpen(true);
-                      }}
-                      className="w-full"
-                    >
-                      Opciones de itemizado
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleEliminar(record)}
-                    >
-                      Eliminar
-                    </Button>
-                    <Button
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={() => {
-                        setObraConfigItemizados(record);
-                        setConfigItemizadosOpen(true);
-                      }}
-                      className="col-span-2 w-full"
-                    >
-                      Configurar itemizados
-                    </Button>
-                    <Button
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={() => {
-                        setObraPrepararItemizado(record);
-                        setPrepararItemizadoOpen(true);
-                      }}
-                      className="col-span-2 w-full"
-                    >
-                      {record.estadoPreparacionItemizado === "FINALIZADO"
-                        ? "Ver itemizado confirmado"
-                        : record.estadoPreparacionItemizado === "EN_REVISION_CLIENTE"
-                        ? "Ver itemizado (en revisión)"
-                        : "Preparar itemizado"}
-                    </Button>
-                  </>
-                ) : (
+            render: (_: unknown, record: Obra) => {
+              const dropdownItems: MenuProps["items"] = [
+                {
+                  key: "opciones-registro",
+                  icon: <SettingOutlined />,
+                  label: "Opciones de registro",
+                  onClick: () => openOpcionesRegistro(record),
+                },
+                ...(canManageItemizado
+                  ? [
+                      {
+                        key: "opciones-itemizado",
+                        icon: <SettingOutlined />,
+                        label: "Opciones de itemizado",
+                        onClick: () => {
+                          setObraItemizado(record);
+                          setItemizadoDrawerOpen(true);
+                        },
+                      },
+                      {
+                        key: "configurar-itemizados",
+                        icon: <SettingOutlined />,
+                        label: "Configurar itemizados",
+                        onClick: () => {
+                          setObraConfigItemizados(record);
+                          setConfigItemizadosOpen(true);
+                        },
+                      },
+                    ]
+                  : []),
+              ];
+
+              return (
+                <div className="grid grid-cols-2 gap-1">
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => void openEditar(record)}
+                    className="w-full"
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={() => {
+                      setObraEstadosAvance(record);
+                      setEstadosAvanceOpen(true);
+                    }}
+                    className="w-full"
+                  >
+                    Estado de Avance
+                  </Button>
                   <Button
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
                     onClick={() => handleEliminar(record)}
-                    className="col-span-2 w-full"
+                    className="w-full"
                   >
                     Eliminar
                   </Button>
-                )}
-              </div>
-            ),
+                  <Dropdown menu={{ items: dropdownItems }} trigger={["click"]}>
+                    <Button size="small" className="w-full">
+                      Más acciones <DownOutlined />
+                    </Button>
+                  </Dropdown>
+                </div>
+              );
+            },
           },
         ]
       : []),
@@ -1451,14 +1425,13 @@ const Obras: React.FC = () => {
         }}
       />
 
-      <PrepararItemizadoObraDrawer
-        open={prepararItemizadoOpen}
-        obraId={obraPrepararItemizado?.id}
-        obraNombre={obraPrepararItemizado?.nombre}
+      <EstadosAvanceObraDrawer
+        open={estadosAvanceOpen}
+        obraId={obraEstadosAvance?.id}
+        obraNombre={obraEstadosAvance?.nombre}
         onClose={() => {
-          setPrepararItemizadoOpen(false);
-          setObraPrepararItemizado(null);
-          void cargarObras();
+          setEstadosAvanceOpen(false);
+          setObraEstadosAvance(null);
         }}
       />
 

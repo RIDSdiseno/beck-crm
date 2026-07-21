@@ -301,9 +301,6 @@ const FirematCotizaciones: React.FC = () => {
   );
   const totals = useMemo(() => calculateTotals(lineasWatch), [lineasWatch]);
 
-  // Inicializar formulario después del render para evitar condición de carrera
-  // con React 19 concurrent mode + Antd 6 Form.List + destroyOnClose.
-  // setFieldsValue inline (antes del mount) puede ser sobrescrito por initialValues.
   useEffect(() => {
     if (!selected || !modalOpen || modalMode === "crear") return;
 
@@ -379,7 +376,6 @@ const FirematCotizaciones: React.FC = () => {
       setCotizaciones(cotizacionesResponse.data);
       setResumen(cotizacionesResponse.resumen);
 
-      // Productos son auxiliares para las líneas de cotización; si fallan no bloquear la lista
       try {
         const productosResponse = await firematProductosAPI.listar({ activo: true });
         setProductos(productosResponse.data);
@@ -532,8 +528,6 @@ const FirematCotizaciones: React.FC = () => {
       const detalle = await firematCotizacionesAPI.obtener(record.id);
       console.log("cotizacion firemat detalle raw", detalle);
       console.log("cotizacion firemat detalles array", getLineas(detalle));
-      // setSelected dispara useEffect que inicializa el formulario tras el render,
-      // evitando la condición de carrera de React 19 + Antd 6 Form.List.
       setSelected(detalle);
       const ext = detalle as FirematCotizacion & {
         clienteId?: string | null;

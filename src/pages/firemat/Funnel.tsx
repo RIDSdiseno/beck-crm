@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-// Mismo mecanismo de drag & drop que beck/Funnel.tsx (dnd-kit con
-// PointerSensor); el D&D nativo HTML5 anterior no disparaba dragstart en
-// este tablero.
 import {
   DndContext,
   DragOverlay,
@@ -56,12 +53,6 @@ import {
 } from "../../constants/motivosCierre";
 import FunnelFirematDashboard from "./FunnelFirematDashboard";
 import FunnelFirematCalendario from "../../components/FunnelFirematCalendario";
-// Import diferido (no estatico) a proposito: beck/Funnel.tsx importa este
-// mismo archivo (para su propio embed de detalle Firemat), y un import
-// estatico circular entre ambos archivos puede volverse fragil con Fast
-// Refresh/HMR de Vite (edits que rompen el drag&drop hasta un reload
-// completo). React.lazy corta el ciclo: esta rama solo se resuelve en
-// tiempo de ejecucion, cuando Beck ya esta completamente cargado.
 const FunnelBeck = React.lazy(() => import("../beck/Funnel"));
 import {
   clientesFirematAPI,
@@ -228,9 +219,6 @@ const ETAPAS_KANBAN = ETAPAS.filter(
 );
 
 
-// Cinta superior de unidad de negocio, misma estetica que las tarjetas de
-// /beck/funnel (ver UNIDAD_NEGOCIO_STRIP / getUnidadNegocioVisualLabel en
-// src/pages/beck/Funnel.tsx).
 const UNIDAD_NEGOCIO_STRIP: Record<string, string> = {
   Beck: "bg-[#d6b02a] text-black",
   Firemat: "bg-red-600 text-white",
@@ -625,14 +613,11 @@ const FirematFunnelCard: React.FC<FirematFunnelCardProps> = ({
   onViewDetail,
 }) => {
   const cierreBanner = CIERRE_BANNER[item.etapa];
-  // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) y GANADA no se arrastran.
   const draggingEnabled =
     !dragDisabled && !cierreBanner && item.etapa !== "GANADA";
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.id,
     disabled: !draggingEnabled,
-    // La oportunidad viaja con el evento: handleDndDragEnd la lee desde
-    // active.data.current sin depender de una busqueda por id en el estado.
     data: { oportunidad: item },
   });
 
@@ -783,8 +768,6 @@ const FirematFunnel: React.FC<{
     canViewFunnel("firemat_cambiar_empresa") || canEditFunnelPerm("firemat_cambiar_empresa");
   const { user } = useAuth();
   const isAdminGlobal = user?.rol === "Administrador";
-  // Igual criterio que canOperateFiremat en beck/Funnel.tsx: mover tarjetas
-  // requiere edicion sobre firemat_funnel; administrador siempre puede.
   const canEditFirematFunnel = isAdminGlobal || canEditFunnelPerm("firemat_funnel");
   const dndSensors = useSensors(
     useSensor(PointerSensor, {
@@ -882,9 +865,6 @@ const FirematFunnel: React.FC<{
   const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<
     "Beck" | "Firemat" | "Mixto"
   >("Firemat");
-  // Contador de oportunidades visibles cuando el tablero embebido de Beck
-  // esta activo (ver FunnelBeck embedUnidadNegocio mas abajo); lo reporta el
-  // propio componente Beck via onVisibleCountChange.
   const [beckVisibleCount, setBeckVisibleCount] = useState(0);
 
   const productoOptions = useMemo(
@@ -1006,9 +986,6 @@ const FirematFunnel: React.FC<{
   const cargar = useCallback(async () => {
     try {
       setLoading(true);
-      // Siempre Firemat puro: cuando Unidad de negocio no es Firemat, el
-      // tablero lo muestra/opera el propio Funnel Beck embebido (ver render
-      // mas abajo), que hace su propia carga via loadDeals/funnel-unificado.
       const [funnelResponse, cotizacionesResponse] = await Promise.all([
         firematFunnelAPI.listar({}),
         firematCotizacionesAPI.listar({}),
@@ -1880,9 +1857,6 @@ const FirematFunnel: React.FC<{
 
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
 
-  // La oportunidad viaja en active.data.current (ver useDraggable en
-  // FirematFunnelCard); la busqueda por id en el estado queda solo como
-  // respaldo.
   const getOportunidadFromDragEvent = (
     event: DragStartEvent | DragEndEvent
   ): FirematFunnelOportunidad | null => {
@@ -1908,7 +1882,6 @@ const FirematFunnel: React.FC<{
 
     if (!canEditFirematFunnel || !oportunidad || !etapaDestino) return;
     if (!ETAPAS_KANBAN.some((stage) => stage.value === etapaDestino)) return;
-    // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) y GANADA no se mueven.
     if (CIERRE_BANNER[oportunidad.etapa] || oportunidad.etapa === "GANADA") return;
     const etapaActual = oportunidad.etapa;
     if (etapaActual === etapaDestino) return;
@@ -3365,10 +3338,6 @@ const FirematFunnel: React.FC<{
       </section>
 
       {filterUnidadNegocio !== "Firemat" ? (
-        // Beck/Mixto/Todas: se opera igual que en /beck/funnel (mismo
-        // componente, mismos endpoints, permisos, validaciones/bloqueos y
-        // drag&drop), embebido con su filtro fijado desde aqui. Ver
-        // FunnelPageProps.embedUnidadNegocio en src/pages/beck/Funnel.tsx.
         <React.Suspense
           fallback={
             <div className="flex justify-center py-16">

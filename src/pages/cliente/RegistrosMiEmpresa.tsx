@@ -236,7 +236,6 @@ const getErrorMessage = (err: unknown): string => {
   return "Error desconocido.";
 };
 
-// ── Modal configuración vista cliente ─────────────────────────────────────────
 
 interface ConfigVistaModalProps {
   open: boolean;
@@ -410,7 +409,6 @@ const ConfigVistaModal: React.FC<ConfigVistaModalProps> = ({
   );
 };
 
-// ── Componente principal ──────────────────────────────────────────────────────
 
 const RegistrosMiEmpresa: React.FC = () => {
   const { user } = useAuth();
@@ -451,10 +449,8 @@ const RegistrosMiEmpresa: React.FC = () => {
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
   const [filtroFechas, setFiltroFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
-  // Modal configuración vista
   const [configModalOpen, setConfigModalOpen] = useState(false);
 
-  // Tabs de "Vista Cliente" (solo admin/interno): Registros vs. Itemizado de la obra
   const [activeTab, setActiveTab] = useState<"registros" | "itemizado">("registros");
 
   const apiParams = necesitaSelector
@@ -547,7 +543,6 @@ const RegistrosMiEmpresa: React.FC = () => {
         console.log("COLUMNAS CONFIGURABLES FINAL", data.columnasConfigurables);
         console.log("REGISTROS FINAL primer registro", data.registros?.[0]);
         setRegistros(data.registros);
-        // Estado/Acciones always hardcoded at the end — filter them from dynamic columns regardless of source.
         const esFija = (c: ClienteRegistroColumna) =>
           COLUMNAS_FIJAS_KEYS.has(getColumnaKey(c).toLowerCase());
         const colsToUse = (
@@ -565,7 +560,6 @@ const RegistrosMiEmpresa: React.FC = () => {
         setLoadingRegistros(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [clienteSeleccionadoId]
   );
 
@@ -595,8 +589,6 @@ const RegistrosMiEmpresa: React.FC = () => {
           )
         );
         void message.success("Registro validado correctamente. El PDF firmado ya está disponible.");
-        // Cierra el modal y refresca: la fila de la tabla ya quedó actualizada
-        // arriba; al reabrir el detalle se usará ese dato ya refrescado.
         setDetalle(null);
       } catch (err) {
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -618,9 +610,6 @@ const RegistrosMiEmpresa: React.FC = () => {
     [detalle]
   );
 
-  // Abre el PDF firmado a través del endpoint seguro del backend (valida
-  // autenticación y acceso a la obra) en vez de navegar directo a la URL de
-  // Cloudinary guardada en pdfFirmadoUrl.
   const abrirPdfFirmado = useCallback(async (registroId: string) => {
     setAbriendoPdfId(registroId);
     try {
@@ -647,9 +636,6 @@ const RegistrosMiEmpresa: React.FC = () => {
     [registros, selectedRowKeys]
   );
 
-  // Firma masiva: la selección puede ser mixta (pendientes + ya firmados). Se
-  // firman solo los pendientes y los ya firmados se omiten sin tocarlos —
-  // misma clasificación que aplica el backend (validadoCliente).
   const registrosPendientesSeleccionados = useMemo(
     () => registrosSeleccionados.filter((r) => !r.validadoCliente),
     [registrosSeleccionados]
@@ -661,8 +647,6 @@ const RegistrosMiEmpresa: React.FC = () => {
 
   const confirmarFirmaMasiva = useCallback(
     async (firma: { pathData: string; canvasWidth: number; canvasHeight: number }) => {
-      // Solo se envían los IDs pendientes: los ya firmados en la selección se
-      // omiten localmente y nunca viajan en el request.
       const ids = registrosPendientesSeleccionados.map((r) => r.id);
       if (ids.length === 0) return;
       setProcesandoFirmaMasiva(true);
@@ -701,9 +685,6 @@ const RegistrosMiEmpresa: React.FC = () => {
           setFirmaMasivaOpen(false);
         } else {
           void message.warning(resumen);
-          // Deja seleccionados solo los que realmente fallaron (condición de
-          // carrera), para poder reintentar sin tener que volver a marcar los
-          // que ya se firmaron u omitir de nuevo los que ya estaban firmados.
           setSelectedRowKeys(resultado.fallidos.map((f) => f.id));
           setFirmaMasivaOpen(false);
         }
@@ -726,10 +707,6 @@ const RegistrosMiEmpresa: React.FC = () => {
     [registrosPendientesSeleccionados]
   );
 
-  // Igual patrón que abrirPdfFirmado: abre el PDF consolidado en una pestaña
-  // nueva vía blob + URL temporal, en vez de forzar una descarga con <a
-  // download>. Así el usuario decide desde el visor del navegador si lo
-  // guarda, imprime o solo lo revisa.
   const handleVerPdfConsolidado = useCallback(async () => {
     const ids = registrosSeleccionados.map((r) => r.id);
     if (ids.length === 0) return;
@@ -811,10 +788,8 @@ const RegistrosMiEmpresa: React.FC = () => {
     return dashboard;
   }, [dashboard, obras, listoParaCargar, loadingDash]);
 
-  // Configuración vista efectiva (desde dashboard o defaults)
   const cfg = kpisEfectivos?.configuracionVista;
 
-  // fetchConfig y saveConfig según contexto (general o por empresa)
   const fetchConfig = useCallback(async (): Promise<VistaClienteConfigItem[]> => {
     if (clienteSeleccionadoId) {
       const result = await vistaClienteConfigAPI.getCliente(clienteSeleccionadoId);
@@ -841,7 +816,6 @@ const RegistrosMiEmpresa: React.FC = () => {
 
   const handleConfigGuardado = useCallback(
     (items: VistaClienteConfigItem[]) => {
-      // Actualiza la configuración en el dashboard local sin recargar todo
       setDashboard((prev) =>
         prev ? { ...prev, configuracionVista: items } : prev
       );
@@ -849,12 +823,10 @@ const RegistrosMiEmpresa: React.FC = () => {
     []
   );
 
-  // Título del botón y modal según contexto
   const configBtnLabel = clienteSeleccionadoId
     ? "Configurar vista de esta empresa"
     : "Configurar vista general";
 
-  // ── Columnas tabla obras (simplificadas) ──
   const columnasObras: ColumnsType<ClienteObraResumen> = [
     {
       title: "Nombre",
@@ -879,7 +851,6 @@ const RegistrosMiEmpresa: React.FC = () => {
     },
   ];
 
-  // ── Columnas tabla registros ──
   const visibleRegistroColumns = useMemo<VisibleRegistroColumn[]>(() => {
     console.log("COLUMNAS DINAMICAS RENDER - columnasRegistro state", columnasRegistro);
     return columnasRegistro.reduce<VisibleRegistroColumn[]>((acc, columna) => {
@@ -942,9 +913,6 @@ const RegistrosMiEmpresa: React.FC = () => {
                 loading={validandoRegistroId === record.id}
                 onClick={(event) => {
                   event.stopPropagation();
-                  // Siempre abre el detalle primero (paso 1) — la firma solo se
-                  // alcanza tras revisar el detalle y presionar "Validar con firma"
-                  // dentro del modal único.
                   setDetalle(record);
                 }}
               >
@@ -969,8 +937,6 @@ const RegistrosMiEmpresa: React.FC = () => {
           }
 
           if (record.validadoCliente) {
-            // Anomalía: quedó validado pero sin PDF (ej. registro validado
-            // antes de existir esta funcionalidad) — nunca dejar la celda vacía.
             return (
               <Tag color="warning" title="Este registro fue validado pero no tiene un PDF firmado asociado.">
                 Sin PDF firmado
@@ -1087,7 +1053,6 @@ const RegistrosMiEmpresa: React.FC = () => {
     </div>
   );
 
-  // ── Vista: detalle de obra con registros ──
   const registrosBody = obraSeleccionada ? (
       <div className="w-full min-w-0 space-y-4">
         <div className="flex items-center gap-3">

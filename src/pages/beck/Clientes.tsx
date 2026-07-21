@@ -47,7 +47,6 @@ import { regionesComunasChile } from "../../data/regionesComunasChile";
 const { Option } = Select;
 const { Text, Title } = Typography;
 
-// ── Validación RUT chileno ────────────────────────────────────────────────────
 
 const validarRut = (rut: string): boolean => {
   const clean = rut.replace(/\./g, "").replace(/-/g, "").trim().toUpperCase();
@@ -67,7 +66,6 @@ const formatRut = (raw: string): string => {
   return `${body}-${dv}`;
 };
 
-// ── Constantes ────────────────────────────────────────────────────────────────
 
 const TIPOS_CLIENTE = [
   { value: "EMPRESA", label: "Empresa" },
@@ -86,7 +84,6 @@ const ORIGENES = [
 
 
 
-// ── Extrae mensaje real del backend desde errores Axios ──────────────────────
 
 const extractBackendMsg = (err: unknown, fallback: string): string => {
   const e = err as {
@@ -101,7 +98,6 @@ const extractBackendMsg = (err: unknown, fallback: string): string => {
   );
 };
 
-// ── Tipos locales ─────────────────────────────────────────────────────────────
 
 interface OportunidadResumen {
   id: string;
@@ -117,39 +113,33 @@ interface OportunidadResumen {
 
 type FiltroActivo = "todos" | "activos" | "inactivos";
 
-// ── Componente principal ──────────────────────────────────────────────────────
 
 const Clientes: React.FC = () => {
   const { canEdit } = usePermisos();
   const isReadOnly = !canEdit("beck_clientes");
 
-  // Lista
   const [clientes, setClientes] = useState<ClienteBeck[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [filtroActivo, setFiltroActivo] = useState<FiltroActivo>("activos");
 
-  // Modal crear/editar cliente
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<ClienteBeck | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [regionSeleccionada, setRegionSeleccionada] = useState<string>("");
   const [form] = Form.useForm<ClienteBeckPayload>();
 
-  // Drawer detalle
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<ClienteBeck | null>(null);
   const [contactos, setContactos] = useState<ContactoClienteBeck[]>([]);
   const [oportunidades, setOportunidades] = useState<OportunidadResumen[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Modal contacto
   const [contactoModalOpen, setContactoModalOpen] = useState(false);
   const [editingContacto, setEditingContacto] = useState<ContactoClienteBeck | null>(null);
   const [contactoLoading, setContactoLoading] = useState(false);
   const [contactoForm] = Form.useForm<ContactoClienteBeckPayload>();
 
-  // Modal importar
   const [importarModalOpen, setImportarModalOpen] = useState(false);
   const [importarFile, setImportarFile] = useState<File | null>(null);
   const [importarFileList, setImportarFileList] = useState<UploadFile[]>([]);
@@ -157,7 +147,6 @@ const Clientes: React.FC = () => {
   const [resultadoImportar, setResultadoImportar] = useState<ImportarClientesResult | null>(null);
   const [resultadoModalOpen, setResultadoModalOpen] = useState(false);
 
-  // ── Fetch helpers ─────────────────────────────────────────────────────────
 
   const fetchClientes = useCallback(
     async (params: { q?: string; activo?: boolean } = {}) => {
@@ -194,7 +183,6 @@ const Clientes: React.FC = () => {
     void fetchClientes({ activo: true });
   }, [fetchClientes]);
 
-  // ── Builders de params ───────────────────────────────────────────────────
 
   const buildParams = (q: string, filtro: FiltroActivo) => {
     const params: { q?: string; activo?: boolean } = {};
@@ -204,7 +192,6 @@ const Clientes: React.FC = () => {
     return params;
   };
 
-  // ── Handlers lista ────────────────────────────────────────────────────────
 
   const handleBuscar = () =>
     void fetchClientes(buildParams(searchInput, filtroActivo));
@@ -218,7 +205,6 @@ const Clientes: React.FC = () => {
     if (e.key === "Enter") handleBuscar();
   };
 
-  // ── Handlers modal cliente ────────────────────────────────────────────────
 
   const abrirCrear = () => {
     setEditingCliente(null);
@@ -285,7 +271,6 @@ const Clientes: React.FC = () => {
     }
   };
 
-  // ── Handlers detalle ──────────────────────────────────────────────────────
 
   const abrirDetalle = (cliente: ClienteBeck) => {
     setSelectedCliente(cliente);
@@ -295,7 +280,6 @@ const Clientes: React.FC = () => {
     void fetchDetalle(cliente.id);
   };
 
-  // ── Handlers contactos ────────────────────────────────────────────────────
 
   const abrirAgregarContacto = (cliente?: ClienteBeck) => {
     if (cliente) {
@@ -357,7 +341,6 @@ const Clientes: React.FC = () => {
     }
   };
 
-  // ── Handlers importar ─────────────────────────────────────────────────────
 
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new();
@@ -393,7 +376,6 @@ const Clientes: React.FC = () => {
     }
   };
 
-  // ── Columnas tabla principal ──────────────────────────────────────────────
 
   const columns: ColumnsType<ClienteBeck> = [
     {
@@ -544,7 +526,6 @@ const Clientes: React.FC = () => {
     },
   ];
 
-  // ── Columnas contactos ────────────────────────────────────────────────────
 
   const contactoColumns: ColumnsType<ContactoClienteBeck> = [
     {
@@ -632,7 +613,6 @@ const Clientes: React.FC = () => {
     }] : []),
   ];
 
-  // ── Columnas oportunidades ────────────────────────────────────────────────
 
   const oppsColumns: ColumnsType<OportunidadResumen> = [
     {
@@ -689,7 +669,6 @@ const Clientes: React.FC = () => {
     },
   ];
 
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-4 w-full min-w-0">

@@ -7,7 +7,6 @@ import type { EstadoPreparacionItemizado } from "../services/api";
 
 const { Title, Text } = Typography;
 
-// Coincide con ConfiguracionItemizadoOpcionObra.nombrePersonalizado @db.VarChar(255)
 const NOMBRE_MAX_LENGTH = 255;
 
 export type ItemizadoClienteRow = {
@@ -38,18 +37,13 @@ export type ItemizadoClienteViewProps = {
   modo: "cliente" | "preview";
   obraNombre?: string | null;
   obraCodigo?: string | null;
-  // null mientras no se ha cargado nada aún (obra sin seleccionar / carga inicial)
   estado: EstadoPreparacionItemizado | null;
   itemizados: ItemizadoClienteRow[];
   loading: boolean;
   error?: string | null;
-  // Cambia cuando el dataset proviene de una fuente distinta (obra/estado) —
-  // resetea la edición local en curso para evitar arrastrar ediciones de una
-  // obra a otra que comparta el mismo itemizadoOpcionId (catálogo global).
   resetKey: string;
   confirmadoAt?: string | null;
   confirmadoPor?: { nombre?: string | null; email?: string | null } | null;
-  // Solo aplican en modo "cliente"; si no vienen, la tabla queda de solo lectura.
   onGuardarCambios?: (cambios: ItemizadoClienteCambio[]) => Promise<ItemizadoClienteGuardarResultado>;
   onConfirmar?: () => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
@@ -131,15 +125,12 @@ const ItemizadoClienteView: React.FC<ItemizadoClienteViewProps> = ({
     setEdiciones((prev) => ({ ...prev, [id]: { ...prev[id], seleccionadoPorCliente: checked } }));
   };
 
-  // Devuelve true si guardó todo sin errores (para encadenar con la confirmación).
   const handleGuardar = async (): Promise<boolean> => {
     if (!onGuardarCambios || filasModificadas.length === 0 || guardando) return true;
     setGuardando(true);
     try {
       const resultado = await onGuardarCambios(filasModificadas);
 
-      // Solo se limpian del estado local las filas que sí se guardaron: las
-      // fallidas conservan lo escrito por el cliente para poder reintentar.
       setEdiciones((prev) => {
         const next = { ...prev };
         resultado.exitosos.forEach((id) => delete next[id]);

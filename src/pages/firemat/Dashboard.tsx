@@ -122,7 +122,6 @@ type VentasMesState =
 
 const FirematDashboard: React.FC = () => {
   const { canView } = usePermisos();
-  // Comercial: tiene cotizaciones o funnel o ventas — bodeguero puro: solo inventario/movimientos
   const esComercial =
     canView("firemat_cotizaciones") || canView("firemat_funnel") || canView("firemat_ventas");
   const esBodeguero = !esComercial;

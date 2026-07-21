@@ -11,7 +11,6 @@ type FunnelFirematCalendarioProps = {
   onOpenDetail: (oportunidad: FirematFunnelOportunidad) => Promise<void> | void;
 };
 
-// fechaCierre no está en el tipo oficial pero puede llegar del backend en etapas cerradas
 type OportunidadConFechaCierre = FirematFunnelOportunidad & {
   fechaCierre?: string | null;
 };

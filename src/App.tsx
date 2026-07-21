@@ -17,7 +17,6 @@ import SessionWatcher from "./components/SessionWatcher";
 import AuthCallback from "./pages/AuthCallback";
 import Login from "./pages/Login";
 
-// Beck pages
 import {
   BeckDashboard,
   BeckFunnel,
@@ -34,7 +33,6 @@ import {
   BeckPermisos,
 } from "./pages/beck";
 
-// Firemat pages
 import {
   FirematDashboard,
   FirematFunnel,
@@ -57,7 +55,6 @@ import {
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
-import ClienteItemizadoObra from "./pages/cliente/ItemizadoObra";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import { usePermisos } from "./hooks/usePermisos";
@@ -216,7 +213,6 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (["/" , "/login", "/auth/callback"].includes(pathname)) return true;
   if (pathname === ACCESS_DENIED_PATH) return true;
 
-  // Legacy redirects — always passthrough (they redirect internally)
   if (
     pathname === "/dashboard" ||
     pathname === "/dashboard/funnel" ||
@@ -232,7 +228,6 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
     return true;
   }
 
-  // Beck routes
   if (pathname === "/beck/dashboard") return access.dashboard;
   if (pathname === "/beck/funnel") return access.funnel;
   if (pathname === "/beck/registro") return access.registro;
@@ -267,7 +262,6 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname.startsWith("/trager/")) return access.firemat;
 
   if (pathname === "/cliente/registros-mi-empresa") return access.clienteRegistros;
-  if (pathname === "/cliente/itemizado-obra") return access.clienteRegistros;
   if (pathname.startsWith("/cliente/")) return access.clienteRegistros;
 
   return true;
@@ -307,7 +301,6 @@ const BECK_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/beck/funnel": "beck_funnel",
   "/beck/clientes": "beck_clientes",
   "/cliente/registros-mi-empresa": "beck_vista_cliente",
-  "/cliente/itemizado-obra": "beck_vista_cliente",
   "/beck/usuarios-parametros": "beck_usuarios_parametros",
   "/beck/permisos": "beck_usuarios_parametros",
   "/beck/configuracion-validacion": "beck_reglas_validacion",
@@ -360,11 +353,6 @@ const PermisosGate: React.FC<PermisosGateProps> = ({
   permisosReady: pathValidated,
   children,
 }) => {
-  // permisosReady (context) = permisos loaded at least once (permisos !== null)
-  // pathValidated (prop)    = permisosValidPath === location.pathname
-  // Both must be true before we can evaluate canView; do NOT block on
-  // refreshingPermisos — that would cause an infinite hang when the path-validation
-  // effect resolves early (loadingRef guard) while a parallel fetch is still running.
   const { canView, permisosReady: permisosLoaded } = usePermisos();
 
   if (!pathValidated || !permisosLoaded) {
@@ -392,12 +380,6 @@ const AppShell: React.FC = () => {
   const { user, login, logout } = useAuth();
   const { canView, refreshPermisos, permisosReady: permisosLoaded } = usePermisos();
 
-  // Tracks the path for which permisos have been validated.
-  // Initialized to the current path so initial page load shows content immediately.
-  // On navigation, location.pathname differs from permisosValidPath until refresh completes,
-  // which is what PermisosGate uses to show the fallback and prevent the flash.
-  // Path for which permisos have been validated. Differs from location.pathname
-  // during navigation, causing PermisosGate to show a fallback instead of the page.
   const [permisosValidPath, setPermisosValidPath] = useState(location.pathname);
 
   const access = useMemo(
@@ -408,12 +390,10 @@ const AppShell: React.FC = () => {
     if (!user) return "/login";
     if (isCrmBlockedRole(user.rol)) return ACCESS_DENIED_PATH;
 
-    // Admin and Cliente keep static routing
     if (user.rol === "Administrador" || user.rol === "Cliente") {
       return getHomeRouteForRole(user.rol);
     }
 
-    // All other roles: fall back to static until permisos load
     if (!permisosLoaded) return getHomeRouteForRole(user.rol);
 
     const isFirematRole =
@@ -441,7 +421,6 @@ const AppShell: React.FC = () => {
       return "/login";
     }
 
-    // Beck roles: find first accessible module
     const BECK_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
       { route: "/beck/dashboard", modulo: "beck_dashboard" },
       { route: "/beck/procesamiento-ingenieria", modulo: "beck_procesamiento_ingenieria" },
@@ -498,7 +477,6 @@ const AppShell: React.FC = () => {
         navigate(homeRoute, { replace: true });
         return;
       }
-      // /beck/permisos is Admin-only regardless of canView("beck_usuarios_parametros")
       if (location.pathname === "/beck/permisos" && user.rol !== "Administrador") {
         navigate(homeRoute, { replace: true });
         return;
@@ -519,7 +497,6 @@ const AppShell: React.FC = () => {
       }
       return;
     }
-    // For remaining routes (Cliente, legacy), use role-based access.
     if (!canAccessPath(location.pathname, access)) {
       navigate(homeRoute, { replace: true });
     }
@@ -527,8 +504,6 @@ const AppShell: React.FC = () => {
 
   useEffect(() => {
     const currentPath = location.pathname;
-    // cancelled is set to true by the cleanup when this effect re-runs (new path/user),
-    // preventing a stale async IIFE from overwriting permisosValidPath with an old path.
     let cancelled = false;
 
     console.log("refresh permisos start", currentPath);
@@ -536,7 +511,6 @@ const AppShell: React.FC = () => {
     console.log("pathname", location.pathname);
 
     if (!user) {
-      // No user: mark path as validated immediately so the gate never hangs.
       setPermisosValidPath(currentPath);
       return;
     }
@@ -548,7 +522,6 @@ const AppShell: React.FC = () => {
         console.error("Error refrescando permisos", error);
       } finally {
         console.log("refresh permisos finally", currentPath);
-        // Only update if this effect instance is still the latest one.
         if (!cancelled) {
           setPermisosValidPath(currentPath);
         }
@@ -626,7 +599,6 @@ const AppShell: React.FC = () => {
     );
   }
 
-  // firematRoute kept only for configuracion-validacion which has no dedicated PermisosGate modulo
   const firematRoute = (flag: boolean, element: React.ReactElement) =>
     flag ? element : <Navigate to={homeRoute} replace />;
 
@@ -643,8 +615,6 @@ const AppShell: React.FC = () => {
   const showBeckBell = canSeeBeck && !inFiremat && !inTrager;
   const showFirematBell = canSeeFiremat && inFiremat && !inBeck && !inCliente;
 
-  // En los Funnels la campana va embebida en el header de la página (pasada como prop).
-  // En el resto de páginas del módulo se muestra en un strip no-fixed en el Content.
   const bellBeck = showBeckBell ? <AlertasBeckBell /> : null;
   const bellFiremat = showFirematBell ? <AlertasFirematBell /> : null;
 
@@ -991,15 +961,6 @@ const AppShell: React.FC = () => {
                     </PermisosGate>
                   }
                 />
-                <Route
-                  path="/cliente/itemizado-obra"
-                  element={
-                    <PermisosGate modulo="beck_vista_cliente" homeRoute={homeRoute} permisosReady={permisosReady}>
-                      <ClienteItemizadoObra />
-                    </PermisosGate>
-                  }
-                />
-
                 <Route path="*" element={<Navigate to={homeRoute} replace />} />
               </Routes>
             </div>

@@ -38,9 +38,6 @@ export const PermisosProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const canView = useCallback(
     (modulo: ModuloBeck): boolean => {
-      // Only fall back to true during initial load (permisos === null).
-      // During a refresh, permisos holds the previous data — use it instead of
-      // returning true for everything, which would flash restricted modules.
       if (!permisos || !Array.isArray(permisos)) return true;
       const entry = permisos.find((p) => p.modulo === modulo);
       if (!entry) return true;
@@ -65,7 +62,6 @@ export const PermisosProvider: React.FC<{ children: ReactNode }> = ({ children }
       loading,
       loadingPermisos: loading,
       refreshingPermisos,
-      // true once the first fetch has resolved (permisos is no longer null)
       permisosReady: permisos !== null,
       canView,
       canEdit,

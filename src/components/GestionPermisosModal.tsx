@@ -83,7 +83,6 @@ const GestionPermisosModal: React.FC<Props> = ({ open, onClose }) => {
   const [usuariosRol, setUsuariosRol] = useState<UsuarioConOverride[]>([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
 
-  // Exception modal state
   const [excepcionUsuario, setExcepcionUsuario] = useState<UsuarioApi | null>(null);
   const [excepcionDetalle, setExcepcionDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
   const [excepcionPermisos, setExcepcionPermisos] = useState<PermisoModulo[]>([]);

@@ -138,7 +138,6 @@ const MASTER_CAMPO_ORDER: string[] = [
 ];
 const masterCampoIndex = new Map(MASTER_CAMPO_ORDER.map((k, i) => [k, i]));
 
-// Label overrides applied only when role === "cliente"
 const clienteCampoLabels: Record<string, string> = {
   holgura: "Separación (cm)",
   factor_por_holguras: "Factor por separación",
@@ -208,15 +207,11 @@ const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
 const textFrom = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
-// Maps stripped keys (lowercase, no underscores/spaces/special chars) to canonical snake_case.
-// Handles both camelCase (codigoBeck) and snake_case (codigo_beck) since stripping "_" yields
-// the same key for both variants.
 const CAMPO_ALIAS_MAP: Record<string, string> = {
   codigobeck: "codigo_beck",
   itemizadobeck: "itemizado_beck",
   itemizadomandante: "itemizado_mandante",
   fechaejecucionsello: "fecha_ejecucion_sello",
-  // dia / dia_semana / diaSemana all canonicalize to "diaSemana"
   dia: "diaSemana",
   diasemana: "diaSemana",
   ejealfabetico: "eje_alfabetico",
@@ -224,11 +219,8 @@ const CAMPO_ALIAS_MAP: Record<string, string> = {
   nombresellador: "nombre_sellador",
   numerosello: "numero_sello",
   cantidadsellos: "cantidad_sellos",
-  // separacion_cm / separacionCm are aliases for holgura (same concept, different name)
   separacioncm: "holgura",
-  // factor_separacion / factorSeparacion are aliases for factor_por_holguras
   factorseparacion: "factor_por_holguras",
-  // accesibilidad_cielo_modular variants all canonicalize to "accesibilidad"
   accesibilidadcielomodular: "accesibilidad",
   cantidadsellosconfactores: "cantidad_sellos_con_factores",
   cantidadsellosaislacion: "cantidad_sellos_aislacion",
@@ -249,7 +241,6 @@ const normalizeCampoText = (value: unknown): string =>
 const normalizeCampoKey = (value: unknown): string => {
   const raw = textFrom(value);
   if (!raw) return "";
-  // Alias lookup covers camelCase and snake_case variants via stripped key
   const fromAlias = CAMPO_ALIAS_MAP[raw.toLowerCase().replace(/[^a-z0-9]/g, "")];
   if (fromAlias) return fromAlias;
   const normalized = normalizeCampoText(value);
@@ -361,7 +352,6 @@ const withCatalogFields = (
         })
       ),
   ];
-  // Dedup by normalized campo key — keeps first occurrence (backend state wins over catalog default)
   const seen = new Set<string>();
   const deduped = merged.filter((field) => {
     if (seen.has(field.campo)) return false;

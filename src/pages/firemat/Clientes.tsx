@@ -372,7 +372,6 @@ const ClientesFiremat: React.FC = () => {
     }
   };
 
-  // ── Columnas tabla principal ──────────────────────────────────────────────
 
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new();
@@ -605,7 +604,6 @@ const ClientesFiremat: React.FC = () => {
     }] : []),
   ];
 
-  // ── Columnas contactos ────────────────────────────────────────────────────
 
   const contactoColumns: ColumnsType<ContactoClienteFiremat> = [
     {
@@ -693,7 +691,6 @@ const ClientesFiremat: React.FC = () => {
     }] : []),
   ];
 
-  // ── Columnas oportunidades ────────────────────────────────────────────────
 
   const oppsColumns: ColumnsType<OportunidadFiremat> = [
     {
@@ -751,7 +748,6 @@ const ClientesFiremat: React.FC = () => {
     },
   ];
 
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-4 w-full min-w-0">

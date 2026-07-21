@@ -25,9 +25,6 @@ const getErrorMessage = (err: unknown, fallback: string): string => {
   return fallback;
 };
 
-// Vista previa de solo lectura para el administrador: reutiliza los
-// endpoints internos ya existentes (nunca /api/cliente/...) porque esos
-// exigen rol cliente y rechazarían al administrador.
 const ItemizadoPreviewPanel: React.FC<Props> = ({ clienteSeleccionadoId, obras, loadingObras }) => {
   const [obraId, setObraId] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
@@ -50,9 +47,6 @@ const ItemizadoPreviewPanel: React.FC<Props> = ({ clienteSeleccionadoId, obras, 
     setLoading(true);
     setError(null);
     try {
-      // Misma fuente que ve el cliente (itemizados propuestos + selección),
-      // no la lista de "visibles" — la vista previa debe reflejar exactamente
-      // lo que el cliente verá antes de confirmar.
       const { obra, data } = await itemizadoOpcionesAPI.obtenerPropuestaObra(id);
       setEstado(obra.estadoPreparacionItemizado ?? "PREPARACION");
       setConfirmadoAt(obra.itemizadoFinalizadoAt ?? null);

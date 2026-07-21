@@ -145,9 +145,6 @@ const filtrarObrasPorClienteBeck = (
   return obras.filter((obra) => obra.clienteBeckId === clienteBeckId);
 };
 
-// Campo sin render propio: solo mantiene "obraIds" registrado en el Form (para que
-// validateFields/getFieldsValue lo incluyan), mientras el Select y los chips debajo
-// se manejan a mano vía form.setFieldValue.
 const HiddenObraIdsField: React.FC<{ value?: string[]; onChange?: (value: string[]) => void }> = () => null;
 
 const ObrasClienteSelector: React.FC<{
@@ -299,8 +296,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
   useEffect(() => {
     if (empresa !== "beck") return;
-    // Solo Administrador puede crear/editar usuarios de rol "cliente" y necesita la lista de clientes Beck.
-    // Otros roles (JefeObra, Ingeniería, etc.) no tienen ese acceso y el endpoint devolvería 403.
     if (currentUser?.rol !== "Administrador") return;
     let isMounted = true;
 
@@ -349,12 +344,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     setObras([]);
   };
 
-  // Estos efectos solo cargan las OPCIONES (obrasCliente/editObrasCliente) cuando hay
-  // un Cliente Beck seleccionado. Nunca deben limpiar el valor "obraIds" del formulario:
-  // esa limpieza ya la hace explicitamente handleClienteBeckChange cuando el admin cambia
-  // el Cliente Beck, y hacerlo tambien aqui de forma reactiva corre el riesgo de disparar
-  // con un "createClienteBeckId"/"editClienteBeckId" (Form.useWatch) que aun no reflejo
-  // el ultimo form.setFieldsValue, borrando una seleccion recien cargada al abrir "Editar".
   useEffect(() => {
     if (empresa !== "beck" || !createOpen || createRol !== "cliente" || !createClienteBeckId) {
       return;
@@ -403,7 +392,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   };
   const [createClienteMode, setCreateClienteMode] = useState(false);
 
-  // ── Permisos modal ──────────────────────────────────────────────────────────
   const [permisosUsuario, setPermisosUsuario] = useState<UsuarioApi | null>(null);
   const [permisosData, setPermisosData] = useState<PermisoModulo[]>([]);
   const [permisosDetalle, setPermisosDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
@@ -581,8 +569,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       }
     }
     const clienteBeckId = usuarioDetalle.clienteBeckId ?? undefined;
-    // usuarioDetalle.obraIds/obras ya vienen completos (sin filtrar por estado) desde
-    // usuariosAPI.obtener(id) — son la fuente de verdad de las obras asignadas.
     const obraIds = usuarioDetalle.obraIds ?? usuarioDetalle.obras?.map((obra) => obra.id) ?? [];
     const obrasAsignadas = usuarioDetalle.obras ?? [];
     let obrasParaOpciones: ObraClienteBeckResumen[] = [];
@@ -591,8 +577,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
       try {
         const obrasDisponibles = await obrasAPI.listar({ activa: true });
         const obrasActivasDelCliente = filtrarObrasPorClienteBeck(obrasDisponibles, clienteBeckId);
-        // Mostrar como opciones seleccionables las obras activas del Cliente Beck,
-        // mas cualquier obra ya asignada (aunque no este "activa") para no perder la seleccion.
         const obrasMap = new Map(obrasActivasDelCliente.map((obra) => [obra.id, obra]));
         for (const obra of obrasAsignadas) {
           if (!obrasMap.has(obra.id)) obrasMap.set(obra.id, obra);
@@ -998,7 +982,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               if (!record.clienteBeckId) {
                 return <span className="text-xs text-slate-400">Sin Cliente Beck</span>;
               }
-              // Prefer embedded object (always available), fall back to admin map
               const embedded = record.clienteBeck;
               const fromMap = clientesBeckById.get(record.clienteBeckId);
               const label = embedded

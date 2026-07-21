@@ -6,8 +6,6 @@ import { alertasAPI, type AlertaFiremat } from "../services/api";
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const NOTIFICATION_KEY = "alertas-firemat-session";
 
-// Runtime-only memory: lives in the JS module, wiped on page reload / F5.
-// Survives React navigation (module is not re-evaluated on route changes).
 const notifiedInSession = new Set<string>();
 
 interface AlertasState {

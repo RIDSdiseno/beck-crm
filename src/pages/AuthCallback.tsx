@@ -1,4 +1,3 @@
-//authcallback
 import React, { useEffect } from "react";
 import type { AuthUser } from "../context/authContext";
 import {
@@ -118,7 +117,6 @@ const AuthCallback: React.FC = () => {
 
         window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
 
-        // Determinar empresa activa
         let empresa: "beck" | "firemat";
         if (empresaDefaultParam === "beck" || empresaDefaultParam === "firemat") {
           empresa = empresaDefaultParam;

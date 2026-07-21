@@ -1,5 +1,3 @@
-// src/types/crm.ts
-// Entidades base del CRM para proyectos y servicios de proteccion pasiva.
 
 export type TipoCliente =
   | "Constructora"

@@ -1,4 +1,3 @@
-// src/components/RegistroDetalleModal.tsx
 import React, { useEffect } from "react";
 import { Alert, Button, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
 import {
@@ -66,12 +65,6 @@ type RegistroDetalleModalProps = {
   showRendimientoIndividual?: boolean;
 };
 
-// "Validado" y "Rechazado" se eliminaron deliberadamente de este selector
-// genérico: esas transiciones exigen que el registro esté en "en_revision"
-// (regla que ahora también aplica el backend en PUT /registros/:id) y deben
-// hacerse únicamente desde los botones dedicados de Procesamiento
-// Ingeniería ("Validar"/"Rechazar"), que además dejan el rastro correcto en
-// procesamiento_ingenieria.
 const estadoOptions = [
   { label: "Pendiente", value: "pendiente" },
   { label: "En revisión", value: "en_revision" },
@@ -106,7 +99,6 @@ const getEstadoLabel = (estado?: string): string => {
   return "Pendiente";
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotoUrl = (foto: any): string | null => {
   if (!foto) return null;
 
@@ -132,7 +124,6 @@ const getFotoUrl = (foto: any): string | null => {
   return null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotosRegistro = (record: any): string[] => {
   const raw = [
     ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),

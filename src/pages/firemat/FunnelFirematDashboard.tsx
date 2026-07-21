@@ -101,9 +101,7 @@ const PIE_COLORS = [FIREMAT_PRIMARY, "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6",
 const BAR_CANTIDAD = "#6366f1";
 const BAR_MONTO = FIREMAT_PRIMARY;
 
-// ── Helpers ───────────────────────────────────────────────────
 
-// Normaliza porEtapa: acepta montoClp o monto como nombre del campo
 const normalizePorEtapa = (
   raw: Record<string, Record<string, unknown>> | null | undefined
 ): Record<string, { cantidad: number; montoClp: number }> => {
@@ -120,7 +118,6 @@ const normalizePorEtapa = (
   return result;
 };
 
-// Normaliza ranking: acepta responsable o vendedor como campo principal
 const normalizeRanking = (
   raw: unknown[]
 ): FirematDashboardResponsable[] => {
@@ -140,7 +137,6 @@ const normalizeRanking = (
   });
 };
 
-// Normaliza items sin seguimiento: acepta múltiples nombres de campo
 const normalizeSinSeg = (raw: unknown[]): FirematDashboardSinSeguimientoItem[] => {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -158,7 +154,6 @@ const normalizeSinSeg = (raw: unknown[]): FirematDashboardSinSeguimientoItem[] =
   });
 };
 
-// Normaliza items de riesgo
 const normalizeRiesgoItems = (raw: unknown[]): FirematDashboardRiesgoItem[] => {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -175,7 +170,6 @@ const normalizeRiesgoItems = (raw: unknown[]): FirematDashboardRiesgoItem[] => {
   });
 };
 
-// ── Small reusable components ─────────────────────────────────
 
 type KpiCardProps = {
   label: string;
@@ -219,7 +213,6 @@ const EmptyMsg: React.FC<{ text?: string }> = ({ text = "Sin datos" }) => (
   <p className="py-6 text-center text-xs text-slate-400">{text}</p>
 );
 
-// ── Sección Prospectos ────────────────────────────────────────
 
 const SeccionProspectos: React.FC<{ d: NonNullable<FirematDashboardData["prospectos"]> }> = ({
   d,
@@ -295,7 +288,6 @@ const SeccionProspectos: React.FC<{ d: NonNullable<FirematDashboardData["prospec
   );
 };
 
-// ── Sección Pipeline Avanzado ─────────────────────────────────
 
 const colsPipelineSimple = (labelKey: string): ColumnsType<Record<string, unknown>> => [
   { title: labelKey, dataIndex: labelKey, key: labelKey, ellipsis: true },
@@ -390,7 +382,6 @@ const SeccionPipeline: React.FC<{
   );
 };
 
-// ── Sección Forecast ──────────────────────────────────────────
 
 const SeccionForecast: React.FC<{ d: NonNullable<FirematDashboardData["forecast"]> }> = ({ d }) => (
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -431,7 +422,6 @@ const SeccionForecast: React.FC<{ d: NonNullable<FirematDashboardData["forecast"
   </div>
 );
 
-// ── Sección Ganadas ───────────────────────────────────────────
 
 const SeccionGanadas: React.FC<{ d: NonNullable<FirematDashboardData["ganadas"]> }> = ({ d }) => {
   const historial = d?.montoGanadoUltimos12Meses ?? [];
@@ -508,7 +498,6 @@ const SeccionGanadas: React.FC<{ d: NonNullable<FirematDashboardData["ganadas"]>
   );
 };
 
-// ── Sección Motivos ───────────────────────────────────────────
 
 const TablaMotivos: React.FC<{
   data: { motivo: string; cantidad: number }[];
@@ -552,7 +541,6 @@ const SeccionMotivos: React.FC<{ d: NonNullable<FirematDashboardData["motivos"]>
   </div>
 );
 
-// ── Sección Riesgo Comercial ──────────────────────────────────
 
 const colsRiesgo = (showUpdatedAt: boolean): ColumnsType<FirematDashboardRiesgoItem> => [
   { title: "Oportunidad", dataIndex: "nombreOportunidad", key: "nombreOportunidad", ellipsis: true },
@@ -651,7 +639,6 @@ const SeccionRiesgo: React.FC<{
   );
 };
 
-// ── Sección Conversión por etapa ──────────────────────────────
 
 const SeccionConversion: React.FC<{
   d: NonNullable<FirematDashboardData["conversionEtapas"]>;
@@ -757,7 +744,6 @@ const SeccionConversion: React.FC<{
   );
 };
 
-// ── Sección Tiempos promedio ──────────────────────────────────
 
 const SeccionTiempos: React.FC<{
   d: NonNullable<FirematDashboardData["tiemposPromedio"]>;
@@ -776,7 +762,6 @@ const SeccionTiempos: React.FC<{
   </div>
 );
 
-// ── Error boundary simple ─────────────────────────────────────
 
 class DashboardErrorBoundary extends React.Component<
   { children: React.ReactNode; onRetry: () => void },
@@ -821,7 +806,6 @@ class DashboardErrorBoundary extends React.Component<
   }
 }
 
-// ── Dashboard principal ───────────────────────────────────────
 
 interface Props {
   responsablesDisponibles?: string[];
@@ -943,7 +927,6 @@ const FunnelFirematDashboard: React.FC<Props> = ({
     setFechaCierreRange([null, null]);
   };
 
-  // Normalizar todos los campos defensivamente
   const data = useMemo(() => {
     if (!rawData) return null;
     return {

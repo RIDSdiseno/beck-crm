@@ -108,7 +108,6 @@
     comuna: string;
     fuenteLead: FunnelLeadSource | "";
     etapa: FunnelStage;
-    // Prospecto
     rutEmpresa: string;
     nombreContacto: string;
     cargoContacto: string;
@@ -116,7 +115,6 @@
     correoContacto: string;
     tipoCliente: string;
     tipoOportunidad: string;
-    // Primer contacto
     fechaPrimerContacto: string;
     tipoContacto: string;
     necesidadDetectada: string;
@@ -125,7 +123,6 @@
     proximaAccion: string;
     fechaProximaAccion: string;
     comentariosPrimerContacto: string;
-    // Visita / levantamiento tecnico
     fechaVisita: string;
     responsableTecnico: string;
     asistentes: string;
@@ -139,7 +136,6 @@
     observacionesTecnicas: string;
     necesidadOficinaTecnica: string;
     proximosPasos: string;
-    // Desarrollo de propuesta
     estadoDesarrolloPropuesta: string;
     informacionPendiente: string;
     documentosRequeridos: string;
@@ -148,19 +144,16 @@
     necesidadValidacionGerencial: string;
     fechaComprometidaEnvio: string;
     comentariosInternos: string;
-    // Propuesta enviada / negociacion
     fechaEnvioPropuesta: string;
     versionPropuesta: string;
     numeroPropuesta: string;
     montoPropuesto: string;
     fechaVencimientoPropuesta: string;
     comentariosCliente: string;
-    // Negociacion
     probabilidadCierre: string;
     objeciones: string;
     contrapropuestas: string;
     ajustesSolicitados: string;
-    // Documentacion de venta
     ordenCompra: string;
     contrato: string;
     correoAceptacion: string;
@@ -179,12 +172,10 @@
     fechaTraspasoAdministracion: string;
     responsableTraspasoAdministracion: string;
     observacionesTraspasoAdministracion: string;
-    // Cierre
     documentoRespaldo: string;
     flujoPosterior: string;
     montoFinalGanado: string;
     fechaCierre: string;
-    // Cliente Beck
     clienteBeckId: string;
     contactoBeckId: string;
     direccionProyecto: string;
@@ -212,9 +203,6 @@
     | "documentacion"
     | "cierre";
 
-  // Orden canónico de las secciones del formulario de oportunidad, igual al
-  // avance real de etapas del Funnel. Usado para calcular "etapa actual +
-  // anteriores" al abrir "Editar" desde el detalle.
   const FUNNEL_EDIT_SECTIONS_ORDER: FunnelEditSection[] = [
     "prospecto",
     "visita",
@@ -302,7 +290,6 @@
     onClose: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
     onFieldChange: (field: keyof FunnelDraft, value: string) => void;
-    // Cliente Beck
     selectedClienteBeck: ClienteBeck | null;
     clienteBeckResults: ClienteBeck[];
     clienteBeckSearching: boolean;
@@ -356,8 +343,6 @@
     cerrada: "Ganada",
   };
 
-  // Columnas reales del Funnel Firemat (mismas etapas y orden que /firemat/funnel),
-  // usadas en el tablero unificado solo cuando Unidad de negocio = Firemat.
   const FIREMAT_COLUMNS: { key: FirematFunnelEtapa; label: string }[] = [
     { key: "PROSPECTO", label: "Prospecto" },
     { key: "PRIMER_CONTACTO", label: "Primer contacto" },
@@ -367,9 +352,6 @@
     { key: "GANADA", label: "Ganada" },
   ];
 
-  // Traduce la columna comun destino (usada solo en modo "Todas") a la etapa
-  // real Firemat al soltar una tarjeta. "negociacion" no tiene equivalente
-  // Firemat (ver mensaje de advertencia en handleDragEnd).
   const ETAPA_COMUN_A_FIREMAT: Partial<Record<string, FirematFunnelEtapa>> = {
     prospecto: "PROSPECTO",
     visita: "PRIMER_CONTACTO",
@@ -661,7 +643,6 @@
       }
     }
 
-    // Validación para oportunidades activas
     const isActive = draft.etapa !== "cerrada";
     if (isActive) {
       if (!draft.proximaAccion.trim()) {
@@ -1740,8 +1721,6 @@
     };
 
     const renderVendedorSelect = () => {
-      // El Select muestra únicamente el nombre (nunca el correo). El correo
-      // solo se usa internamente para poder buscar por él sin mostrarlo.
       const comercialOptions = usuariosComerciales
         .filter((u) => u.nombre || u.email)
         .map((u) => ({
@@ -2021,11 +2000,6 @@
         value: c.id,
         label: `${c.nombre}${c.cargo ? ` — ${c.cargo}` : ""}`,
       }));
-    // Editar desde el detalle pasa editVisibleSections = etapa actual +
-    // anteriores (ver getSectionsUpToStage). Cuando viene seteado, tiene
-    // prioridad exclusiva: no se combina con el formulario completo ni con
-    // el enfoque de sección única de "Rellenar <etapa>" (initialEditSection),
-    // que siguen intactos para sus propios flujos.
     const isRestrictedEdit = mode === "edit" && Array.isArray(editVisibleSections);
     const isFocusedStageEdit = mode === "edit" && !isRestrictedEdit && Boolean(initialEditSection);
     const showFullForm = !isFocusedStageEdit && !isRestrictedEdit;
@@ -3175,7 +3149,6 @@
     );
   };
 
-  // ── Nuevo formato 409: bloqueos + puedeAvanzar: false ───────────────────────
   type BeckBloqueoException = Error & {
     bloqueos: string[];
     advertencias: string[];
@@ -3192,10 +3165,6 @@
   const isBeckBloqueoException = (e: unknown): e is BeckBloqueoException =>
     e instanceof Error && (e as BeckBloqueoException).beckBloqueo === true;
 
-  // El backend puede nombrar estas listas de forma distinta segun el endpoint o
-  // version de la regla (bloqueos/bloqueantes, advertencias/advertenciasCamposCriticos).
-  // Se combinan todas las variantes conocidas para no perder advertencias por un
-  // nombre de campo distinto al esperado.
   const BLOQUEO_KEYS = ["bloqueos", "bloqueantes"];
   const ADVERTENCIA_KEYS = ["advertencias", "advertenciasCamposCriticos"];
 
@@ -3328,9 +3297,6 @@
     const isAdminGlobal = user?.rol === "Administrador";
     const canCambiarEmpresaBeckOperar =
       canView("beck_cambiar_empresa") || canEdit("beck_cambiar_empresa");
-    // Puede operar (editar, mover, cotizar) el tablero Beck si es
-    // administrador, si puede cambiar de plataforma/empresa, o si tiene
-    // permiso efectivo de edicion sobre beck_funnel.
     const canEditFunnel =
       isAdminGlobal || canCambiarEmpresaBeckOperar || canEdit("beck_funnel");
     const canManageGanancia = canEditFunnel;
@@ -3348,18 +3314,12 @@
     const [activeDragDeal, setActiveDragDeal] = useState<FunnelDeal | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [viewModeInterno, setViewMode] = useState<"kanban" | "calendar" | "dashboard">("kanban");
-    // Embebido desde /firemat/funnel: solo el tablero Kanban, sin pestanas
-    // propias (Firemat ya tiene las suyas).
     const viewMode = embedUnidadNegocio ? "kanban" : viewModeInterno;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [funnelModalMode, setFunnelModalMode] = useState<"create" | "edit">("create");
     const [editingDealId, setEditingDealId] = useState<string | null>(null);
     const [initialEditSection, setInitialEditSection] =
       useState<FunnelEditSection | null>(null);
-    // Lista explícita de secciones visibles cuando se edita desde el botón
-    // "Editar" del detalle: etapa actual + todas las anteriores (oculta las
-    // futuras). null = comportamiento previo (formulario completo o sección
-    // única enfocada vía initialEditSection, sin tocar esos flujos).
     const [editVisibleSections, setEditVisibleSections] =
       useState<FunnelEditSection[] | null>(null);
     const [dealSaving, setDealSaving] = useState(false);
@@ -3370,9 +3330,6 @@
     const [showValidationSummary, setShowValidationSummary] = useState(false);
     const [cierreModalOpen, setCierreModalOpen] = useState(false);
     const [dealEnCierre, setDealEnCierre] = useState<string | null>(null);
-    // Cierre manual de oportunidades Beck (CierreDeProyecto): solo admite
-    // ganada/perdida/postergada, "descartada" es exclusivo de Firemat y nunca
-    // se asigna desde este flujo.
     const [estadoCierreModal, setEstadoCierreModal] = useState<
       "ganada" | "perdida" | "postergada" | ""
     >("");
@@ -3392,8 +3349,6 @@
     const [historialEtapas, setHistorialEtapas] = useState<HistorialFunnelBeckEvento[]>([]);
     const [historialEtapasLoading, setHistorialEtapasLoading] = useState(false);
     const [historialEtapasError, setHistorialEtapasError] = useState<string | null>(null);
-    // Modal chico de "Cambiar vendedor" desde el detalle — no reutiliza el
-    // formulario completo de edición (FunnelModal).
     const [cambiarVendedorModalOpen, setCambiarVendedorModalOpen] = useState(false);
     const [cambiarVendedorValue, setCambiarVendedorValue] = useState<string | undefined>(undefined);
     const [cambiarVendedorSaving, setCambiarVendedorSaving] = useState(false);
@@ -3447,14 +3402,9 @@
     const [exportandoExcel, setExportandoExcel] = useState(false);
     const [filterUnidadNegocioInterno, setFilterUnidadNegocio] = useState<string>("Beck");
     const [filterEstadoCierreInterno, setFilterEstadoCierre] = useState<string>("");
-    // Embebido desde /firemat/funnel: el filtro lo controla quien embebe
-    // (ver FunnelPageProps).
     const filterUnidadNegocio = embedUnidadNegocio ?? filterUnidadNegocioInterno;
     const filterEstadoCierre = embedEstadoCierre ?? filterEstadoCierreInterno;
 
-    // Operar (editar/mover) tarjetas Firemat procede con el filtro "Firemat"
-    // (columnas reales Firemat) o "Todas" (columnas comunes, traducidas a la
-    // etapa real Firemat al soltar), siempre con permiso firemat_funnel.
     const canOperateFiremat =
       (filterUnidadNegocio === "Firemat" || filterUnidadNegocio === "Todas") &&
       canEditFirematFunnel;
@@ -3462,9 +3412,6 @@
     const [firematEmbedId, setFirematEmbedId] = useState<string | null>(null);
 
     const visibleDeals = useMemo(() => {
-      // El origen (Beck/Firemat/Todas) ya viene filtrado desde el servidor via
-      // /funnel-unificado (ver loadDeals). Beck/Mixto/Sin unidad son sub-filtros
-      // historicos sobre el campo unidadNegocio de las oportunidades Beck.
       let result = deals;
 
       if (filterUnidadNegocio === "Beck" || filterUnidadNegocio === "Mixto") {
@@ -3489,8 +3436,6 @@
       } else if (filterEstadoCierre === "postergadas") {
         result = result.filter((d) => d.estadoCierre === "postergada");
       } else if (filterEstadoCierre === "descartadas") {
-        // "descartada" es exclusivo de Firemat (Beck nunca lo genera); ahora
-        // que el unificado lo trae, se filtra igual que los demas estados.
         result = result.filter((d) => d.estadoCierre === "descartada");
       }
 
@@ -3501,18 +3446,13 @@
       onVisibleCountChange?.(visibleDeals.length);
     }, [visibleDeals, onVisibleCountChange]);
 
-    // Modal bloqueante (nuevo formato 409 con bloqueos + puedeAvanzar: false)
     const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
     const [bloqueoBloqueos, setBloqueoBloqueos] = useState<string[]>([]);
     const [bloqueoAdvertencias, setBloqueoAdvertencias] = useState<string[]>([]);
     const [bloqueoDetalleVisible, setBloqueoDetalleVisible] = useState(false);
-    // Modal advertencias en guardado exitoso (200 con advertencias)
     const [advertenciasGuardadoOpen, setAdvertenciasGuardadoOpen] = useState(false);
     const [advertenciasGuardado, setAdvertenciasGuardado] = useState<string[]>([]);
 
-    // Bloqueo 409 al mover una tarjeta Firemat desde el tablero Beck (mismo
-    // formato que usa /firemat/funnel: bloqueos/advertencias + reintento con
-    // observacionCamposFaltantes).
     const [firematBloqueoOpen, setFirematBloqueoOpen] = useState(false);
     const [firematBloqueoBloqueos, setFirematBloqueoBloqueos] = useState<string[]>([]);
     const [firematBloqueoAdvertencias, setFirematBloqueoAdvertencias] = useState<string[]>([]);
@@ -3881,8 +3821,6 @@
     const isFirematEtapaValue = (value: string): value is FirematFunnelEtapa =>
       (FIREMAT_ETAPAS_VALIDAS as string[]).includes(value);
 
-    // Mapea un item reducido de /funnel-unificado (usado para Firemat, y como
-    // respaldo de Beck si el registro completo no aparece en funnelBeckAPI.listar()).
     const mapUnificadoItemToDeal = (
       item: Record<string, unknown>,
       origen: "BECK" | "FIREMAT"
@@ -3890,11 +3828,6 @@
       const etapaRaw = toText(item.etapa, "");
       const etapaTableroRaw = toText(item.etapaTablero, "");
 
-      // etapaTableroRaw viene desde el backend en formato "largo" (p.ej.
-      // "prospecto_identificado"), tanto para Beck como para Firemat (ver
-      // funnelUnificado.service.ts -> FIREMAT_ETAPA_A_TABLERO_BECK). Hay que
-      // traducirlo con etapaBackendMap; compararlo contra `etapas` (formato
-      // corto) nunca matcheaba y dejaba etapaTablero indefinido.
       const etapaTableroTraducida: FunnelStage | undefined =
         etapaBackendMap[etapaTableroRaw] ??
         (isFunnelStageValue(etapaTableroRaw) ? etapaTableroRaw : undefined);
@@ -3904,15 +3837,6 @@
         : etapaTableroTraducida ?? "prospecto";
       const etapaTablero: FunnelStage | undefined = etapaTableroTraducida;
 
-      // Etapa real Firemat (sin bucketizar a columnas Beck): viene tal cual desde
-      // /funnel-unificado en item.etapa para origen FIREMAT (ver
-      // funnelUnificado.service.ts -> obtenerOportunidadesFirematNormalizadas).
-      // Las cerradas (PERDIDA/POSTERGADA/DESCARTADO) no son columnas propias de
-      // FIREMAT_COLUMNS: hay que ubicarlas en su ultima etapa comercial real,
-      // igual que hace /firemat/funnel via historial. El backend ya resolvio esa
-      // etapa (ver resolverEtapasTableroFiremat) y la entrega como etapaTablero
-      // en formato Beck (ej. "visita_levantamiento"); ETAPA_COMUN_A_FIREMAT la
-      // traduce de vuelta a su etapa Firemat (ej. "PRIMER_CONTACTO").
       const ETAPAS_CIERRE_FIREMAT: FirematFunnelEtapa[] = [
         "PERDIDA",
         "POSTERGADA",
@@ -3946,11 +3870,6 @@
       return {
         id,
         origen,
-        // /firemat/funnel siempre muestra item.cliente como titulo de la
-        // tarjeta (ver FirematFunnelCard), nunca nombreOportunidad; item.titulo
-        // aqui viene de nombreOportunidad ?? cliente (ver funnelUnificado.service.ts)
-        // y puede traer un valor incorrecto/de prueba, asi que para FIREMAT se
-        // prioriza cliente igual que la pagina propia de Firemat.
         nombreProyecto:
           (origen === "FIREMAT"
             ? toText(item.cliente, "") || toText(item.titulo, "")
@@ -4121,9 +4040,6 @@
       try {
         setIsLoading(true);
 
-        // Beck, Mixto y Sin unidad son sub-filtros historicos sobre el campo
-        // unidadNegocio de oportunidades Beck, por lo que todos piden origen
-        // "beck" al backend; el recorte por texto ocurre en visibleDeals.
         const unidadParam =
           filterUnidadNegocio === "Firemat"
             ? "firemat"
@@ -4141,10 +4057,6 @@
                   ? "postergada"
                   : "todas";
 
-        // /funnel-unificado decide que oportunidades entran al tablero (Beck y/o
-        // Firemat). Cuando el filtro incluye Beck, ademas se pide el detalle
-        // completo via funnelBeckAPI.listar() para no perder edicion, cierre,
-        // cotizaciones ni drag & drop de las tarjetas Beck.
         const [unificado, beckOpportunities] = await Promise.all([
           funnelUnificadoAPI.listar({
             unidadNegocio: unidadParam,
@@ -4283,10 +4195,6 @@
       return ETAPA_HISTORIAL_LABELS[etapa] ?? etapa.replace(/_/g, " ");
     };
 
-    // Carga la línea de tiempo combinada (etapas + cambios de vendedor) desde
-    // el endpoint nuevo GET /funnel-beck/:id/historial. No usa
-    // funnelBeckAPI.getHistorialEtapas (endpoint anterior, se deja intacto
-    // por si algún otro consumidor lo necesita).
     const loadHistorialEtapas = async (id: string) => {
       setHistorialEtapasLoading(true);
       setHistorialEtapasError(null);
@@ -4303,9 +4211,6 @@
 
     const openDealDetail = async (deal: FunnelDeal) => {
       if (deal.origen === "FIREMAT") {
-        // Con Unidad de negocio = Firemat y permiso de ver, se abre el detalle
-        // completo Firemat (mismo modal/formulario que /firemat/funnel). En
-        // "Todas" u otros filtros, o sin permiso, queda en modo readonly basico.
         if (filterUnidadNegocio === "Firemat" && canViewFirematFunnel) {
           const firematId = String(deal.id).replace(/^firemat_/, "");
           setFirematEmbedId(firematId);
@@ -4613,10 +4518,6 @@
       }
     };
 
-    // Alimenta el Select de Vendedor. Usa el endpoint dedicado por permiso
-    // efectivo (beck_funnel.puedeEditar) — deliberadamente no
-    // usuariosAPI.listarComerciales() (ese filtra por rol fijo y alimenta
-    // otros consumidores que no deben tocarse en este cambio).
     const loadUsuariosComerciales = async () => {
       try {
         setUsuariosComercialesLoading(true);
@@ -4659,13 +4560,10 @@
       void loadUsuariosComerciales();
     }, []);
 
-    // Recarga desde /funnel-unificado cada vez que cambia el filtro de Unidad
-    // de negocio o Estado de oportunidad (incluye la carga inicial).
     useEffect(() => {
       void loadDeals();
     }, [filterUnidadNegocio, filterEstadoCierre]);
 
-    // Reacciona a cada navegación desde una alerta (funciona tanto al montar como estando ya en funnel)
     useEffect(() => {
       const state = location.state as {
         oportunidadId?: string;
@@ -4681,12 +4579,10 @@
         const target = deals.find((d) => d.id === id);
         if (target) void openDealDetail(target);
       } else {
-        // deals aún cargando: delegar al effect de [deals]
         pendingOportunidadId.current = id;
       }
     }, [location.state]);
 
-    // Resuelve oportunidad pendiente una vez que deals está cargado
     useEffect(() => {
       if (!pendingOportunidadId.current || deals.length === 0) return;
       const id = pendingOportunidadId.current;
@@ -4931,8 +4827,6 @@
       );
     };
 
-    // Mueve una tarjeta Firemat usando PATCH /firemat/funnel/:id/etapa (mismo
-    // endpoint y manejo de bloqueos 409 que usa /firemat/funnel).
     const handleFirematStageChange = async (
       firematId: string,
       nuevaEtapa: FirematFunnelEtapa,
@@ -5027,10 +4921,6 @@
       return (result.cambioVendedor as CambioVendedorAutomatico) ?? null;
     };
 
-    // Aplica un cambio automático de vendedor confirmado por el backend:
-    // refresca vendedor en la tarjeta/detalle seleccionados, refresca el
-    // historial, y muestra una notificación no bloqueante. No hace nada si
-    // el backend no confirmó un cambio real (cambioVendedor === null).
     const aplicarCambioVendedorAutomatico = (
       dealId: string,
       cambioVendedor: CambioVendedorAutomatico
@@ -5049,8 +4939,6 @@
       );
       void loadHistorialEtapas(dealId);
 
-      // motivo llega como "Cambio de etapa: Visita / Levantamiento →
-      // Prospecto identificado" — se separa en label + detalle para el modal.
       const separadorMotivo = cambioVendedor.motivo.indexOf(":");
       const motivoLabel =
         separadorMotivo === -1
@@ -5077,8 +4965,6 @@
       });
     };
 
-    // "descartada" es exclusivo de Firemat y nunca se asigna desde el cierre
-    // manual de oportunidades Beck (ver estadoCierreModal).
     const handleStageChange = async (dealId: string, etapa: FunnelStage, estadoCierrePreset?: "ganada" | "perdida" | "postergada") => {
       if (!canEditFunnel || dealSaving) return;
 
@@ -5092,10 +4978,6 @@
         return;
       }
 
-      // Sin optimistic update: la tarjeta solo cambia de columna despues de que
-      // el backend confirme la etapa (bloqueos/advertencias incluidos). Si el
-      // backend rechaza el cambio, no se toco el estado local, por lo que la
-      // tarjeta permanece donde estaba sin necesidad de revertir nada.
       try {
         const cambioVendedor = await updateDealStage(dealId, {
           etapa: etapaFrontendToBackendMap[etapa],
@@ -5197,11 +5079,6 @@
           return;
         }
 
-        // Con filtro "Firemat" las columnas son las etapas reales Firemat (ver
-        // FIREMAT_COLUMNS), asi que columnKeyRaw ya viene en ese formato. Con
-        // "Todas" las columnas son comunes y hay que traducirlas a la etapa
-        // real Firemat (ver ETAPA_COMUN_A_FIREMAT); "negociacion" no tiene
-        // equivalente Firemat y no debe mover la tarjeta.
         const firematId = String(deal.id).replace(/^firemat_/, "");
         const nuevaEtapaFiremat =
           filterUnidadNegocio === "Firemat"
@@ -5231,12 +5108,6 @@
         return;
       }
 
-      // Tarjeta Beck: tanto con filtro "Beck" como con "Todas" las columnas del
-      // tablero usan literalmente las claves de etapa Beck (ver etapas/baseColumns
-      // en el render), asi que columnKeyRaw ya es la etapa Beck real y no requiere
-      // traduccion. El cambio de etapa pasa siempre por handleStageChange, que
-      // usa el mismo endpoint /funnel-beck/:id/etapa con sus bloqueos/advertencias
-      // (a diferencia de Firemat, que usa firematFunnelAPI.cambiarEtapa mas arriba).
       const cerradaSubcolumnMap: Record<string, "ganada" | "perdida" | "postergada"> = {
         cerrada_ganada: "ganada",
       };
@@ -5244,7 +5115,6 @@
       const estadoCierrePreset = cerradaSubcolumnMap[columnKeyRaw];
       const nuevaEtapa: FunnelStage = estadoCierrePreset ? "cerrada" : (columnKeyRaw as FunnelStage);
 
-      // Calcular la columna actual del deal usando etapaTablero cuando está disponible
       const currentColumnKey =
         deal.estadoCierre === "ganada"
           ? "cerrada_ganada"
@@ -5703,8 +5573,6 @@
       setCambiarVendedorValue(undefined);
     };
 
-    // Cambia únicamente el vendedor vía PATCH /funnel-beck/:id/vendedor — no
-    // pasa por el formulario completo de edición (FunnelModal/handleCreateDeal).
     const handleGuardarCambioVendedor = async () => {
       if (!selectedDeal || !canEditFunnel || cambiarVendedorSaving) return;
 
@@ -5735,8 +5603,6 @@
         setCambiarVendedorValue(undefined);
         message.success("Vendedor actualizado");
 
-        // Refrescar el historial para que aparezca el evento de cambio recién
-        // registrado, sin tener que cerrar y volver a abrir la oportunidad.
         void loadHistorialEtapas(mappedSavedOpportunity.id);
       } catch (error) {
         message.error(getErrorMessage(error, "No se pudo cambiar el vendedor"));
@@ -5756,9 +5622,6 @@
       try {
         setDealSaving(true);
 
-        // Señal explícita para el backend: solo se envía en el guardado
-        // enfocado de "Rellenar <etapa>" (isFocusedStageEdit), nunca desde el
-        // botón general "Editar" (que setea editVisibleSections).
         const isFocusedStageEdit =
           funnelModalMode === "edit" &&
           !Array.isArray(editVisibleSections) &&
@@ -5778,7 +5641,6 @@
 
         console.log("[BECK CREATE] response", savedRaw);
 
-        // Detectar nuevo formato { oportunidad, advertencias } vs formato legacy
         const savedRawRecord = savedRaw as Record<string, unknown>;
         const savedOpportunity =
           savedRawRecord.oportunidad && typeof savedRawRecord.oportunidad === "object"
@@ -5796,9 +5658,6 @@
 
         if (selectedDeal?.id === mappedSavedOpportunity.id) {
           setSelectedDeal(mappedSavedOpportunity);
-          // El detalle (con la línea de tiempo) está abierto para esta misma
-          // oportunidad — se refresca para reflejar el cambio de vendedor
-          // recién guardado sin que el usuario tenga que cerrar y reabrir.
           void loadHistorialEtapas(mappedSavedOpportunity.id);
         }
 
@@ -5922,9 +5781,6 @@
       return null;
     };
 
-    // Etapa actual + todas las anteriores (oculta las futuras) para el botón
-    // "Editar" del detalle — a diferencia de getStageEditSection, que da solo
-    // la sección puntual usada por el botón "Rellenar <etapa>".
     const getSectionsUpToStage = (etapa: FunnelStage): FunnelEditSection[] => {
       const actual = getStageEditSection(etapa);
       if (!actual) return FUNNEL_EDIT_SECTIONS_ORDER;
@@ -6565,12 +6421,6 @@
                     ));
                   }
 
-                  // Con "Todas" ambos origenes comparten columnas equivalentes (ver
-                  // etapasLabelComun). El D&D queda habilitado igual que en Beck;
-                  // al soltar una tarjeta Firemat, handleDragEnd traduce la columna
-                  // comun a su etapa real Firemat (ver ETAPA_COMUN_A_FIREMAT). Beck,
-                  // Mixto y Sin unidad no cambian: solo traen oportunidades Beck y
-                  // conservan el tablero Beck actual.
                   const isTodasMode = filterUnidadNegocio === "Todas";
                   const stageLabels = isTodasMode ? etapasLabelComun : etapasLabel;
 
@@ -6919,10 +6769,6 @@
                         icon={<EditOutlined />}
                         onClick={() => {
                           void handleEditDeal(
-                            // Muestra etapa actual + anteriores y hace scroll
-                            // directo a la sección de la etapa actual (lo que
-                            // hay que completar ahora), para revisar lo
-                            // anterior subiendo desde ahí.
                             selectedDeal,
                             getStageEditSection(selectedDeal.etapa),
                             getSectionsUpToStage(selectedDeal.etapa)
@@ -7180,14 +7026,8 @@
                 ) : (
                   <Timeline
                     mode="left"
-                    // El backend (GET /funnel-beck/:id/historial) sigue
-                    // devolviendo los eventos en orden cronológico ascendente
-                    // (sin tocar); acá solo se invierte para la presentación,
-                    // así el evento más reciente queda arriba.
                     items={[...historialEtapas].reverse().map((h, index) => ({
                       key: `${h.tipo}-${h.createdAt}-${index}`,
-                      // Icono distinto para cambio de vendedor, para no
-                      // confundirlo visualmente con un cambio de etapa.
                       dot: h.tipo === "CAMBIO_VENDEDOR" ? (
                         <SwapOutlined className="text-amber-500" />
                       ) : undefined,
@@ -7324,10 +7164,6 @@
                 disabled={cambiarVendedorSaving}
                 onChange={(value) => setCambiarVendedorValue(value)}
                 className="w-full"
-                // Mismo listado que el Select de Vendedor del formulario de
-                // edición (usuariosAPI.listarVendedoresFunnelBeck vía el
-                // estado usuariosComerciales ya cargado en esta página):
-                // solo nombre visible, búsqueda por nombre y correo.
                 options={usuariosComerciales
                   .filter((u) => u.nombre || u.email)
                   .map((u) => ({

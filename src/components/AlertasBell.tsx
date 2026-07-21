@@ -117,7 +117,6 @@ const AlertaCard: React.FC<AlertaCardProps> = ({
   </div>
 );
 
-// ── Beck Bell ────────────────────────────────────────────────────────────────
 
 export const AlertasBeckBell: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -261,7 +260,6 @@ export const AlertasBeckBell: React.FC = () => {
   );
 };
 
-// ── Firemat Bell ─────────────────────────────────────────────────────────────
 
 export const AlertasFirematBell: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -405,5 +403,4 @@ export const AlertasFirematBell: React.FC = () => {
   );
 };
 
-// Legacy export for backward compatibility
 export const AlertasBell = AlertasBeckBell;

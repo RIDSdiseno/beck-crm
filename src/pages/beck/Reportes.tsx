@@ -1,4 +1,3 @@
-// src/pages/beck/Reportes.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Modal, Table, Tag, Select, Spin, Empty, message, Tabs, DatePicker } from "antd";
 import type { TableColumnsType } from "antd";
@@ -152,9 +151,6 @@ const ESTADOS = [
 
 const { RangePicker } = DatePicker;
 
-// Mismo formato usado en Dashboard.tsx para las columnas de rendimiento por
-// trabajador (rendimientoTrabajadorColumns), para que ambas pantallas
-// muestren el mismo dato de forma consistente.
 const rendimientoNumberFormatter = new Intl.NumberFormat("es-CL", {
   maximumFractionDigits: 1,
 });
@@ -221,10 +217,8 @@ const getEstadoLabel = (estado: string): string => {
 };
 
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getValue = (r: any, ...keys: string[]): string => {
   for (const key of keys) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const v = r?.[key] as unknown;
     if (v !== undefined && v !== null && String(v).trim() !== "") return String(v);
   }
@@ -337,8 +331,6 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const [registroDetalle, setRegistroDetalle] = useState<RegistroNorm | null>(null);
   const [activeTipoRegistro, setActiveTipoRegistro] = useState<string>("sello_cortafuego");
 
-  // Filtros exclusivos del bloque "Rendimiento por trabajador" — no afectan
-  // ningún otro filtro ni componente del módulo Reportes.
   const [rendimientoObras, setRendimientoObras] = useState<Obra[]>([]);
   const [rendimientoObrasLoading, setRendimientoObrasLoading] = useState(false);
   const [rendimientoObraId, setRendimientoObraId] = useState<string | undefined>(undefined);
@@ -543,7 +535,6 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
     [registros]
   );
 
-  // TODO: reemplazar por fórmula oficial SACYR cuando el cliente la entregue.
   const totalBeck = useMemo(
     () => registros.reduce((acc, r) => acc + r.cantidadSellosConFactor, 0),
     [registros]

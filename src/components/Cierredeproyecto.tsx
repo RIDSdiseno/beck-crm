@@ -86,7 +86,6 @@ const CierreDeProyecto: React.FC<CierreDeProyectoProps> = ({
   const [selectPostergacion, setSelectPostergacion] = useState("");
   const [detallePostergacion, setDetallePostergacion] = useState("");
 
-  // Cuando se abre el modal, sincronizar desde los valores actuales del padre
   useEffect(() => {
     if (open) {
       const p = parseMotivoSelect(motivoPerdida);

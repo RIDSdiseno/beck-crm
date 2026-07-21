@@ -198,7 +198,6 @@ const SeccionUnidadNegocio: React.FC<{ items: UnidadNegocioItem[] }> = ({ items 
   );
 };
 
-// ── Small reusable components ─────────────────────────────────────────────────
 
 type KpiCardProps = {
   label: string;
@@ -242,7 +241,6 @@ const EmptyMsg: React.FC<{ text?: string }> = ({ text = "Sin datos" }) => (
   <p className="py-6 text-center text-xs text-slate-400">{text}</p>
 );
 
-// ── Sección Prospectos ────────────────────────────────────────────────────────
 
 const SeccionProspectos: React.FC<{ d: NonNullable<FunnelBeckDashboardData["prospectos"]> }> = ({ d }) => (
   <div className="space-y-4">
@@ -281,7 +279,6 @@ const SeccionProspectos: React.FC<{ d: NonNullable<FunnelBeckDashboardData["pros
   </div>
 );
 
-// ── Sección Pipeline Avanzado ─────────────────────────────────────────────────
 
 const colsPipelineSimple = (labelKey: string): ColumnsType<Record<string, unknown>> => [
   { title: labelKey, dataIndex: labelKey, key: labelKey, ellipsis: true },
@@ -348,7 +345,6 @@ const SeccionPipeline: React.FC<{ d: NonNullable<FunnelBeckDashboardData["pipeli
   );
 };
 
-// ── Sección Forecast ──────────────────────────────────────────────────────────
 
 const SeccionForecast: React.FC<{ d: NonNullable<FunnelBeckDashboardData["forecast"]> }> = ({ d }) => (
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -378,7 +374,6 @@ const SeccionForecast: React.FC<{ d: NonNullable<FunnelBeckDashboardData["foreca
   </div>
 );
 
-// ── Sección Ganadas ───────────────────────────────────────────────────────────
 
 const SeccionGanadas: React.FC<{ d: NonNullable<FunnelBeckDashboardData["ganadas"]> }> = ({ d }) => (
   <div className="space-y-4">
@@ -420,7 +415,6 @@ const SeccionGanadas: React.FC<{ d: NonNullable<FunnelBeckDashboardData["ganadas
   </div>
 );
 
-// ── Sección Motivos ───────────────────────────────────────────────────────────
 
 const TablaMotivos: React.FC<{ data: { motivo: string; cantidad: number }[]; title: string; color: string }> = ({
   data,
@@ -454,7 +448,6 @@ const SeccionMotivos: React.FC<{ d: NonNullable<FunnelBeckDashboardData["motivos
   </div>
 );
 
-// ── Sección Riesgo Comercial ──────────────────────────────────────────────────
 
 const colsRiesgo = (showUpdatedAt: boolean): ColumnsType<FunnelBeckDashboardRiesgoItem> => [
   { title: "Proyecto", dataIndex: "nombreProyecto", key: "nombreProyecto", ellipsis: true },
@@ -514,7 +507,6 @@ const SeccionRiesgo: React.FC<{ d: NonNullable<FunnelBeckDashboardData["riesgoCo
   </div>
 );
 
-// ── Sección Conversión por etapa ──────────────────────────────────────────────
 
 const SeccionConversion: React.FC<{ d: NonNullable<FunnelBeckDashboardData["conversionEtapas"]> }> = ({ d }) => {
   const colsEtapas: ColumnsType<typeof d.etapas[0]> = [
@@ -572,7 +564,6 @@ const SeccionConversion: React.FC<{ d: NonNullable<FunnelBeckDashboardData["conv
   );
 };
 
-// ── Dashboard principal ───────────────────────────────────────────────────────
 
 interface Props {
   vendedoresDisponibles?: string[];
@@ -603,14 +594,12 @@ const FunnelBeckDashboard: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtros existentes
   const [fechaRange, setFechaRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [tipoFecha, setTipoFecha] = useState<string>("createdAt");
   const [vendedor, setVendedor] = useState<string | undefined>();
   const [etapa, setEtapa] = useState<string | undefined>();
   const [diasSinSeg, setDiasSinSeg] = useState<number>(7);
 
-  // Nuevos filtros
   const [unidadNegocio, setUnidadNegocio] = useState<string | undefined>();
   const [origen, setOrigen] = useState<string | undefined>();
   const [tipoCliente, setTipoCliente] = useState<string | undefined>();

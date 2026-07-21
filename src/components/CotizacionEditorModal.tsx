@@ -447,7 +447,6 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     const selectedOpportunity = opportunities.find((o) => o.id === value);
     if (!selectedOpportunity) return;
 
-    // Si la oportunidad tiene clienteBeckId y no hay cliente seleccionado, autoseleccionar
     const oppClienteId = selectedOpportunity.clienteBeckId as string | null | undefined;
     if (oppClienteId && !clienteBeckIdWatched) {
       form.setFieldValue("clienteBeckId", oppClienteId);

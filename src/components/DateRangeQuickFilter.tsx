@@ -1,4 +1,3 @@
-// src/components/DateRangeQuickFilter.tsx
 import React from "react";
 import { DatePicker, Segmented, Tooltip } from "antd";
 import type { RangePickerProps } from "antd/es/date-picker";
@@ -59,7 +58,6 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
     return "todo";
   })();
 
-  // handler tipado usando RangePickerProps, sin any
   const handleRangeChange: RangePickerProps["onChange"] = (dates) => {
     if (!dates || !dates[0] || !dates[1]) {
       onChange(null);

@@ -22,7 +22,6 @@ export const useSystemTheme = (): ThemeMode => {
     return () => media.removeEventListener("change", listener);
   }, []);
 
-  // Sincroniza clase .dark en <html> para Tailwind
   useEffect(() => {
     const root = document.documentElement;
     if (mode === "dark") {

@@ -26,7 +26,6 @@ function ImportarPdfModal<TResult>({
   importar,
   renderResultado,
 }: ImportarPdfModalProps<TResult>) {
-  // selectedFile guarda el File real; fileList es solo para el display del Dragger
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,9 +118,7 @@ function ImportarPdfModal<TResult>({
             maxCount={1}
             fileList={fileList}
             beforeUpload={(file: RcFile) => {
-              // RcFile extiende File: lo guardamos directamente como File
               setSelectedFile(file);
-              // Construimos el UploadFile de display con originFileObj correcto
               setFileList([
                 {
                   uid: file.uid,

@@ -1,4 +1,3 @@
-// src/components/NuevoRegistroDrawer.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -148,7 +147,6 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   const obraId = Form.useWatch("obraId", form);
   const tipoRegistro = Form.useWatch("tipoRegistro", form);
 
-  // null while fetch pending or no obra selected; array once loaded for current obraId
   const tiposRegistroObra: string[] | null =
     obraId && tiposFetchedFor === obraId ? fetchedTipos : null;
   const loadingTipos = Boolean(obraId) && tiposFetchedFor !== obraId;

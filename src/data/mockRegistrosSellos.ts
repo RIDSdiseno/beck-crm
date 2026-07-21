@@ -1,5 +1,3 @@
-// src/data/mockRegistrosSellos.ts
-// Mock compartido de registros de sellos para alimentar Dashboard y Registro.
 
 import type { RegistroSello } from "../types/registroSello";
 

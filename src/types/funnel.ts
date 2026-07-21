@@ -29,9 +29,6 @@ export type FunnelStage =
   | "documentacion"
   | "cerrada";
 
-// "descartada" es exclusivo de Firemat (Beck nunca lo genera); se agrega
-// para que las oportunidades Firemat descartadas se puedan mostrar en el
-// tablero unificado con su propio banner, igual que en /firemat/funnel.
 export type FunnelEstadoCierre = "ganada" | "perdida" | "postergada" | "descartada";
 
 export type FunnelDeal = {
@@ -47,7 +44,6 @@ export type FunnelDeal = {
   region?: string;
   comuna?: string;
   fuenteLead?: FunnelLeadSource;
-  // Prospecto
   rutEmpresa?: string;
   nombreContacto?: string;
   cargoContacto?: string;
@@ -55,7 +51,6 @@ export type FunnelDeal = {
   correoContacto?: string;
   tipoCliente?: string;
   tipoOportunidad?: string;
-  // Primer contacto
   fechaPrimerContacto?: string;
   tipoContacto?: string;
   necesidadDetectada?: string;
@@ -63,7 +58,6 @@ export type FunnelDeal = {
   nivelInteres?: string;
   proximaAccion?: string;
   fechaProximaAccion?: string;
-  // Visita / levantamiento tecnico
   fechaVisita?: string;
   responsableTecnico?: string;
   asistentes?: string;
@@ -77,7 +71,6 @@ export type FunnelDeal = {
   observacionesTecnicas?: string;
   necesidadOficinaTecnica?: boolean;
   proximosPasos?: string;
-  // Desarrollo de propuesta
   estadoDesarrolloPropuesta?: string;
   informacionPendiente?: string;
   documentosRequeridos?: string;
@@ -86,19 +79,16 @@ export type FunnelDeal = {
   necesidadValidacionGerencial?: boolean;
   fechaComprometidaEnvio?: string;
   comentariosInternos?: string;
-  // Propuesta enviada / negociacion
   fechaEnvioPropuesta?: string;
   versionPropuesta?: string;
   numeroPropuesta?: string;
   montoPropuesto?: number;
   fechaVencimientoPropuesta?: string;
   comentariosCliente?: string;
-  // Negociacion
   probabilidadCierre?: number;
   objeciones?: string;
   contrapropuestas?: string;
   ajustesSolicitados?: string;
-  // Documentacion de venta
   ordenCompra?: string;
   contrato?: string;
   correoAceptacion?: string;
@@ -117,7 +107,6 @@ export type FunnelDeal = {
   fechaTraspasoAdministracion?: string;
   responsableTraspasoAdministracion?: string;
   observacionesTraspasoAdministracion?: string;
-  // Cierre
   estadoCierre?: FunnelEstadoCierre;
   motivoPerdida?: string;
   etapaPerdida?: string;
@@ -125,14 +114,11 @@ export type FunnelDeal = {
   observacionCierre?: string | null;
   fechaReactivacion?: string;
   etapaTablero?: FunnelStage | null;
-  // Etapa real Firemat (sin traducir a columnas Beck), solo presente para
-  // oportunidades con origen "FIREMAT" provenientes de /funnel-unificado.
   etapaFiremat?: FirematFunnelEtapa;
   documentoRespaldo?: string;
   flujoPosterior?: string;
   montoFinalGanado?: number;
   fechaCierre?: string;
-  // Cliente Beck asociado
   clienteBeckId?: string | null;
   contactoBeckId?: string | null;
   clienteBeck?: ClienteBeck;
@@ -147,13 +133,11 @@ export type FunnelDeal = {
     cliente?: string | null;
     direccion?: string | null;
   } | null;
-  // Punto 10
   direccionProyecto?: string | null;
   unidadNegocio?: string | null;
   observaciones?: string | null;
   urgencia?: string | null;
   observacionCamposFaltantes?: string | null;
-  // Punto 12 - Campos específicos Beck
   tipoProyecto?: string | null;
   empresaMandante?: string | null;
   necesidadLevantamiento?: boolean | null;

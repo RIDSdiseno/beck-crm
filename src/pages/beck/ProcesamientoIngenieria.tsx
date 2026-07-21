@@ -18,6 +18,7 @@ import {
   getTipoRegistroColor,
   getTipoRegistroBadgeClass,
 } from "../../constants/roles";
+import { ordenarColumnasRegistro } from "../../constants/registroColumnOrder";
 
 type IngenieriaProps = {
   themeMode: ThemeMode;
@@ -93,6 +94,8 @@ type RegistroApiRecord = {
   fotos?: Array<{ url?: string | null }> | null;
   fotos_registro?: Array<{ url?: string | null }> | null;
   obra?: { nombre?: string | null; rendimientoSellosEsperadoDiario?: number | null; rendimientoReparacionEsperadoDiario?: number | null } | null;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
   rendimiento_sellos_esperado_diario?: number | null;
   rendimiento_reparacion_esperado_diario?: number | null;
   obra_nombre?: string | null;
@@ -232,7 +235,6 @@ const getMetrosLineales = (registro: { metrosLineales?: number | string | null }
   return Number.isFinite(num) && num > 0 ? num : null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotoUrl = (foto: any): string | null => {
   if (!foto) return null;
 
@@ -258,7 +260,6 @@ const getFotoUrl = (foto: any): string | null => {
   return null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getFotosRegistro = (record: any): string[] => {
   const raw = [
     ...(Array.isArray(record.fotosUrls) ? record.fotosUrls : []),
@@ -404,10 +405,12 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     registroOrigenId: r.registroOrigenId ?? null,
     registroOrigen: r.registroOrigen ?? null,
     rendimientoSellosEsperadoDiario:
+      r.rendimientoSellosEsperadoDiario ??
       r.obra?.rendimientoSellosEsperadoDiario ??
       r.rendimiento_sellos_esperado_diario ??
       null,
     rendimientoReparacionEsperadoDiario:
+      r.rendimientoReparacionEsperadoDiario ??
       r.obra?.rendimientoReparacionEsperadoDiario ??
       r.rendimiento_reparacion_esperado_diario ??
       null,
@@ -535,12 +538,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     void cargarResumen();
   }, [cargarResumen]);
 
-  // Refetch al reenfocar la pestaña/ventana: los registros pueden haber
-  // cambiado de estado desde la app móvil (misma base de datos), así que al
-  // volver a esta pantalla se refrescan estado y KPIs. Throttle de 15s para
-  // no refrescar en cada cambio de foco si el usuario alterna rápido entre
-  // pestañas — no es polling, solo reacciona a que la pantalla vuelva a
-  // primer plano.
   const ultimoRefetchRef = useRef(0);
   useEffect(() => {
     const REFETCH_MIN_INTERVAL_MS = 15_000;
@@ -772,21 +769,13 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     };
     setSavingDetalle(true);
     try {
-      // 1) Guardar. El body de esta respuesta no se usa como fuente de verdad:
-      // el backend recalcula factorPorHolguras/cantidadSellosConFactores/etc.,
-      // y queremos exactamente ese resultado, no una reconstrucción local a
-      // partir de `values` (el payload que enviamos).
       await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
 
-      // 2) Releer el registro ya actualizado con el endpoint existente.
       let registroFresco: RegistroIngenieria;
       try {
         const detalle = await api.get<RegistroApiRecord>(`/registros/${id}`);
         registroFresco = normalizeRegistro(detalle.data);
       } catch (fetchError) {
-        // El guardado sí funcionó; solo falló la relectura. No dejamos el
-        // modal abierto con datos potencialmente obsoletos: lo cerramos y
-        // refrescamos la tabla completa como respaldo.
         console.error(fetchError);
         setRegistroDetalle(null);
         message.warning(
@@ -796,13 +785,10 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         return;
       }
 
-      // 3) Reflejar el dato fresco en la fila de la tabla de inmediato.
       setRegistros((prev) =>
         prev.map((r) => (String(r.id) === id ? registroFresco : r))
       );
 
-      // 4) Cerrar y reabrir el modal con el registro recién releído — nunca
-      // se reutiliza el objeto anterior en memoria.
       setRegistroDetalle(null);
       setDetalleMode("view");
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -811,8 +797,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       await Promise.all([cargarRegistros(), cargarResumen()]);
       message.success("Registro actualizado correctamente");
     } catch (error) {
-      // El PUT falló: el modal permanece abierto (no se toca registroDetalle)
-      // y los datos ingresados por el usuario en el form se conservan.
       console.error(error);
       message.error("No se pudo actualizar el registro");
     } finally {
@@ -1009,15 +993,13 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     render: renderAcciones,
   };
 
-  const columnasUnificadas: ColumnsType<RegistroIngenieria> = [
-    // 1. Código BECK
+  const columnasUnificadas: ColumnsType<RegistroIngenieria> = ordenarColumnasRegistro([
     {
       title: "Código BECK",
       key: "codigoBeck",
       width: 140,
       render: (_, r) => displayValue(r.codigoBeck),
     },
-    // 2. Itemizado BECK
     {
       title: "Itemizado BECK",
       key: "itemizadoBeck",
@@ -1031,7 +1013,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         </div>
       ),
     },
-    // 3. Itemizado Mandante
     {
       title: "Itemizado Mandante",
       key: "itemizadoMandante",
@@ -1039,72 +1020,61 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       ellipsis: true,
       render: (_, r) => displayValue(r.itemizadoMandanteNombre),
     },
-    // 4. Fecha ejecución de sello
     {
       title: "Fecha ejecución de sello",
       key: "fechaEjecucion",
       width: 155,
       render: (_, r) => (r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"),
     },
-    // 5. Día
     {
       title: "Día",
       key: "dia",
       width: 90,
       render: (_, r) => displayValue(r.dia),
     },
-    // 6. Piso
     {
       title: "Piso",
       key: "piso",
       width: 90,
       render: (_, r) => displayValue(r.piso),
     },
-    // 7. Eje Alfabético
     {
       title: "Eje Alfabético",
       key: "ejeAlfabetico",
       width: 110,
       render: (_, r) => displayValue(r.ejeAlfabetico),
     },
-    // 8. Eje Numérico
     {
       title: "Eje Numérico",
       key: "ejeNumerico",
       width: 110,
       render: (_, r) => getEjeNumerico(r),
     },
-    // 9. Nombre sellador
     {
       title: "Nombre sellador",
       key: "nombreSellador",
       width: 150,
       render: (_, r) => displayValue(r.nombreSellador),
     },
-    // 10. Foto
     { title: "Foto", key: "foto", width: 160, render: renderFotoCell },
-    // 11. Recinto
     {
       title: "Recinto",
       key: "recinto",
       width: 160,
       render: (_, r) => displayValue(r.recinto),
     },
-    // 12. Módulo o edificio
     {
       title: "Módulo o edificio",
       key: "modulo_edificio",
       width: 160,
       render: (_, r) => displayValue(r.recinto),
     },
-    // 13. N° DEL SELLO
     {
       title: "N° DEL SELLO",
       key: "numero_sello",
       width: 120,
       render: (_, r) => displayValue(r.numeroSello),
     },
-    // 14. Cantidad de Sellos
     {
       title: "Cantidad de Sellos",
       key: "cantidad_sellos",
@@ -1114,14 +1084,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           <span className="font-medium text-orange-700">{r.cantidadSellos}</span>
         ) : "-",
     },
-    // 15. Holgura (cm)
     {
       title: "Holgura (cm)",
       key: "holgura",
       width: 100,
       render: (_, r) => displayValue(r.holguraCm),
     },
-    // 16. Factor por Holguras
     {
       title: "Factor por Holguras",
       key: "factor_por_holguras",
@@ -1142,7 +1110,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
-    // 17. Accesibilidad
     {
       title: "Accesibilidad",
       key: "accesibilidad",
@@ -1156,7 +1123,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         return <span className="text-xs">{label}</span>;
       },
     },
-    // 18. Cielo modular
     {
       title: "Cielo modular",
       key: "cieloModular",
@@ -1171,42 +1137,36 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         return <span className="text-xs">{label}</span>;
       },
     },
-    // 19. Cantidad de Sellos con Factores
     {
       title: "Cantidad de Sellos con Factores",
       key: "cantidad_sellos_con_factores",
       width: 200,
       render: (_, r) => formatDecimal(r.cantidadSellosConFactores ?? r.cantidadSellosConFactor, 2),
     },
-    // 20. Aislación
     {
       title: "Aislación",
       key: "aislacion",
       width: 110,
       render: (_, r) => formatDecimal(r.aislacion, 2),
     },
-    // 21. Cantidad de Sellos Aislación
     {
       title: "Cantidad de Sellos Aislación",
       key: "cantidad_sellos_aislacion",
       width: 195,
       render: (_, r) => formatDecimal(r.cantidadSellosAislacion, 2),
     },
-    // 22. Reparación de tabique
     {
       title: "Reparación de tabique",
       key: "reparacion_tabique",
       width: 160,
       render: (_, r) => formatDecimal(r.reparacionTabique, 2),
     },
-    // 23. Cantidad final
     {
       title: "Cantidad final",
       key: "cantidad_final",
       width: 130,
       render: (_, r) => formatDecimal(r.cantidadFinal, 2),
     },
-    // 24. Observaciones
     {
       title: "Observaciones",
       key: "observaciones",
@@ -1214,14 +1174,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       ellipsis: true,
       render: (_, r) => displayValue(r.observaciones),
     },
-    // 25. FOLIO
     {
       title: "FOLIO",
       key: "folio",
       width: 110,
       render: (_, r) => displayValue(r.numeroSello),
     },
-    // 26. Tipo
     {
       title: "Tipo",
       key: "tipoRegistro",
@@ -1239,7 +1197,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
-    // 27-29. Rendimientos (solo Administrador / Ingeniería)
     ...(user?.rol === "Administrador" || user?.rol === "Ingenieria"
       ? [
           {
@@ -1283,7 +1240,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           } as import("antd/es/table").ColumnType<RegistroIngenieria>,
         ]
       : []),
-    // 30. SELECCIONADO PARA INSPECCIÓN
     {
       title: "SELECCIONADO PARA INSPECCIÓN",
       key: "seleccionadoParaInspeccion",
@@ -1302,7 +1258,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
-    // Extra: Cantidad / Metros
     {
       title: "Cantidad / Metros",
       key: "cantidadMetros",
@@ -1324,7 +1279,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         );
       },
     },
-    // Extra: Cantidad ejecutada (solo Administrador / Ingeniería)
     ...(user?.rol === "Administrador" || user?.rol === "Ingenieria"
       ? [
           {
@@ -1342,7 +1296,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           } as import("antd/es/table").ColumnType<RegistroIngenieria>,
         ]
       : []),
-    // Final: Obra, Inspección, Estado, Acciones
     {
       title: "Obra",
       key: "obraNombre",
@@ -1352,7 +1305,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     columnaInspeccion,
     columnaEstado,
     columnaAcciones,
-  ];
+  ]);
 
   return (
     <div className="w-full min-w-0 space-y-4">

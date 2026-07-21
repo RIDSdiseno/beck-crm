@@ -35,7 +35,6 @@ import {
 } from "../platforms";
 
 export type RoleAccess = {
-  // Beck modules
   dashboard: boolean;
   funnel: boolean;
   registro: boolean;
@@ -47,7 +46,6 @@ export type RoleAccess = {
   obras: boolean;
   configuracion: boolean;
   clientes: boolean;
-  // Firemat modules
   firemat: boolean;
   firematDashboard: boolean;
   firematFunnel: boolean;
@@ -60,7 +58,6 @@ export type RoleAccess = {
   firematReportes: boolean;
   firematMovimientos: boolean;
   firematClientes: boolean;
-  // Cliente externo
   clienteRegistros: boolean;
 };
 
@@ -254,13 +251,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       to: "/cliente/registros-mi-empresa",
       icon: <FileSearchOutlined />,
       label: "Registros de mi empresa",
-      access: access.clienteRegistros,
-    },
-    {
-      key: "itemizado-obra",
-      to: "/cliente/itemizado-obra",
-      icon: <BuildOutlined />,
-      label: "Itemizado de la obra",
       access: access.clienteRegistros,
     },
   ];

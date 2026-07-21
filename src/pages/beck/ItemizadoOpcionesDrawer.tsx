@@ -143,7 +143,6 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       if (filterVisible === "oculto" && o.visible) return false;
       return true;
     });
-    // Activos primero, inactivos después (orden estable dentro de cada grupo).
     return result
       .map((o, index) => ({ o, index }))
       .sort((a, b) => {
@@ -156,14 +155,12 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
   const handleToggleVisible = async (opcion: ItemizadoOpcion, visible: boolean) => {
     if (updatingVisibleId === opcion.id) return;
     setUpdatingVisibleId(opcion.id);
-    // Optimistic update para feedback inmediato
     setOpciones((prev) => prev.map((o) => (o.id === opcion.id ? { ...o, visible } : o)));
     try {
       const updated = await itemizadoOpcionesAPI.actualizarVisible(opcion.id, visible, obraId);
       setOpciones((prev) => prev.map((o) => (o.id === opcion.id ? { ...o, ...updated } : o)));
       void message.success("Visibilidad actualizada");
     } catch (err) {
-      // Revertir al valor anterior si falla
       setOpciones((prev) => prev.map((o) => (o.id === opcion.id ? { ...o, visible: opcion.visible } : o)));
       void message.error(getErrorMessage(err, "No se pudo cambiar la visibilidad"));
     } finally {
@@ -245,8 +242,6 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
         elementoPenetra: values.elementoPenetra?.trim() || null,
         materialidad: values.materialidad?.trim() || null,
         visible: values.visible ?? false,
-        // Rendimientos: solo aplican al catálogo global (sin obraId). Por obra se
-        // editan en "Configurar itemizados", no aquí.
         ...(obraId
           ? {}
           : {
