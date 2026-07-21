@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, Input, Modal, Spin, Table, Tag, message } from "antd";
+import { Button, Image, Input, Modal, Spin, Table, Tag, message } from "antd";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -15,9 +15,9 @@ interface Props {
   registroId: string | null;
   open: boolean;
   onClose: () => void;
-  /** El usuario actual puede validar/rechazar el resultado de la inspección. */
-  puedeRevisar?: boolean;
-  /** Se llama tras validar o rechazar, para que la tabla que abrió el modal se refresque. */
+  /** El usuario actual puede confirmar o rechazar una corrección enviada por el Supervisor. */
+  puedeRevisarCorreccion?: boolean;
+  /** Se llama tras confirmar o rechazar la corrección, para que la tabla que abrió el modal se refresque. */
   onRevisado?: () => void;
 }
 
@@ -96,14 +96,15 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   registroId,
   open,
   onClose,
-  puedeRevisar,
+  puedeRevisarCorreccion,
   onRevisado,
 }) => {
   const [loading, setLoading] = useState(false);
   const [detalle, setDetalle] = useState<InspeccionDetalle | null>(null);
-  const [mostrarMotivo, setMostrarMotivo] = useState(false);
-  const [motivoRechazo, setMotivoRechazo] = useState("");
-  const [enviando, setEnviando] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const [rechazando, setRechazando] = useState(false);
+  const [mostrarMotivoRechazoCorreccion, setMostrarMotivoRechazoCorreccion] = useState(false);
+  const [motivoRechazoCorreccion, setMotivoRechazoCorreccion] = useState("");
 
   const cargarDetalle = async () => {
     if (!registroId) return;
@@ -122,8 +123,8 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   useEffect(() => {
     if (!open || !registroId) {
       setDetalle(null);
-      setMostrarMotivo(false);
-      setMotivoRechazo("");
+      setMostrarMotivoRechazoCorreccion(false);
+      setMotivoRechazoCorreccion("");
       return;
     }
 
@@ -146,41 +147,45 @@ const DetalleInspeccionModal: React.FC<Props> = ({
     };
   }, [open, registroId]);
 
-  const handleValidar = async () => {
+  const handleConfirmarCorreccion = async () => {
     if (!registroId) return;
-    setEnviando(true);
+    setConfirmando(true);
     try {
-      await inspeccionAPI.revisarInspeccion(registroId, "validar");
-      message.success("Inspección validada");
+      await inspeccionAPI.revisarCorreccionInspeccion(registroId, "confirmar");
+      message.success("Corrección confirmada. El control queda conforme.");
       await cargarDetalle();
       onRevisado?.();
     } catch (error) {
       console.error(error);
-      message.error("No se pudo validar la inspección");
+      message.error("No se pudo confirmar la corrección");
     } finally {
-      setEnviando(false);
+      setConfirmando(false);
     }
   };
 
-  const handleRechazar = async () => {
+  const handleRechazarCorreccion = async () => {
     if (!registroId) return;
-    if (!motivoRechazo.trim()) {
+    if (!motivoRechazoCorreccion.trim()) {
       message.error("Indica el motivo del rechazo");
       return;
     }
-    setEnviando(true);
+    setRechazando(true);
     try {
-      await inspeccionAPI.revisarInspeccion(registroId, "rechazar", motivoRechazo.trim());
-      message.success("Inspección rechazada, vuelve a la cola del supervisor");
-      setMostrarMotivo(false);
-      setMotivoRechazo("");
+      await inspeccionAPI.revisarCorreccionInspeccion(
+        registroId,
+        "rechazar",
+        motivoRechazoCorreccion.trim(),
+      );
+      message.success("Corrección rechazada, vuelve a la cola del Supervisor");
+      setMostrarMotivoRechazoCorreccion(false);
+      setMotivoRechazoCorreccion("");
       onRevisado?.();
       onClose();
     } catch (error) {
       console.error(error);
-      message.error("No se pudo rechazar la inspección");
+      message.error("No se pudo rechazar la corrección");
     } finally {
-      setEnviando(false);
+      setRechazando(false);
     }
   };
 
@@ -190,11 +195,10 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   const observaciones = detalle?.observaciones ?? detalle?.observacion ?? null;
   const fotos = detalle ? getFotos(detalle) : [];
   const parametros = detalle?.parametros ?? [];
-  const puedeAccionar =
-    !!detalle &&
-    !!puedeRevisar &&
-    estado === "inspeccionado" &&
-    (detalle.inspeccionRevisionEstado ?? "pendiente") === "pendiente";
+  const puedeAccionarCorreccion =
+    !!puedeRevisarCorreccion &&
+    !!detalle?.correccionEnviadaAt &&
+    (detalle?.inspeccionRevisionEstado ?? "pendiente") === "pendiente";
 
   const columnsParametros: ColumnsType<ControlInspeccionParametro> = [
     { title: "#", dataIndex: "orden", key: "orden", width: 44 },
@@ -214,6 +218,37 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       key: "observacion",
       render: (val?: string | null) => val || "-",
     },
+    {
+      title: "Corrección del Supervisor",
+      dataIndex: "correccionObservacion",
+      key: "correccionObservacion",
+      render: (val: string | null | undefined, row: ControlInspeccionParametro) => {
+        const fotosCorreccion = (row.fotos ?? []).map((f) => f.url).filter(Boolean);
+        if (!val && fotosCorreccion.length === 0) return "-";
+        return (
+          <div className="space-y-1">
+            {val && <div>{val}</div>}
+            {fotosCorreccion.length > 0 && (
+              <Image.PreviewGroup items={fotosCorreccion.map((url) => ({ src: url }))}>
+                <div className="flex gap-1">
+                  {fotosCorreccion.map((url, i) => (
+                    <Image
+                      key={url}
+                      src={url}
+                      alt={`Corrección ${i + 1}`}
+                      width={40}
+                      height={32}
+                      style={{ objectFit: "cover", display: "block" }}
+                      wrapperStyle={{ borderRadius: 4, overflow: "hidden", cursor: "zoom-in" }}
+                    />
+                  ))}
+                </div>
+              </Image.PreviewGroup>
+            )}
+          </div>
+        );
+      },
+    },
   ];
 
   return (
@@ -226,13 +261,13 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="flex gap-2">
-            {puedeAccionar && !mostrarMotivo && (
+            {puedeAccionarCorreccion && !mostrarMotivoRechazoCorreccion && (
               <>
-                <Button type="primary" loading={enviando} onClick={handleValidar}>
-                  Validar
+                <Button type="primary" loading={confirmando} onClick={handleConfirmarCorreccion}>
+                  Confirmar corrección
                 </Button>
-                <Button danger disabled={enviando} onClick={() => setMostrarMotivo(true)}>
-                  Rechazar
+                <Button danger disabled={confirmando} onClick={() => setMostrarMotivoRechazoCorreccion(true)}>
+                  Rechazar corrección
                 </Button>
               </>
             )}
@@ -300,17 +335,43 @@ const DetalleInspeccionModal: React.FC<Props> = ({
             {fotos.length > 0 && (
               <div className="col-span-2 space-y-1">
                 <span className="font-medium text-slate-600">Fotos:</span>
-                <div className="flex flex-wrap gap-2">
-                  {fotos.map((url) => (
-                    <a key={url} href={url} target="_blank" rel="noopener noreferrer">
-                      <img
-                        src={url}
-                        alt="Foto inspección"
-                        className="h-16 w-24 rounded border border-slate-200 object-cover"
-                      />
-                    </a>
-                  ))}
-                </div>
+                <Image.PreviewGroup items={fotos.map((url) => ({ src: url }))}>
+                  <div className="relative inline-block">
+                    <Image
+                      src={fotos[0]}
+                      alt="Foto inspección"
+                      preview={{ src: fotos[0] }}
+                      style={{ height: 160, width: 240, objectFit: "cover", display: "block" }}
+                      wrapperStyle={{ display: "block" }}
+                    />
+                    {fotos.length > 1 && (
+                      <span className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                        1 / {fotos.length}
+                      </span>
+                    )}
+                  </div>
+                  {fotos.length > 1 && (
+                    <div className="mt-1 flex gap-1 overflow-x-auto">
+                      {fotos.slice(1).map((url, i) => (
+                        <Image
+                          key={url}
+                          src={url}
+                          alt={`Foto ${i + 2}`}
+                          preview={{ src: url }}
+                          width={64}
+                          height={48}
+                          style={{ objectFit: "cover", flexShrink: 0, display: "block" }}
+                          wrapperStyle={{
+                            flexShrink: 0,
+                            borderRadius: 4,
+                            overflow: "hidden",
+                            cursor: "zoom-in",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </Image.PreviewGroup>
               </div>
             )}
           </div>
@@ -330,23 +391,23 @@ const DetalleInspeccionModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {puedeAccionar && mostrarMotivo && (
+              {puedeAccionarCorreccion && mostrarMotivoRechazoCorreccion && (
                 <div className="mt-3 space-y-2">
                   <Input.TextArea
                     rows={2}
                     placeholder="Motivo del rechazo (obligatorio)"
-                    value={motivoRechazo}
-                    onChange={(e) => setMotivoRechazo(e.target.value)}
+                    value={motivoRechazoCorreccion}
+                    onChange={(e) => setMotivoRechazoCorreccion(e.target.value)}
                   />
                   <div className="flex gap-2">
-                    <Button danger loading={enviando} onClick={handleRechazar}>
+                    <Button danger loading={rechazando} onClick={handleRechazarCorreccion}>
                       Confirmar rechazo
                     </Button>
                     <Button
-                      disabled={enviando}
+                      disabled={rechazando}
                       onClick={() => {
-                        setMostrarMotivo(false);
-                        setMotivoRechazo("");
+                        setMostrarMotivoRechazoCorreccion(false);
+                        setMotivoRechazoCorreccion("");
                       }}
                     >
                       Cancelar

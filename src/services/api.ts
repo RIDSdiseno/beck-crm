@@ -4358,6 +4358,11 @@ export const permisosRolAPI = {
 export type ResultadoParametroInspeccion = "cumple" | "no_cumple" | "no_aplica";
 export type EstadoConformidadInspeccion = "conforme" | "no_conforme";
 
+export interface FotoCorreccionParametro {
+  id?: string;
+  url: string;
+}
+
 export interface ControlInspeccionParametro {
   id?: string;
   controlInspeccionId?: string;
@@ -4365,6 +4370,9 @@ export interface ControlInspeccionParametro {
   parametro: string;
   resultado: ResultadoParametroInspeccion;
   observacion?: string | null;
+  correccionObservacion?: string | null;
+  corregidoAt?: string | null;
+  fotos?: FotoCorreccionParametro[] | null;
 }
 
 export type InspeccionEstado = "no_enviado" | "en_inspeccion" | "inspeccionado";
@@ -4387,6 +4395,8 @@ export interface InspeccionDetalle {
   fotoInspeccionUrl?: string | null;
   fotoNoConformidadUrl?: string | null;
   parametros?: ControlInspeccionParametro[] | null;
+  correccionEnviadaAt?: string | null;
+  correccionEnviadaPor?: { id?: string; nombre?: string | null } | null;
   inspeccionRevisionEstado?: EstadoRevisionInspeccion | null;
   inspeccionRevisionAt?: string | null;
   inspeccionRevisionPor?: { id?: string; nombre?: string | null } | null;
@@ -4425,6 +4435,17 @@ export const inspeccionAPI = {
     motivo?: string
   ): Promise<void> => {
     await api.patch(`/registros/${registroId}/inspeccion/revision`, {
+      accion,
+      motivo,
+    });
+  },
+
+  revisarCorreccionInspeccion: async (
+    registroId: string,
+    accion: "confirmar" | "rechazar",
+    motivo?: string
+  ): Promise<void> => {
+    await api.patch(`/registros/${registroId}/inspeccion/correccion`, {
       accion,
       motivo,
     });
