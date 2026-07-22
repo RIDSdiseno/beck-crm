@@ -84,6 +84,10 @@ type RegistroApiRaw = {
   codigoBeck?: string | null;
   itemizadoMandanteNombre?: string | null;
   itemizado_mandante_nombre?: string | null;
+  itemizadoMandante?:
+    | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
+    | string
+    | null;
   factorPorHolguras?: number | string | null;
   factor_por_holguras?: number | string | null;
   cieloModular?: number | string | null;
@@ -325,7 +329,11 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
     itemizadoBeck:
       r.itemizadoBeck ?? r.itemizado_beck ?? descripcionMaterial ?? "",
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
-    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizado_mandante_nombre ?? "",
+    itemizadoMandanteNombre:
+      r.itemizadoMandanteNombre ??
+      r.itemizado_mandante_nombre ??
+      (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      "",
     fotoUrl,
     fotosUrls,
     factorPorHolguras: numOrNull(r.factorPorHolguras ?? r.factor_por_holguras),

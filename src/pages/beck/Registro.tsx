@@ -117,7 +117,10 @@ type RegistroApiRecord = {
   itemizadoMandanteId?: string | null;
   itemizado_mandante_id?: string | null;
   itemizadoMandanteNombre?: string | null;
-  itemizadoMandante?: { id?: string | null; nombre?: string | null; codigoBeck?: string | null } | null;
+  itemizadoMandante?:
+    | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
+    | string
+    | null;
   codigoBeck?: string | null;
   codigo_beck?: string | null;
   obra?: { nombre?: string | null; rendimientoSellosEsperadoDiario?: number | null; rendimientoReparacionEsperadoDiario?: number | null } | null;
@@ -548,9 +551,20 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     obraNombre,
     usuarioNombre,
     itemizadoBeck: descripcionMaterial || `REG-${r.id.slice(0, 6)}`,
-    itemizadoMandanteId: r.itemizadoMandanteId ?? r.itemizado_mandante_id ?? r.itemizadoMandante?.id ?? undefined,
-    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizadoMandante?.nombre ?? undefined,
-    codigoBeck: r.codigoBeck ?? r.codigo_beck ?? r.itemizadoMandante?.codigoBeck ?? undefined,
+    itemizadoMandanteId:
+      r.itemizadoMandanteId ??
+      r.itemizado_mandante_id ??
+      (typeof r.itemizadoMandante === "object" ? r.itemizadoMandante?.id : undefined) ??
+      undefined,
+    itemizadoMandanteNombre:
+      r.itemizadoMandanteNombre ??
+      (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      undefined,
+    codigoBeck:
+      r.codigoBeck ??
+      r.codigo_beck ??
+      (typeof r.itemizadoMandante === "object" ? r.itemizadoMandante?.codigoBeck : undefined) ??
+      undefined,
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
     fechaEjecucion: fecha,
     dia: diaSemana,
@@ -1764,7 +1778,10 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         if (key === "cantidadEjecutada" || key === "rendimientoIndividual")
           return user?.rol === "Administrador" || user?.rol === "Ingenieria";
 
-        if (key === "itemizadoMandanteNombre") return !hiddenKeys.has("itemizado_mandante");
+        // Itemizado Mandante siempre se muestra en el CRM: el acceso a este
+        // modulo ya lo controlan los permisos de modulo (ver/editar), no la
+        // configuracion de campos de registro pensada para la app movil.
+        if (key === "itemizadoMandanteNombre") return true;
 
         return !hiddenKeys.has(key);
       });
