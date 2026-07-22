@@ -117,6 +117,7 @@ type RegistroApiRecord = {
   itemizadoMandanteId?: string | null;
   itemizado_mandante_id?: string | null;
   itemizadoMandanteNombre?: string | null;
+  itemizadoMandanteTexto?: string | null;
   itemizadoMandante?:
     | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
     | string
@@ -559,6 +560,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     itemizadoMandanteNombre:
       r.itemizadoMandanteNombre ??
       (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      r.itemizadoMandanteTexto ??
       undefined,
     codigoBeck:
       r.codigoBeck ??

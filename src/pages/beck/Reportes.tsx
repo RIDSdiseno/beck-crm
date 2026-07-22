@@ -84,6 +84,7 @@ type RegistroApiRaw = {
   codigoBeck?: string | null;
   itemizadoMandanteNombre?: string | null;
   itemizado_mandante_nombre?: string | null;
+  itemizadoMandanteTexto?: string | null;
   itemizadoMandante?:
     | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
     | string
@@ -333,6 +334,7 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
       r.itemizadoMandanteNombre ??
       r.itemizado_mandante_nombre ??
       (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      r.itemizadoMandanteTexto ??
       "",
     fotoUrl,
     fotosUrls,

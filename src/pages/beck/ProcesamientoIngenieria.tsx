@@ -73,6 +73,7 @@ type RegistroApiRecord = {
   itemizadoMandanteId?: string | null;
   itemizado_mandante_id?: string | null;
   itemizadoMandanteNombre?: string | null;
+  itemizado_mandante?: string | null;
   itemizadoMandante?:
     | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
     | string
@@ -386,6 +387,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     itemizadoMandanteNombre:
       r.itemizadoMandanteNombre ??
       (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      r.itemizado_mandante ??
       undefined,
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
     fechaEjecucion: fecha,
