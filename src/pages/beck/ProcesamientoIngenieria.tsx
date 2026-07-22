@@ -73,7 +73,10 @@ type RegistroApiRecord = {
   itemizadoMandanteId?: string | null;
   itemizado_mandante_id?: string | null;
   itemizadoMandanteNombre?: string | null;
-  itemizadoMandante?: { id?: string | null; nombre?: string | null; codigoBeck?: string | null } | null;
+  itemizadoMandante?:
+    | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
+    | string
+    | null;
   codigoBeck?: string | null;
   codigo_beck?: string | null;
   nombreSellador?: string | null;
@@ -368,11 +371,22 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     empresa,
     nombreEmpresa,
     usuarioNombre,
-    codigoBeck: r.codigoBeck ?? r.codigo_beck ?? r.itemizadoMandante?.codigoBeck ?? undefined,
+    codigoBeck:
+      r.codigoBeck ??
+      r.codigo_beck ??
+      (typeof r.itemizadoMandante === "object" ? r.itemizadoMandante?.codigoBeck : undefined) ??
+      undefined,
     itemizadoBeck:
       r.itemizadoBeck ?? r.itemizado_beck ?? (descripcionMaterial || `REG-${r.id.slice(0, 6)}`),
-    itemizadoMandanteId: r.itemizadoMandanteId ?? r.itemizado_mandante_id ?? r.itemizadoMandante?.id ?? undefined,
-    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizadoMandante?.nombre ?? undefined,
+    itemizadoMandanteId:
+      r.itemizadoMandanteId ??
+      r.itemizado_mandante_id ??
+      (typeof r.itemizadoMandante === "object" ? r.itemizadoMandante?.id : undefined) ??
+      undefined,
+    itemizadoMandanteNombre:
+      r.itemizadoMandanteNombre ??
+      (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      undefined,
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
     fechaEjecucion: fecha,
     dia: diaSemana,
