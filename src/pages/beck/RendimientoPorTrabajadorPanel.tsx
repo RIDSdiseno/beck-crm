@@ -13,6 +13,7 @@ import {
   Pie,
   Cell,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import {
   dashboardBeckAPI,
@@ -84,14 +85,30 @@ const RendimientoBarTooltip: React.FC<RendimientoBarTooltipProps> = ({ active, p
   return (
     <div className="rounded-md border border-[#d8dcd6] bg-white/95 px-3 py-2 text-xs shadow-lg">
       <p className="font-semibold text-beck-ink">{item.nombreSellador}</p>
-      <p>Rendimiento: {numberFormatter.format(item.rendimientoAcumuladoPct)}%</p>
-      <p>Cantidad ejecutada: {formatNumber(item.cantidadEjecutadaTotal, true)}</p>
-      <p>Cantidad esperada: {formatNumber(item.cantidadEsperadaTotal, true)}</p>
+      <p>Ejecutado: {formatNumber(item.totalEjecutado, true)}</p>
+      <p>Esperado: {formatNumber(item.totalEsperado, true)}</p>
       <p>
-        Registros: {formatNumber(item.totalRegistros)} (Validados: {formatNumber(item.registrosValidados)} · No
-        validados: {formatNumber(item.registrosNoValidados)})
+        Rendimiento global: {item.rendimientoGlobalPct === null ? "-" : `${numberFormatter.format(item.rendimientoGlobalPct)}%`}
       </p>
-      <p>Códigos BECK trabajados: {formatNumber(item.codigosTrabajados)}</p>
+      <p>Registros: {formatNumber(item.totalRegistros)}</p>
+      {item.codigos.length > 0 && (
+        <div className="mt-1.5 border-t border-[#e5e3da] pt-1.5">
+          <p className="mb-0.5 text-[10px] uppercase tracking-wide text-beck-ink-soft">
+            Cumplimiento por Código BECK
+          </p>
+          {item.codigos.map((c) => (
+            <p key={`${c.obraId}-${c.codigoBeck}`} className="flex justify-between gap-3">
+              <span>
+                {c.codigoBeck}
+                {c.obraNombre ? ` (${c.obraNombre})` : ""}
+              </span>
+              <span className="font-medium">
+                {c.cumplimientoPct === null ? "-" : `${numberFormatter.format(c.cumplimientoPct)}%`}
+              </span>
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -468,11 +485,21 @@ const RendimientoPorTrabajadorPanel: React.FC = () => {
                   <ResponsiveContainer width="100%" height={Math.max(220, rendTrabajadores.length * 46)}>
                     <BarChart data={rendTrabajadores} layout="vertical" margin={{ left: 12, right: 24, top: 8, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" tickFormatter={(value) => `${value}%`} />
+                      <XAxis
+                        type="number"
+                        domain={[0, (dataMax: number) => Math.max(100, dataMax)]}
+                        tickFormatter={(value) => `${value}%`}
+                      />
                       <YAxis type="category" dataKey="nombreSellador" width={140} tick={{ fontSize: 11 }} />
                       <RechartsTooltip content={<RendimientoBarTooltip />} />
+                      <ReferenceLine
+                        x={100}
+                        stroke="#8a7418"
+                        strokeDasharray="4 4"
+                        label={{ value: "100%", position: "top", fill: "#8a7418", fontSize: 11 }}
+                      />
                       <Bar
-                        dataKey="rendimientoAcumuladoPct"
+                        dataKey="rendimientoGlobalPct"
                         fill={RENDIMIENTO_BAR_COLOR}
                         radius={[0, 4, 4, 0]}
                         cursor="pointer"

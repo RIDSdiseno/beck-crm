@@ -1842,16 +1842,25 @@ export interface RendimientoTrabajadoresParams {
   validacionIngenieria?: DashboardBeckValidacionIngenieria;
 }
 
+export interface RendimientoCodigoTrabajador {
+  obraId: string;
+  obraNombre: string;
+  codigoBeck: string;
+  cantidadEjecutada: number;
+  cantidadEsperada: number;
+  cumplimientoPct: number | null;
+}
+
 export interface RendimientoTrabajadorDetalle {
   nombreSellador: string;
   totalRegistros: number;
   registrosValidados: number;
   registrosNoValidados: number;
-  cantidadEjecutadaTotal: number;
-  cantidadEsperadaTotal: number;
-  rendimientoAcumulado: number;
-  rendimientoAcumuladoPct: number;
+  totalEjecutado: number;
+  totalEsperado: number;
+  rendimientoGlobalPct: number | null;
   codigosTrabajados: number;
+  codigos: RendimientoCodigoTrabajador[];
 }
 
 export interface RendimientoDetalleCodigoBeck {
