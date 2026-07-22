@@ -1,16 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Modal, Table, Tag, Select, Spin, Empty, message, Tabs, DatePicker } from "antd";
-import type { TableColumnsType } from "antd";
+import { Button, Card, Modal, Table, Tag, Select, Spin, Empty, message, Tabs } from "antd";
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import {
   BarChartOutlined,
   PartitionOutlined,
   FireOutlined,
-  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import dayjs, { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 
 import {
   ResponsiveContainer,
@@ -27,16 +25,12 @@ import {
 } from "recharts";
 
 import type { ThemeMode } from "../../hooks/useSystemTheme";
-import {
-  api,
-  obrasAPI,
-  registrosAPI,
-  type Obra,
-  type RendimientoAcumuladoItem,
-} from "../../services/api";
+import { useAuth } from "../../context/useAuth";
+import { api } from "../../services/api";
 import RegistroDetalleModal from "../../components/RegistroDetalleModal";
 import type { RegistroSello } from "../../types/registroSello";
 import { getTipoRegistroLabel } from "../../constants/roles";
+import RendimientoPorTrabajadorPanel from "./RendimientoPorTrabajadorPanel";
 
 type ReportesProps = {
   themeMode: ThemeMode;
@@ -88,6 +82,29 @@ type RegistroApiRaw = {
   FOLIO?: string | null;
   codigo_beck?: string | null;
   codigoBeck?: string | null;
+  itemizadoMandanteNombre?: string | null;
+  itemizado_mandante_nombre?: string | null;
+  factorPorHolguras?: number | string | null;
+  factor_por_holguras?: number | string | null;
+  cieloModular?: number | string | null;
+  cielo_modular?: number | string | null;
+  cantidadSellosConFactores?: number | string | null;
+  cantidad_sellos_con_factores?: number | string | null;
+  aislacion?: number | string | null;
+  cantidadSellosAislacion?: number | string | null;
+  cantidad_sellos_aislacion?: number | string | null;
+  reparacionTabique?: number | string | null;
+  reparacion_tabique?: number | string | null;
+  cantidadFinal?: number | string | null;
+  cantidad_final?: number | string | null;
+  rendimientoSellosEsperadoDiario?: number | null;
+  rendimiento_sellos_esperado_diario?: number | null;
+  rendimientoReparacionEsperadoDiario?: number | null;
+  rendimiento_reparacion_esperado_diario?: number | null;
+  cantidadEjecutada?: number | null;
+  cantidad_ejecutada?: number | null;
+  rendimientoIndividualPct?: number | null;
+  rendimiento_individual_pct?: number | null;
 };
 
 type ApiResponse = {
@@ -117,9 +134,22 @@ type RegistroNorm = {
   observaciones: string;
   itemizadoBeck: string;
   itemizadoSacyr: string;
+  itemizadoMandanteNombre: string;
   fotoUrl: string | null;
   fotosUrls: string[];
   codigo: string;
+  codigoBeckRaw: string;
+  factorPorHolguras: number | null;
+  accesibilidad: number | null;
+  cantidadSellosConFactores: number | null;
+  aislacion: number | null;
+  cantidadSellosAislacion: number | null;
+  reparacionTabique: number | null;
+  cantidadFinal: number | null;
+  rendimientoSellosEsperadoDiario: number | null;
+  rendimientoReparacionEsperadoDiario: number | null;
+  cantidadEjecutada: number | null;
+  rendimientoIndividualPct: number | null;
 };
 
 type ResumenSellador = {
@@ -149,47 +179,15 @@ const ESTADOS = [
   { value: "rechazado", label: "Rechazado" },
 ];
 
-const { RangePicker } = DatePicker;
-
-const rendimientoNumberFormatter = new Intl.NumberFormat("es-CL", {
-  maximumFractionDigits: 1,
-});
-const rendimientoIntegerFormatter = new Intl.NumberFormat("es-CL", {
-  maximumFractionDigits: 0,
-});
-
-const rendimientoTrabajadorColumns: TableColumnsType<RendimientoAcumuladoItem> = [
-  {
-    title: "Trabajador",
-    dataIndex: "nombreSellador",
-    key: "nombreSellador",
-  },
-  {
-    title: "Total de registros",
-    dataIndex: "totalRegistros",
-    key: "totalRegistros",
-    align: "right",
-    render: (value: number) => rendimientoIntegerFormatter.format(Number(value ?? 0)),
-  },
-  {
-    title: "Cantidad ejecutada",
-    dataIndex: "cantidadEjecutadaTotal",
-    key: "cantidadEjecutadaTotal",
-    align: "right",
-    render: (value: number) => rendimientoNumberFormatter.format(Number(value ?? 0)),
-  },
-  {
-    title: "Rendimiento acumulado (%)",
-    dataIndex: "rendimientoAcumuladoPct",
-    key: "rendimientoAcumuladoPct",
-    align: "right",
-    render: (value: number) => `${rendimientoNumberFormatter.format(Number(value ?? 0))}%`,
-  },
-];
-
 const normalizeFactorHolgura = (value: number): number => {
   if (value === 1.2 || value === 1.4 || value === 1.8) return value;
   return 1;
+};
+
+const numOrNull = (value: number | string | null | undefined): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 };
 
 const normalizeEstado = (estado?: string | null): string => {
@@ -240,6 +238,7 @@ const getFotosRegistro = (r: RegistroNorm): string[] => {
 const normToSello = (r: RegistroNorm): RegistroSello => ({
   id: r.id,
   codigo: r.codigo,
+  codigoBeck: r.codigoBeckRaw || undefined,
   fechaEjecucion: r.fechaEjecucion,
   dia: r.dia,
   piso: r.piso,
@@ -262,7 +261,19 @@ const normToSello = (r: RegistroNorm): RegistroSello => ({
   obraNombre: r.obraNombre,
   itemizadoBeck: r.itemizadoBeck,
   itemizadoSacyr: r.itemizadoSacyr,
+  itemizadoMandanteNombre: r.itemizadoMandanteNombre,
   descripcionMaterial: r.descripcionMaterial,
+  factorPorHolguras: r.factorPorHolguras ?? undefined,
+  accesibilidad: r.accesibilidad ?? undefined,
+  cantidadSellosConFactores: r.cantidadSellosConFactores ?? undefined,
+  aislacion: r.aislacion ?? undefined,
+  cantidadSellosAislacion: r.cantidadSellosAislacion ?? undefined,
+  reparacionTabique: r.reparacionTabique ?? undefined,
+  cantidadFinal: r.cantidadFinal ?? undefined,
+  rendimientoSellosEsperadoDiario: r.rendimientoSellosEsperadoDiario ?? undefined,
+  rendimientoReparacionEsperadoDiario: r.rendimientoReparacionEsperadoDiario ?? undefined,
+  cantidadEjecutada: r.cantidadEjecutada ?? undefined,
+  rendimientoIndividualPct: r.rendimientoIndividualPct ?? undefined,
 });
 
 const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
@@ -292,6 +303,7 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
   return {
     id: r.id,
     codigo: r.codigoBeck ?? r.codigo_beck ?? `REG-${r.id.slice(0, 6)}`,
+    codigoBeckRaw: r.codigoBeck ?? r.codigo_beck ?? "",
     cantidadSellos,
     metrosLineales,
     nombreSellador: r.nombreSellador ?? r.nombre_sellador ?? "",
@@ -313,13 +325,31 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
     itemizadoBeck:
       r.itemizadoBeck ?? r.itemizado_beck ?? descripcionMaterial ?? "",
     itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
+    itemizadoMandanteNombre: r.itemizadoMandanteNombre ?? r.itemizado_mandante_nombre ?? "",
     fotoUrl,
     fotosUrls,
+    factorPorHolguras: numOrNull(r.factorPorHolguras ?? r.factor_por_holguras),
+    accesibilidad: numOrNull(r.accesibilidad ?? r.cieloModular ?? r.cielo_modular),
+    cantidadSellosConFactores: numOrNull(r.cantidadSellosConFactores ?? r.cantidad_sellos_con_factores),
+    aislacion: numOrNull(r.aislacion),
+    cantidadSellosAislacion: numOrNull(r.cantidadSellosAislacion ?? r.cantidad_sellos_aislacion),
+    reparacionTabique: numOrNull(r.reparacionTabique ?? r.reparacion_tabique),
+    cantidadFinal: numOrNull(r.cantidadFinal ?? r.cantidad_final),
+    rendimientoSellosEsperadoDiario: numOrNull(
+      r.rendimientoSellosEsperadoDiario ?? r.rendimiento_sellos_esperado_diario
+    ),
+    rendimientoReparacionEsperadoDiario: numOrNull(
+      r.rendimientoReparacionEsperadoDiario ?? r.rendimiento_reparacion_esperado_diario
+    ),
+    cantidadEjecutada: numOrNull(r.cantidadEjecutada ?? r.cantidad_ejecutada),
+    rendimientoIndividualPct: numOrNull(r.rendimientoIndividualPct ?? r.rendimiento_individual_pct),
   };
 };
 
 const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const isDark = themeMode === "dark";
+  const { user } = useAuth();
+  const puedeVerRendimiento = user?.rol === "Administrador" || user?.rol === "Ingenieria";
 
   const [registros, setRegistros] = useState<RegistroNorm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -330,72 +360,6 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [registroDetalle, setRegistroDetalle] = useState<RegistroNorm | null>(null);
   const [activeTipoRegistro, setActiveTipoRegistro] = useState<string>("sello_cortafuego");
-
-  const [rendimientoObras, setRendimientoObras] = useState<Obra[]>([]);
-  const [rendimientoObrasLoading, setRendimientoObrasLoading] = useState(false);
-  const [rendimientoObraId, setRendimientoObraId] = useState<string | undefined>(undefined);
-  const [rendimientoFechas, setRendimientoFechas] = useState<[Dayjs, Dayjs]>([
-    dayjs().subtract(30, "day"),
-    dayjs(),
-  ]);
-  const [rendimientoData, setRendimientoData] = useState<RendimientoAcumuladoItem[]>([]);
-  const [rendimientoLoading, setRendimientoLoading] = useState(false);
-  const [rendimientoError, setRendimientoError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-
-    const loadObras = async () => {
-      setRendimientoObrasLoading(true);
-      try {
-        const data = await obrasAPI.listar({ activa: true });
-        if (!ignore) setRendimientoObras(data);
-      } catch {
-        if (!ignore) setRendimientoObras([]);
-      } finally {
-        if (!ignore) setRendimientoObrasLoading(false);
-      }
-    };
-
-    void loadObras();
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let ignore = false;
-
-    const loadRendimiento = async () => {
-      const [inicio, fin] = rendimientoFechas;
-      if (!inicio || !fin) return;
-
-      setRendimientoLoading(true);
-      setRendimientoError(null);
-      try {
-        const data = await registrosAPI.getRendimientoAcumulado({
-          fechaInicio: inicio.format("YYYY-MM-DD"),
-          fechaFin: fin.format("YYYY-MM-DD"),
-          obraId: rendimientoObraId,
-        });
-        if (!ignore) setRendimientoData(data);
-      } catch (err) {
-        if (!ignore) {
-          setRendimientoData([]);
-          setRendimientoError(
-            err instanceof Error ? err.message : "No se pudo cargar el rendimiento por trabajador"
-          );
-        }
-      } finally {
-        if (!ignore) setRendimientoLoading(false);
-      }
-    };
-
-    void loadRendimiento();
-    return () => {
-      ignore = true;
-    };
-  }, [rendimientoObraId, rendimientoFechas]);
 
   const openPhotos = (urls: string[], idx = 0) => {
     setPhotoUrls(urls);
@@ -722,6 +686,12 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
 
   const columnsCortafuego: ColumnsType<RegistroNorm> = [
     {
+      title: "Obra",
+      dataIndex: "obraNombre",
+      key: "obraNombre",
+      width: 160,
+    },
+    {
       title: "Tipo registro",
       key: "tipoRegistro",
       width: 160,
@@ -731,7 +701,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       title: "Codigo BECK",
       key: "codigoBeck",
       width: 120,
-      render: (_: unknown, r: RegistroNorm) => r.codigo,
+      render: (_: unknown, r: RegistroNorm) => r.codigoBeckRaw || "-",
     },
     {
       title: "Itemizado BECK",
@@ -741,11 +711,11 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       render: (_: unknown, r: RegistroNorm) => r.itemizadoBeck || "-",
     },
     {
-      title: "Itemizado SACYR",
-      key: "itemizadoSacyr",
+      title: "Itemizado Mandante",
+      key: "itemizadoMandanteNombre",
       width: 180,
       ellipsis: true,
-      render: (_: unknown, r: RegistroNorm) => r.itemizadoSacyr || "-",
+      render: (_: unknown, r: RegistroNorm) => r.itemizadoMandanteNombre || "-",
     },
     {
       title: "Fecha ejecución sello",
@@ -786,6 +756,13 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       ellipsis: true,
     },
     {
+      title: "Módulo o edificio",
+      key: "moduloEdificio",
+      width: 150,
+      ellipsis: true,
+      render: (_: unknown, r: RegistroNorm) => r.recinto || "-",
+    },
+    {
       title: "N° DEL SELLO",
       dataIndex: "numeroSello",
       key: "numeroSello",
@@ -804,6 +781,61 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       width: 110,
     },
     {
+      title: "Factor por Holguras",
+      key: "factorPorHolguras",
+      width: 140,
+      render: (_: unknown, r: RegistroNorm) => {
+        const value = r.factorPorHolguras ?? r.factorHolgura ?? 1;
+        return <Tag color="geekblue">F = {value}</Tag>;
+      },
+    },
+    {
+      title: "Accesibilidad",
+      key: "accesibilidad",
+      width: 150,
+      render: (_: unknown, r: RegistroNorm) => {
+        const value = r.accesibilidad ?? 1;
+        const label =
+          value === 1
+            ? "F=1 Acceso normal"
+            : value === 2
+            ? "F=2 Americano / estructurado"
+            : "F=3 Cielo duro / gateras";
+        return <span className="text-xs">{label}</span>;
+      },
+    },
+    {
+      title: "Cantidad de Sellos con Factores",
+      key: "cantidadSellosConFactores",
+      width: 200,
+      render: (_: unknown, r: RegistroNorm) =>
+        (r.cantidadSellosConFactores ?? r.cantidadSellosConFactor)?.toFixed?.(2) ?? "-",
+    },
+    {
+      title: "Aislación",
+      key: "aislacion",
+      width: 110,
+      render: (_: unknown, r: RegistroNorm) => r.aislacion?.toFixed?.(2) ?? "-",
+    },
+    {
+      title: "Cantidad de Sellos Aislación",
+      key: "cantidadSellosAislacion",
+      width: 195,
+      render: (_: unknown, r: RegistroNorm) => r.cantidadSellosAislacion?.toFixed?.(2) ?? "-",
+    },
+    {
+      title: "Reparación de tabique",
+      key: "reparacionTabique",
+      width: 160,
+      render: (_: unknown, r: RegistroNorm) => r.reparacionTabique?.toFixed?.(2) ?? "-",
+    },
+    {
+      title: "Cantidad final",
+      key: "cantidadFinal",
+      width: 130,
+      render: (_: unknown, r: RegistroNorm) => r.cantidadFinal?.toFixed?.(2) ?? "-",
+    },
+    {
       title: "Observaciones",
       dataIndex: "observaciones",
       key: "observaciones",
@@ -817,6 +849,62 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       width: 120,
       render: (_: unknown, r: RegistroNorm) => r.numeroSello || "-",
     },
+    {
+      title: "Cantidad / Metros",
+      key: "cantidadMetros",
+      width: 140,
+      render: (_: unknown, r: RegistroNorm) =>
+        getTipoRegistro(r) === "junta_lineal_espuma"
+          ? r.metrosLineales > 0
+            ? `${r.metrosLineales.toFixed(2)} m`
+            : "-"
+          : r.cantidadSellos != null
+          ? `${r.cantidadSellos}${getTipoRegistro(r) === "sello_cortafuego" ? " sellos" : ""}`
+          : "-",
+    },
+    {
+      title: "Metros lineales",
+      key: "metrosLineales",
+      width: 120,
+      render: (_: unknown, r: RegistroNorm) =>
+        r.metrosLineales > 0 ? `${r.metrosLineales.toFixed(2)} m` : "-",
+    },
+    ...(puedeVerRendimiento
+      ? [
+          {
+            title: "Rend. esperado diario",
+            key: "rendimientoSellosEsperadoDiario",
+            width: 150,
+            render: (_: unknown, r: RegistroNorm) =>
+              r.rendimientoSellosEsperadoDiario != null
+                ? `${r.rendimientoSellosEsperadoDiario} sellos/día`
+                : "Sin definir",
+          },
+          {
+            title: "Rend. reparación diario",
+            key: "rendimientoReparacionEsperadoDiario",
+            width: 160,
+            render: (_: unknown, r: RegistroNorm) =>
+              r.rendimientoReparacionEsperadoDiario != null
+                ? `${r.rendimientoReparacionEsperadoDiario} reparaciones/día`
+                : "Sin definir",
+          },
+          {
+            title: "Cantidad ejecutada",
+            key: "cantidadEjecutada",
+            width: 140,
+            render: (_: unknown, r: RegistroNorm) =>
+              r.cantidadEjecutada != null ? r.cantidadEjecutada.toFixed(2) : "Sin calcular",
+          },
+          {
+            title: "Rendimiento individual",
+            key: "rendimientoIndividual",
+            width: 160,
+            render: (_: unknown, r: RegistroNorm) =>
+              r.rendimientoIndividualPct != null ? `${r.rendimientoIndividualPct.toFixed(2)}%` : "Sin calcular",
+          },
+        ] as ColumnsType<RegistroNorm>
+      : []),
     {
       title: "Estado",
       key: "estado",
@@ -1231,76 +1319,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
             </Card>
           </div>
 
-          {/* Rendimiento por trabajador — reutiliza el mismo endpoint/servicio
-              que Dashboard.tsx (GET /registros/rendimiento-acumulado, que a su
-              vez llama a calcularRendimientoPorTrabajador). Los filtros de obra
-              y rango de fechas de este bloque son exclusivos de esta sección:
-              no existen filtros de obra/fecha previos en Reportes para
-              reutilizar, y no afectan ningún otro componente de la pantalla. */}
-          <Card
-            title={
-              <div className="flex items-center gap-2 text-sm">
-                <TeamOutlined className="text-amber-400" />
-                <span>Rendimiento por trabajador</span>
-              </div>
-            }
-            className={`border ${
-              isDark
-                ? "bg-beck-card-dark border-beck-border-dark"
-                : "bg-beck-card-light border-beck-border-light"
-            }`}
-            styles={{ body: { padding: 16 } }}
-          >
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <Select
-                size="small"
-                allowClear
-                showSearch
-                loading={rendimientoObrasLoading}
-                placeholder="Todas las obras"
-                style={{ width: 220 }}
-                value={rendimientoObraId}
-                onChange={(value) => setRendimientoObraId(value ?? undefined)}
-                optionFilterProp="label"
-                options={rendimientoObras.map((obra) => ({
-                  label: obra.nombre,
-                  value: obra.id,
-                }))}
-              />
-              <RangePicker
-                size="small"
-                format="DD-MM-YYYY"
-                value={rendimientoFechas}
-                allowClear={false}
-                onChange={(value) => {
-                  if (value && value[0] && value[1]) {
-                    setRendimientoFechas([value[0], value[1]]);
-                  }
-                }}
-              />
-            </div>
-
-            {rendimientoError ? (
-              <Empty
-                description={
-                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                    {rendimientoError}
-                  </span>
-                }
-              />
-            ) : (
-              <Table
-                size="small"
-                loading={rendimientoLoading}
-                columns={rendimientoTrabajadorColumns}
-                dataSource={rendimientoData}
-                rowKey={(record, index) => `${record.nombreSellador}-${index}`}
-                pagination={false}
-                scroll={{ x: "max-content" }}
-                locale={{ emptyText: "Sin datos para el rango y obra seleccionados" }}
-              />
-            )}
-          </Card>
+          <RendimientoPorTrabajadorPanel />
 
           {/* Reportes Técnicos */}
           <Card

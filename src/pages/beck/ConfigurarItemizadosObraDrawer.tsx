@@ -355,6 +355,15 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
 
   const columns: ColumnsType<ConfigRow> = [
     {
+      title: "Código BECK",
+      key: "codigoBeck",
+      width: 110,
+      render: (_: unknown, record: ConfigRow) => {
+        const v = record.itemizadoOpcion?.codigoBeck;
+        return v || <span className="text-slate-400">—</span>;
+      },
+    },
+    {
       title: "Itemizado BECK",
       key: "elementoPasante",
       render: (_: unknown, record: ConfigRow) => {

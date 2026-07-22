@@ -1825,6 +1825,60 @@ export interface DashboardBeckResponse {
   rendimientoPorTrabajador?: DashboardBeckRendimientoTrabajador[];
 }
 
+export type DashboardBeckValidacionIngenieria =
+  | "todos"
+  | "validados"
+  | "no_validados"
+  | "pendiente"
+  | "en_revision"
+  | "rechazado";
+
+export interface RendimientoTrabajadoresParams {
+  obraId?: string;
+  trabajador?: string;
+  rango?: DashboardBeckRango;
+  fechaInicio?: string;
+  fechaFin?: string;
+  validacionIngenieria?: DashboardBeckValidacionIngenieria;
+}
+
+export interface RendimientoTrabajadorDetalle {
+  nombreSellador: string;
+  totalRegistros: number;
+  registrosValidados: number;
+  registrosNoValidados: number;
+  cantidadEjecutadaTotal: number;
+  cantidadEsperadaTotal: number;
+  rendimientoAcumulado: number;
+  rendimientoAcumuladoPct: number;
+  codigosTrabajados: number;
+}
+
+export interface RendimientoDetalleCodigoBeck {
+  obraId: string;
+  obraNombre: string;
+  codigoBeck: string;
+  itemizadoBeck: string;
+  cantidadEjecutada: number;
+  cantidadEsperada: number;
+  cumplimientoPct: number | null;
+  totalRegistros: number;
+}
+
+export interface RendimientoTrabajadoresResponse {
+  filtros: {
+    obraId: string | null;
+    trabajador: string | null;
+    rango: string;
+    fechaDesde: string | null;
+    fechaHasta: string | null;
+    validacionIngenieria: DashboardBeckValidacionIngenieria;
+  };
+  trabajadoresDisponibles: string[];
+  trabajadores: RendimientoTrabajadorDetalle[];
+  detalleCodigos: RendimientoDetalleCodigoBeck[];
+}
+
 export const dashboardBeckAPI = {
   obtener: async (
     params?: DashboardBeckParams
@@ -1832,6 +1886,15 @@ export const dashboardBeckAPI = {
     const response = await api.get<
       ApiResponseEnvelope<DashboardBeckResponse> | DashboardBeckResponse
     >("/dashboard/beck", { params });
+    return unwrapItem(response.data);
+  },
+
+  obtenerRendimientoTrabajadores: async (
+    params?: RendimientoTrabajadoresParams
+  ): Promise<RendimientoTrabajadoresResponse> => {
+    const response = await api.get<
+      ApiResponseEnvelope<RendimientoTrabajadoresResponse> | RendimientoTrabajadoresResponse
+    >("/dashboard/beck/rendimiento-trabajadores", { params });
     return unwrapItem(response.data);
   },
 };

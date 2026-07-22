@@ -1,15 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Card,
-  Empty,
-  Segmented,
-  Select,
-  Spin,
-  Table,
-  Tag,
-  type TableColumnsType,
-} from "antd";
+import { Alert, Card, Empty, Segmented, Select, Spin, Table, Tag, type TableColumnsType } from "antd";
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
@@ -28,11 +18,11 @@ import {
   type DashboardBeckProduccionSellador,
   type DashboardBeckRango,
   type DashboardBeckRegistro,
-  type DashboardBeckRendimientoTrabajador,
   type DashboardBeckResponse,
 } from "../../services/api";
 import type { ThemeMode } from "../../hooks/useSystemTheme";
 import { getTipoRegistroLabel } from "../../constants/roles";
+import RendimientoPorTrabajadorPanel from "./RendimientoPorTrabajadorPanel";
 
 type DashboardProps = {
   themeMode: ThemeMode;
@@ -180,7 +170,6 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
     data?.selladores ??
     [];
   const ultimosRegistros = data?.ultimosRegistros ?? data?.registros ?? [];
-  const rendimientoPorTrabajador = data?.rendimientoPorTrabajador ?? [];
 
   const kpiCards = useMemo(
     () => [
@@ -293,35 +282,6 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
       title: "Registros",
       dataIndex: "registros",
       key: "registros",
-      align: "right",
-      render: (value) => formatNumber(value),
-    },
-  ];
-
-  const rendimientoTrabajadorColumns: TableColumnsType<DashboardBeckRendimientoTrabajador> = [
-    {
-      title: "Trabajador",
-      dataIndex: "nombreSellador",
-      key: "nombreSellador",
-    },
-    {
-      title: "Cantidad ejecutada total",
-      dataIndex: "cantidadEjecutadaTotal",
-      key: "cantidadEjecutadaTotal",
-      align: "right",
-      render: (value) => formatNumber(value, true),
-    },
-    {
-      title: "Rendimiento acumulado %",
-      dataIndex: "rendimientoAcumuladoPct",
-      key: "rendimientoAcumuladoPct",
-      align: "right",
-      render: (value: number) => `${numberFormatter.format(value ?? 0)}%`,
-    },
-    {
-      title: "Total registros",
-      dataIndex: "totalRegistros",
-      key: "totalRegistros",
       align: "right",
       render: (value) => formatNumber(value),
     },
@@ -549,34 +509,7 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
             </Card>
           </div>
 
-          <Card
-            className="beck-panel-soft"
-            title={
-              <div className="flex items-center gap-2 text-sm">
-                <TeamOutlined className="text-[#a8860f]" />
-                <span>Rendimiento por trabajador</span>
-              </div>
-            }
-            styles={{
-              header: {
-                backgroundColor: "#fffbf0",
-                color: "#17181A",
-                borderBottom: "1px solid #d8dcd6",
-                fontSize: 13,
-              },
-              body: { padding: 14 },
-            }}
-          >
-            <Table
-              rowKey={(record, index) => `${record.nombreSellador}-${index}`}
-              size="small"
-              columns={rendimientoTrabajadorColumns}
-              dataSource={rendimientoPorTrabajador}
-              pagination={false}
-              locale={tableLocale}
-              scroll={{ x: "max-content" }}
-            />
-          </Card>
+          <RendimientoPorTrabajadorPanel />
 
           <Card
             className="beck-panel-soft"
