@@ -274,6 +274,7 @@ const Categorias = () => {
           loading={loading}
           columns={columns}
           dataSource={categoriasFiltradas}
+          scroll={{ x: "max-content" }}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

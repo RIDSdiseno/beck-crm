@@ -551,7 +551,7 @@ const FirematReportes: React.FC = () => {
 
       {/* ── Filtros ── */}
       <section className="firemat-panel p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <DatePicker.RangePicker
             format="DD/MM/YYYY"
             value={fechaRange}
@@ -559,6 +559,7 @@ const FirematReportes: React.FC = () => {
               setFechaRange(dates as [Dayjs | null, Dayjs | null] | null)
             }
             placeholder={["Fecha desde", "Fecha hasta"]}
+            className="w-full sm:w-auto"
             style={{ minWidth: 220 }}
           />
 
@@ -572,6 +573,7 @@ const FirematReportes: React.FC = () => {
               String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
             }
             options={categorias.map((c) => ({ label: c.nombre, value: c.id }))}
+            className="w-full sm:w-auto"
             style={{ minWidth: 160 }}
           />
 
@@ -585,6 +587,7 @@ const FirematReportes: React.FC = () => {
               String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
             }
             options={productos.map((p) => ({ label: p.nombre, value: p.id }))}
+            className="w-full sm:w-auto"
             style={{ minWidth: 180 }}
           />
 
@@ -594,6 +597,7 @@ const FirematReportes: React.FC = () => {
             value={estadoVenta ?? null}
             onChange={(v: string | null) => setEstadoVenta(v ?? undefined)}
             options={ESTADO_VENTA_OPTIONS}
+            className="w-full sm:w-auto"
             style={{ minWidth: 140 }}
           />
 
@@ -603,6 +607,7 @@ const FirematReportes: React.FC = () => {
             value={estadoCotizacion ?? null}
             onChange={(v: string | null) => setEstadoCotizacion(v ?? undefined)}
             options={ESTADO_COTIZACION_OPTIONS}
+            className="w-full sm:w-auto"
             style={{ minWidth: 160 }}
           />
 
@@ -612,6 +617,7 @@ const FirematReportes: React.FC = () => {
             value={etapaOportunidad ?? null}
             onChange={(v: string | null) => setEtapaOportunidad(v ?? undefined)}
             options={ETAPA_OPORTUNIDAD_OPTIONS}
+            className="w-full sm:w-auto"
             style={{ minWidth: 180 }}
           />
 
@@ -620,13 +626,13 @@ const FirematReportes: React.FC = () => {
             icon={<ReloadOutlined />}
             onClick={handleActualizar}
             loading={loading}
-            className="firemat-action-button"
+            className="firemat-action-button w-full sm:w-auto"
           >
             Actualizar
           </Button>
 
           {hayFiltros && (
-            <Button icon={<ClearOutlined />} onClick={handleLimpiar}>
+            <Button icon={<ClearOutlined />} onClick={handleLimpiar} className="w-full sm:w-auto">
               Limpiar
             </Button>
           )}
@@ -649,7 +655,7 @@ const FirematReportes: React.FC = () => {
       {reporte && (
         <>
           {/* ── KPIs fila 1 ── */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="firemat-kpi-card" styles={kpiBody}>
               <p className="text-xs text-beck-muted">Total ventas</p>
               <p className="mt-2 text-2xl font-bold text-beck-ink">
@@ -686,7 +692,7 @@ const FirematReportes: React.FC = () => {
           </div>
 
           {/* ── KPIs fila 2 ── */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="firemat-kpi-card" styles={kpiBody}>
               <p className="text-xs text-beck-muted">Bajo stock</p>
               <p className="mt-2 text-2xl font-bold text-amber-600">

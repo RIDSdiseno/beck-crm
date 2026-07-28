@@ -807,13 +807,13 @@ const ClientesFiremat: React.FC = () => {
           <Select
             value={filtroActivo}
             onChange={handleFiltroChange}
-            style={{ width: 140 }}
+            className="w-full sm:w-[140px]"
           >
             <Option value="todos">Todos</Option>
             <Option value="activos">Activos</Option>
             <Option value="inactivos">Inactivos</Option>
           </Select>
-          <Button onClick={handleBuscar} loading={loading}>
+          <Button onClick={handleBuscar} loading={loading} className="w-full sm:w-auto">
             Buscar
           </Button>
         </div>
@@ -843,7 +843,9 @@ const ClientesFiremat: React.FC = () => {
         title={editingCliente ? "Editar cliente" : "Nuevo cliente"}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        width={640}
+        width="94vw"
+        style={{ maxWidth: 640 }}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         destroyOnClose
         footer={[
           <Button key="cancel" onClick={() => setModalOpen(false)}>
@@ -1013,7 +1015,8 @@ const ClientesFiremat: React.FC = () => {
         title={selectedCliente ? selectedCliente.nombre : "Detalle cliente"}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={760}
+        width="92vw"
+        style={{ maxWidth: 760 }}
         extra={
           selectedCliente && canEditClientes && (
             <Button
@@ -1252,7 +1255,7 @@ const ClientesFiremat: React.FC = () => {
       >
         {resultadoImportar && (
           <div className="flex flex-col gap-3 mt-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Card size="small" className="text-center">
                 <div className="text-2xl font-bold text-slate-800">{resultadoImportar.procesados}</div>
                 <div className="text-xs text-slate-500">Procesados</div>
@@ -1338,7 +1341,7 @@ const ClientesFiremat: React.FC = () => {
             <Input />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-x-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
             <Form.Item
               name="telefono"
               label="Teléfono"

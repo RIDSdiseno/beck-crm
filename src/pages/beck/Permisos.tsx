@@ -370,7 +370,7 @@ const BeckPermisos: React.FC = () => {
   return (
     <div className="space-y-4 pb-6">
       {/* ── Page header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold tracking-wide text-slate-900">
             Gestión de permisos
@@ -383,15 +383,9 @@ const BeckPermisos: React.FC = () => {
       </div>
 
       {/* ── Main layout ── */}
-      <div
-        className="flex overflow-hidden rounded-xl border border-slate-200 bg-white"
-        style={{ minHeight: 580 }}
-      >
+      <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white lg:flex-row lg:min-h-[580px]">
         {/* ── Columna izquierda: lista de roles ── */}
-        <div
-          className="flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50"
-          style={{ width: 220 }}
-        >
+        <div className="w-full flex-shrink-0 overflow-y-auto border-b border-slate-200 bg-slate-50 lg:w-[220px] lg:border-b-0 lg:border-r">
           <div className="p-3">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               Roles
@@ -457,12 +451,9 @@ const BeckPermisos: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-1 overflow-hidden">
+              <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
                 {/* Sección A: permisos del rol */}
-                <div
-                  className="flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-white"
-                  style={{ width: 300 }}
-                >
+                <div className="w-full flex-shrink-0 overflow-y-auto border-b border-slate-200 bg-white lg:w-[300px] lg:border-b-0 lg:border-r">
                   <div className="px-4 py-4">
                     <div className="mb-3 flex items-center justify-between">
                       <p className="text-xs font-semibold text-slate-700">
@@ -695,7 +686,9 @@ const BeckPermisos: React.FC = () => {
         footer={
           <Button onClick={() => setFirematModalUsuario(null)}>Cerrar</Button>
         }
-        width={520}
+        width="94vw"
+        style={{ maxWidth: 520 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         {firermatModalUsuario && (() => {
           const modalUserId = firermatModalUsuario.id;
@@ -790,7 +783,9 @@ const BeckPermisos: React.FC = () => {
         confirmLoading={savingExcepcion}
         okText="Guardar excepción"
         cancelText="Cancelar"
-        width={700}
+        width="94vw"
+        style={{ maxWidth: 700 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Los permisos personalizados sobrescriben los permisos del rol. Las columnas{" "}

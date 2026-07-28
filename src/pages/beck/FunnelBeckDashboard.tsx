@@ -244,7 +244,7 @@ const EmptyMsg: React.FC<{ text?: string }> = ({ text = "Sin datos" }) => (
 
 const SeccionProspectos: React.FC<{ d: NonNullable<FunnelBeckDashboardData["prospectos"]> }> = ({ d }) => (
   <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <KpiCard label="Prospectos nuevos esta semana" value={formatNum(d.nuevosSemana)} color="#6366f1" />
       <KpiCard label="Prospectos nuevos este mes" value={formatNum(d.nuevosMes)} color="#3b82f6" />
     </div>
@@ -435,6 +435,7 @@ const TablaMotivos: React.FC<{ data: { motivo: string; cantidad: number }[]; tit
         dataSource={data}
         size="small"
         pagination={false}
+        scroll={{ x: "max-content" }}
       />
     )}
   </Card>
@@ -936,7 +937,7 @@ const FunnelBeckDashboard: React.FC<Props> = ({
       {data && (
         <>
           {/* ── KPIs base ── */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             <KpiCard label="Total oportunidades" value={formatNum(data.kpis.totalOportunidades)} />
             <KpiCard label="Activas" value={formatNum(data.kpis.oportunidadesActivas)} color="#3b82f6" />
             <KpiCard label="Ganadas" value={formatNum(data.kpis.oportunidadesGanadas)} color="#22c55e" />
@@ -959,7 +960,7 @@ const FunnelBeckDashboard: React.FC<Props> = ({
             <Typography.Text className="mb-3 block text-sm font-semibold text-slate-700">
               Próximas acciones
             </Typography.Text>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <ProximasCard label="Vencidas" value={data.proximasAcciones.accionesVencidas} color="#dc2626" bg="border border-red-200 bg-red-50" />
               <ProximasCard label="Hoy" value={data.proximasAcciones.accionesHoy} color="#d97706" bg="border border-amber-200 bg-amber-50" />
               <ProximasCard label="Próximos 7 días" value={data.proximasAcciones.accionesProximos7Dias} color="#2563eb" bg="border border-blue-200 bg-blue-50" />

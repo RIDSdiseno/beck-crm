@@ -3284,7 +3284,7 @@ const FirematFunnel: React.FC<{
         </section>
       ) : (
         <>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <ResumenCard label="Total oportunidades" value={resumen.totalOportunidades} />
         <ResumenCard label="Pipeline total" value={formatCLP(resumen.pipelineTotal)} highlight />
         <ResumenCard label="Ganadas" value={resumen.ganadas} />
@@ -4787,7 +4787,8 @@ const FirematFunnel: React.FC<{
           className: "firemat-action-button",
         }}
         confirmLoading={savingCotizacion}
-        width={980}
+        width="min(980px, 95vw)"
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         destroyOnClose
       >
         <Form<CotizacionFormValues>

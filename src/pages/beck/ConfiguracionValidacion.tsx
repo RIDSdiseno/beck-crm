@@ -329,16 +329,18 @@ const ConfiguracionValidacionPage: React.FC = () => {
         </p>
       </div>
 
-      <Table<ConfiguracionValidacion>
-        dataSource={filteredData}
-        columns={columns}
-        rowKey="id"
-        loading={loading}
-        size="small"
-        pagination={{ pageSize: 20, showSizeChanger: true }}
-        scroll={{ x: 900 }}
-        locale={{ emptyText: "No hay reglas de validación configuradas" }}
-      />
+      <div className="overflow-x-auto">
+        <Table<ConfiguracionValidacion>
+          dataSource={filteredData}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          size="small"
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: "No hay reglas de validación configuradas" }}
+        />
+      </div>
     </div>
   );
 };

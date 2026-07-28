@@ -35,7 +35,6 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import "dayjs/locale/es";
-import { getTipoRegistroLabel } from "../../constants/roles";
 import {
   Bar,
   BarChart,
@@ -376,7 +375,9 @@ const ConfigVistaModal: React.FC<ConfigVistaModalProps> = ({
       }
       open={open}
       onCancel={onClose}
-      width={640}
+      width="94vw"
+      style={{ maxWidth: 640 }}
+      styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       footer={[
         <Button key="cancel" onClick={onClose} disabled={saving}>
           Cancelar
@@ -403,6 +404,7 @@ const ConfigVistaModal: React.FC<ConfigVistaModalProps> = ({
           dataSource={[...items].sort((a, b) => a.orden - b.orden)}
           size="small"
           pagination={false}
+          scroll={{ x: "max-content" }}
         />
       )}
     </Modal>
@@ -445,7 +447,7 @@ const RegistrosMiEmpresa: React.FC = () => {
   const [abriendoPdfConsolidado, setAbriendoPdfConsolidado] = useState(false);
 
   const [busqueda, setBusqueda] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState<string | undefined>();
+  const [paginaActual, setPaginaActual] = useState(1);
   const [filtroPiso, setFiltroPiso] = useState<string | undefined>();
   const [filtroFechas, setFiltroFechas] = useState<[Dayjs, Dayjs] | null>(null);
 
@@ -532,10 +534,10 @@ const RegistrosMiEmpresa: React.FC = () => {
       setRegistros([]);
       setColumnasRegistro([]);
       setBusqueda("");
-      setFiltroTipo(undefined);
       setFiltroPiso(undefined);
       setFiltroFechas(null);
       setSelectedRowKeys([]);
+      setPaginaActual(1);
       setLoadingRegistros(true);
       try {
         const data = await clienteAPI.registrosPorObra(obra.id, apiParams);
@@ -563,8 +565,13 @@ const RegistrosMiEmpresa: React.FC = () => {
     [clienteSeleccionadoId]
   );
 
+  const prepararCambioFiltro = useCallback(() => {
+  setPaginaActual(1);
+  setSelectedRowKeys([]);
+  }, []);
+
   const confirmarValidacionConFirma = useCallback(
-    async (firma: { pathData: string; canvasWidth: number; canvasHeight: number }) => {
+    async (firma: { nombreFirmanteCliente: string; pathData: string; canvasWidth: number; canvasHeight: number }) => {
       if (!detalle) return;
       const registro = detalle;
       setValidandoRegistroId(registro.id);
@@ -603,6 +610,7 @@ const RegistrosMiEmpresa: React.FC = () => {
         }
         // No cerramos el modal en caso de error: se mantiene la firma dibujada
         // para que el cliente pueda reintentar sin volver a firmar.
+        throw err;
       } finally {
         setValidandoRegistroId(null);
       }
@@ -646,7 +654,7 @@ const RegistrosMiEmpresa: React.FC = () => {
   );
 
   const confirmarFirmaMasiva = useCallback(
-    async (firma: { pathData: string; canvasWidth: number; canvasHeight: number }) => {
+    async (firma: { nombreFirmanteCliente: string; pathData: string; canvasWidth: number; canvasHeight: number }) => {
       const ids = registrosPendientesSeleccionados.map((r) => r.id);
       if (ids.length === 0) return;
       setProcesandoFirmaMasiva(true);
@@ -729,20 +737,20 @@ const RegistrosMiEmpresa: React.FC = () => {
     setColumnasRegistro([]);
     setColumnasFijasRegistro([]);
     setSelectedRowKeys([]);
+    setPaginaActual(1);
   }, []);
 
-  const tiposUnicos = useMemo(
-    () => [...new Set(registros.map((r) => r.tipoRegistro).filter(Boolean) as string[])],
-    [registros]
-  );
-  const pisosUnicos = useMemo(
-    () => [...new Set(registros.map((r) => r.piso).filter(Boolean) as string[])],
-    [registros]
-  );
+  const pisosUnicos = useMemo(() => {
+    return [...new Set(registros.map((r) => r.piso).filter(Boolean) as string[])]
+    .sort((a,b) =>
+    a.localeCompare(b, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );}, [registros]);
 
   const registrosFiltrados = useMemo(() => {
     return registros.filter((r) => {
-      if (filtroTipo && r.tipoRegistro !== filtroTipo) return false;
       if (filtroPiso && r.piso !== filtroPiso) return false;
       if (filtroFechas) {
         const fecha = r.fecha ? dayjs(r.fecha) : null;
@@ -762,7 +770,7 @@ const RegistrosMiEmpresa: React.FC = () => {
       }
       return true;
     });
-  }, [registros, filtroTipo, filtroPiso, filtroFechas, busqueda]);
+  }, [registros, filtroPiso, filtroFechas, busqueda]);
 
   const kpisEfectivos = useMemo((): ClienteDashboardData | null => {
     if (!listoParaCargar || loadingDash) return null;
@@ -1070,38 +1078,56 @@ const RegistrosMiEmpresa: React.FC = () => {
         </div>
 
         <Card size="small">
-          <Space wrap>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Input
-              placeholder="Buscar..."
+              placeholder="Buscar por eje o recinto..."
               prefix={<SearchOutlined />}
               value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              style={{ width: 220 }}
+              onChange={(e) => { setBusqueda(e.target.value);
+                prepararCambioFiltro();
+              }}
+              className="w-full sm:w-[220px]"
               allowClear
             />
+
             <Select
-              placeholder="Tipo de registro"
-              value={filtroTipo}
-              onChange={setFiltroTipo}
-              allowClear
-              style={{ width: 200 }}
-              options={tiposUnicos.map((t) => ({ value: t, label: getTipoRegistroLabel(t) }))}
-            />
-            <Select
-              placeholder="Piso"
+              showSearch
+              placeholder="Todos los pisos"
               value={filtroPiso}
-              onChange={setFiltroPiso}
+              onChange={(value) => {
+                setFiltroPiso(value);
+                prepararCambioFiltro();
+              }}
               allowClear
-              style={{ width: 140 }}
+              className="w-full sm:w-[180px]"
               options={pisosUnicos.map((p) => ({ value: p, label: p }))}
+              filterOption={(input, option) =>
+              String(option?.label ?? "")
+              .toLowerCase()
+              .includes(input.toLowerCase())
+              }
             />
             <RangePicker
               value={filtroFechas}
-              onChange={(v) => setFiltroFechas(v as [Dayjs, Dayjs] | null)}
+              onChange={(v) => { setFiltroFechas(v as [Dayjs, Dayjs] | null);
+                prepararCambioFiltro();                
+              }}
               format="DD/MM/YYYY"
               placeholder={["Desde", "Hasta"]}
+              className="w-full sm:w-auto"
             />
-          </Space>
+            <Button
+              disabled={!busqueda && !filtroPiso && !filtroFechas}
+              onClick={() => {
+                setBusqueda("");
+                setFiltroPiso(undefined);
+                setFiltroFechas(null);
+                setPaginaActual(1);
+                setSelectedRowKeys([]);
+              }}>
+                Limpiar filtros
+            </Button>
+          </div>
         </Card>
 
         {selectedRowKeys.length > 0 && (
@@ -1135,12 +1161,19 @@ const RegistrosMiEmpresa: React.FC = () => {
           loading={loadingRegistros}
           size="small"
           scroll={{ x: 1400 }}
-          pagination={{ pageSize: 20, showSizeChanger: false }}
+          pagination={{ current: paginaActual, pageSize: 20, showSizeChanger: false,
+            onChange: (page) => setPaginaActual(page),
+            showTotal: (total) =>
+              `${total} registro${total !== 1 ? "s" : ""}`,
+           }}
           onRow={(record) => ({
             onClick: () => setDetalle(record),
             style: { cursor: "pointer" },
           })}
-          locale={{ emptyText: <Empty description="Sin registros validados" /> }}
+          locale={{ emptyText: (<Empty description={
+            registros.length ===0
+            ? "Sin registros validados"
+            : "No se encontraron registros con los filtros seleccionados"}/> ), }}
         />
 
         <RegistroDetalleFirmaModal
@@ -1365,6 +1398,7 @@ const RegistrosMiEmpresa: React.FC = () => {
                 size="small"
                 pagination={{ pageSize: 10, showSizeChanger: false }}
                 locale={{ emptyText: <Empty description="Sin obras asignadas" /> }}
+                scroll={{ x: "max-content" }}
               />
             </Card>
           )}

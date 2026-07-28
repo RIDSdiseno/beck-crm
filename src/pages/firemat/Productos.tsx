@@ -259,7 +259,8 @@ const ModalProducto: React.FC<{
       }}
       cancelButtonProps={isView ? { style: { display: "none" } } : undefined}
       confirmLoading={saving}
-      width={760}
+      width="94vw"
+      style={{ maxWidth: 760 }}
       destroyOnClose
     >
       <Form
@@ -268,7 +269,7 @@ const ModalProducto: React.FC<{
         disabled={readOnly}
         size="middle"
       >
-        <div className="grid grid-cols-2 gap-x-4">
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <Form.Item
             name="nombre"
             label="Nombre producto"
@@ -466,7 +467,7 @@ const ModalProducto: React.FC<{
 /* ────────────── Resultado importación PDF productos ────────────── */
 const ResultadoImportProductos: React.FC<{ result: ImportarPdfProductosResult }> = ({ result }) => (
   <div className="space-y-3">
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {[
         { label: "Creados", value: result.creados, color: "text-green-600" },
         { label: "Actualizados", value: result.actualizados, color: "text-blue-600" },
@@ -611,7 +612,8 @@ const ModalAsignarCategorias: React.FC<{
         if (asignando) return;
         onClose();
       }}
-      width={860}
+      width="94vw"
+      style={{ maxWidth: 860 }}
       footer={null}
       destroyOnClose
     >
@@ -634,7 +636,7 @@ const ModalAsignarCategorias: React.FC<{
           columns={columnasModal}
           rowKey="id"
           size="small"
-          scroll={{ y: 280 }}
+          scroll={{ x: "max-content", y: 280 }}
           rowSelection={{
             type: "checkbox",
             selectedRowKeys,

@@ -606,7 +606,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                 <p className="mb-1 font-semibold uppercase tracking-wide text-indigo-700">
                   Rendimiento individual ejecutado
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <span className="text-slate-500">Cantidad ejecutada: </span>
                     <b className="text-indigo-700">
@@ -637,7 +637,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             {canEditRegistro && (
               <>
                 <Divider className="my-2 border-slate-200" />
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
                   {esEspuma ? (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                       <p className="text-slate-500">Longitud ejecutada (m)</p>

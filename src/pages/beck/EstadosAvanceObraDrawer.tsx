@@ -9,10 +9,7 @@ import {
   Drawer,
   Empty,
   Input,
-  InputNumber,
-  Modal,
   Popconfirm,
-  Progress,
   Segmented,
   Skeleton,
   Space,
@@ -33,7 +30,6 @@ import {
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SaveOutlined,
 } from "@ant-design/icons";
 import {
   hitosObraAPI,
@@ -102,106 +98,24 @@ const sugerirFechaDesde = (todosHitos: HitoObra[]): Dayjs | null => {
   return dayjs(ultimo.fechaHasta).add(1, "day");
 };
 
-// Saldo pendiente de un itemizado para precargar un hito nuevo (sin
-// cantidades guardadas):
-//
-//   saldoPendiente = hitoAnterior.cantidades[itemId]
-//                   - hitoAnterior.cantidadesEjecutadas[itemId]
-//
-// "hitoAnterior" es el hito inmediatamente anterior por `orden` (no "el
-// primer hito de la obra": con 3+ hitos, cada uno hereda el saldo del que
-// lo precede, de forma acumulativa/encadenada). La ejecución se lee de
-// hitoAnterior.cantidadesEjecutadas (YA filtrada por el período de ESE
-// hito, calculada en el backend) — nunca de item.cantidadEjecutada, que
-// quedó como el acumulado GLOBAL de toda la obra y ya no representa lo
-// ejecutado en un período específico.
-// Recibe `todosHitos` explícito (no lee el estado del componente) para que
-// tanto la carga inicial (con los datos recién llegados de la API) como los
-// renders posteriores usen siempre datos consistentes, nunca un cierre
-// obsoleto.
-const calcularSaldoPendiente = (
-  todosHitos: HitoObra[],
-  hito: HitoObra,
-  item: HitoObraItemizadoItem
-): number | null => {
-  const anteriores = todosHitos.filter((h) => h.orden < hito.orden);
-  if (anteriores.length === 0) return null; // no hay hito anterior: nada que heredar
-  const hitoAnterior = anteriores.reduce((max, h) => (h.orden > max.orden ? h : max), anteriores[0]);
-  const cantidadAnterior = aNumeroOrNull(hitoAnterior.cantidades[item.itemizadoOpcionId]);
-  if (cantidadAnterior === null) return null; // el hito anterior no definió cantidad para este itemizado
-  const ejecutadoPeriodoAnterior = hitoAnterior.cantidadesEjecutadas[item.itemizadoOpcionId] ?? 0;
-  return Math.max(0, cantidadAnterior - ejecutadoPeriodoAnterior);
-};
-
-// Única fuente de verdad del estado editable de un hito: se construye UNA
-// vez (al cargar, o al entrar en "Editar hito") con una entrada por cada
-// itemizado visible en la tabla — nunca solo con las filas que el usuario
-// llegue a tocar. Así "Guardar cantidades"/"Guardar cambios" siempre
-// recorren exactamente lo que la tabla muestra, en vez de filtrar por
-// claves modificadas.
-const construirCantidadesIniciales = (
-  todosHitos: HitoObra[],
-  todosItems: HitoObraItemizadoItem[],
-  hito: HitoObra
-): Record<string, number | null> => {
-  const resultado: Record<string, number | null> = {};
-  for (const item of todosItems) {
-    resultado[item.itemizadoOpcionId] = hito.tieneCantidadesGuardadas
-      ? aNumeroOrNull(hito.cantidades[item.itemizadoOpcionId])
-      : calcularSaldoPendiente(todosHitos, hito, item);
-  }
-  return resultado;
-};
-
 // Resumen del hito: reutiliza EXACTAMENTE los subtotales ya calculados por
 // el backend (hito.subtotales, columna "Subtotal ejecutado del período") —
 // no recalcula la ejecución ni el subtotal. "Ejecutado" = suma de esos
-// subtotales por moneda. "Planificado" (valor total del hito) = Cantidad
-// Hito × PU por fila, agrupado por moneda — es la valorización planificada,
-// deliberadamente distinta de la ejecución real (mismo criterio ya usado al
-// diseñar Resumen Económico: no mezclar ambas nociones).
+// subtotales por moneda.
 const calcularTotalesHito = (
   hito: HitoObra,
   items: HitoObraItemizadoItem[]
 ): {
   ejecutadoPorMoneda: Record<MonedaSoportada, number>;
-  planificadoPorMoneda: Record<MonedaSoportada, number>;
 } => {
   const ejecutado = items.map((item) => ({
     valor: aNumeroOrNull(hito.subtotales[item.itemizadoOpcionId]),
     moneda: item.moneda,
   }));
 
-  const planificado = items.map((item) => {
-    const cantidadHito = aNumeroOrNull(hito.cantidades[item.itemizadoOpcionId]);
-    const precioUnitario = aNumeroOrNull(item.precioUnitario);
-    const valor =
-      cantidadHito !== null && precioUnitario !== null ? cantidadHito * precioUnitario : null;
-    return { valor, moneda: item.moneda };
-  });
-
   return {
     ejecutadoPorMoneda: sumarTotales(ejecutado),
-    planificadoPorMoneda: sumarTotales(planificado),
   };
-};
-
-type CantidadesDirty = Record<string, Record<string, number | null>>;
-
-// "Cambios sin guardar" real: compara cada valor editable contra lo
-// realmente persistido en hito.cantidades, no contra "¿existe la clave?".
-// Para un hito nuevo, cualquier saldo sugerido (≠ null persistido) cuenta
-// como pendiente de guardar — es dato real esperando persistirse. Para un
-// hito ya guardado en edición, mientras el valor no se toque coincide con lo
-// persistido y no debe marcarse como pendiente.
-const hitoTieneCambiosPendientes = (
-  hito: HitoObra,
-  cantidadesEditadas: Record<string, number | null> | undefined
-): boolean => {
-  if (!cantidadesEditadas) return false;
-  return Object.entries(cantidadesEditadas).some(
-    ([itemizadoOpcionId, valor]) => valor !== aNumeroOrNull(hito.cantidades[itemizadoOpcionId])
-  );
 };
 
 const EstadosAvanceObraDrawer: React.FC<Props> = ({
@@ -228,9 +142,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
   const [fechaHastaDraft, setFechaHastaDraft] = useState<Dayjs | null>(null);
   const [accionHitoId, setAccionHitoId] = useState<string | null>(null);
 
-  const [dirty, setDirty] = useState<CantidadesDirty>({});
-  const [guardandoHitoId, setGuardandoHitoId] = useState<string | null>(null);
-  const [editandoCantidadesHitoId, setEditandoCantidadesHitoId] = useState<string | null>(null);
   const [hitoResumen, setHitoResumen] = useState<HitoObra | null>(null);
 
   // Indicadores UF/USD para el footer "Resumen del Hito" (conversión de
@@ -242,17 +153,11 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
   // una moneda distinta sin afectar a los demás).
   const [monedaPorHito, setMonedaPorHito] = useState<Record<string, MonedaSoportada>>({});
 
-  const hasUnsavedChanges = useMemo(
-    () => hitos.some((h) => hitoTieneCambiosPendientes(h, dirty[h.id])),
-    [hitos, dirty]
-  );
-
   const cargar = async () => {
     if (!obraId) return;
     setLoading(true);
     setError(null);
     setEditandoHitoId(null);
-    setEditandoCantidadesHitoId(null);
     try {
       const data = await hitosObraAPI.listar(obraId);
       setItems(data.items);
@@ -262,45 +167,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       // ejemplo, justo después de crear un hito).
       setNuevoFechaDesde(sugerirFechaDesde(data.hitos));
       setNuevoFechaHasta(null);
-      // Los hitos nuevos (sin cantidades guardadas) son siempre editables
-      // desde que se cargan, sin pasar por "Editar hito": su estado
-      // editable completo (con las cantidades sugeridas precargadas) debe
-      // existir desde ya, para que "Guardar cantidades" envíe todas las
-      // filas visibles y no solo las que el usuario tocó.
-      const dirtyInicial: CantidadesDirty = {};
-      for (const h of data.hitos) {
-        if (!h.tieneCantidadesGuardadas) {
-          dirtyInicial[h.id] = construirCantidadesIniciales(data.hitos, data.items, h);
-
-          if (import.meta.env.DEV) {
-            const anteriores = data.hitos.filter((x) => x.orden < h.orden);
-            const hitoAnterior =
-              anteriores.length > 0
-                ? anteriores.reduce((max, x) => (x.orden > max.orden ? x : max), anteriores[0])
-                : null;
-            console.log(`[saldo pendiente] Hito "${h.nombre}" (orden ${h.orden})`);
-            console.table(
-              data.items.map((item) => {
-                const cantidadAnterior = hitoAnterior
-                  ? aNumeroOrNull(hitoAnterior.cantidades[item.itemizadoOpcionId])
-                  : null;
-                const ejecutadoPeriodoAnterior = hitoAnterior
-                  ? hitoAnterior.cantidadesEjecutadas[item.itemizadoOpcionId] ?? 0
-                  : 0;
-                return {
-                  itemizadoOpcionId: item.itemizadoOpcionId,
-                  codigoBeck: item.codigoBeck,
-                  cantidadAnterior,
-                  ejecutadoPeriodoAnterior,
-                  saldoCalculado: dirtyInicial[h.id][item.itemizadoOpcionId],
-                };
-              })
-            );
-            console.log(`[saldo pendiente] dirty["${h.id}"] =`, dirtyInicial[h.id]);
-          }
-        }
-      }
-      setDirty(dirtyInicial);
     } catch (err) {
       setError(getErrorMessage(err, "No se pudieron cargar los estados de avance"));
     } finally {
@@ -470,146 +336,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     }
   };
 
-  const updateCantidad = (
-    hitoId: string,
-    itemizadoOpcionId: string,
-    value: number | null
-  ) => {
-    setDirty((prev) => ({
-      ...prev,
-      [hitoId]: { ...prev[hitoId], [itemizadoOpcionId]: value },
-    }));
-  };
-
-  const handleGuardarCantidades = async (hito: HitoObra) => {
-    if (!obraId || hito.terminado) return;
-    const cantidadesEditadas = dirty[hito.id];
-    if (!cantidadesEditadas || Object.keys(cantidadesEditadas).length === 0) {
-      void message.info("No hay cambios de cantidades en este hito");
-      return;
-    }
-    // El payload se construye recorriendo TODOS los itemizados visibles en
-    // la tabla (items), no solo las claves que el usuario llegó a tocar:
-    // el estado editable (dirty) ya viene completo desde que se activó la
-    // edición (construirCantidadesIniciales), así que esto envía exactamente
-    // lo que la tabla muestra. Comparación explícita con !== undefined:
-    // 0 es una cantidad válida y no debe descartarse.
-    const payload = items.map((item) => {
-      const valor = cantidadesEditadas[item.itemizadoOpcionId];
-      return {
-        itemizadoOpcionId: item.itemizadoOpcionId,
-        cantidadHito: valor !== undefined ? valor : null,
-      };
-    });
-
-    if (import.meta.env.DEV) {
-      console.table(payload);
-    }
-
-    setGuardandoHitoId(hito.id);
-    try {
-      await hitosObraAPI.guardarCantidades(obraId, hito.id, payload);
-      setHitos((prev) =>
-        prev.map((h) => {
-          if (h.id !== hito.id) return h;
-          const cantidades: Record<string, number | string | null> = {};
-          for (const fila of payload) {
-            if (fila.cantidadHito !== null && fila.cantidadHito !== undefined) {
-              cantidades[fila.itemizadoOpcionId] = fila.cantidadHito;
-            }
-          }
-          return { ...h, cantidades, tieneCantidadesGuardadas: Object.keys(cantidades).length > 0 };
-        })
-      );
-      setDirty((prev) => {
-        const next = { ...prev };
-        delete next[hito.id];
-        return next;
-      });
-      setEditandoCantidadesHitoId((prev) => (prev === hito.id ? null : prev));
-      void message.success("Cantidades guardadas");
-    } catch (err) {
-      void message.error(getErrorMessage(err, "No se pudieron guardar las cantidades"));
-    } finally {
-      setGuardandoHitoId(null);
-    }
-  };
-
-  const handleEditarCantidades = (hito: HitoObra) => {
-    if (hito.terminado) return;
-    const otroHitoId = editandoCantidadesHitoId;
-    const otroHito = otroHitoId ? hitos.find((h) => h.id === otroHitoId) ?? null : null;
-    const otroTieneCambios = !!otroHito && hitoTieneCambiosPendientes(otroHito, dirty[otroHito.id]);
-
-    // Al entrar en edición, el estado editable se construye COMPLETO desde
-    // los valores persistidos del hito (una entrada por cada itemizado
-    // visible) — nunca queda vacío esperando a que el usuario toque algo.
-    const iniciarEdicion = () => {
-      setDirty((prev) => ({
-        ...prev,
-        [hito.id]: construirCantidadesIniciales(hitos, items, hito),
-      }));
-      setEditandoCantidadesHitoId(hito.id);
-    };
-
-    if (otroHito && otroHito.id !== hito.id && otroTieneCambios) {
-      Modal.confirm({
-        title: "Cambios sin guardar en otro hito",
-        content:
-          "Hay cantidades editadas sin guardar en otro hito. Si continúas, esos cambios se descartarán.",
-        okText: "Descartar y continuar",
-        okButtonProps: { danger: true },
-        cancelText: "Volver",
-        onOk: () => {
-          setDirty((prev) => {
-            const next = { ...prev };
-            delete next[otroHito.id];
-            return next;
-          });
-          iniciarEdicion();
-        },
-      });
-      return;
-    }
-    iniciarEdicion();
-  };
-
-  const handleCancelarEdicionCantidades = (hito: HitoObra) => {
-    setDirty((prev) => {
-      if (!prev[hito.id]) return prev;
-      const next = { ...prev };
-      delete next[hito.id];
-      return next;
-    });
-    setEditandoCantidadesHitoId(null);
-  };
-
-  const handleConfirmarGuardarCambios = (hito: HitoObra) => {
-    if (hito.terminado) return;
-    const cambios = dirty[hito.id];
-    if (!cambios || Object.keys(cambios).length === 0) {
-      void message.info("No hay cambios de cantidades en este hito");
-      return;
-    }
-    Modal.confirm({
-      title: "¿Guardar cambios del hito?",
-      content: "Se modificarán las cantidades registradas para este hito.",
-      okText: "Guardar cambios",
-      cancelText: "Cancelar",
-      onOk: () => handleGuardarCantidades(hito),
-    });
-  };
-
-  const getCantidad = (hito: HitoObra, itemizadoOpcionId: string): number | null => {
-    const editada = dirty[hito.id]?.[itemizadoOpcionId];
-    if (editada !== undefined) return editada;
-    return aNumeroOrNull(hito.cantidades[itemizadoOpcionId]);
-  };
-
-  const buildColumns = (
-    hito: HitoObra,
-    editable: boolean
-  ): ColumnsType<HitoObraItemizadoItem> => [
+  const buildColumns = (hito: HitoObra): ColumnsType<HitoObraItemizadoItem> => [
     {
       title: "Código BECK",
       key: "codigoBeck",
@@ -626,45 +353,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       key: "itemizadoMandante",
       render: (_: unknown, r) =>
         r.itemizadoMandante || <span className="text-slate-400">—</span>,
-    },
-    {
-      title: "Cantidad Hito",
-      key: "cantidadHito",
-      width: 130,
-      render: (_: unknown, r) => {
-        const valor = getCantidad(hito, r.itemizadoOpcionId);
-        if (!editable) {
-          return valor === null ? (
-            <span className="text-slate-400">—</span>
-          ) : (
-            <span>{valor.toLocaleString("es-CL", { maximumFractionDigits: 2 })}</span>
-          );
-        }
-        // El saldo pendiente es solo una sugerencia inicial y una referencia
-        // visual (solo aplica a hitos nuevos, sin cantidades guardadas: es
-        // el caso de la precarga automática). NO es un máximo: el usuario
-        // puede escribir cualquier cantidad >= 0 y esa cantidad prevalece
-        // tal cual sobre la sugerencia.
-        const esNuevo = !hito.tieneCantidadesGuardadas;
-        const saldoPendiente = esNuevo ? calcularSaldoPendiente(hitos, hito, r) : null;
-        return (
-          <div>
-            <InputNumber
-              size="small"
-              min={0}
-              value={valor}
-              placeholder="—"
-              style={{ width: 110 }}
-              onChange={(val) => updateCantidad(hito.id, r.itemizadoOpcionId, val)}
-            />
-            {saldoPendiente !== null && (
-              <div className="text-xs text-slate-400 mt-0.5">
-                Pendiente disponible: {saldoPendiente.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
-              </div>
-            )}
-          </div>
-        );
-      },
     },
     {
       title: "Cantidad Ejecutada del período",
@@ -705,10 +393,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
   const collapseItems = useMemo(
     () =>
       hitos.map((hito, index) => {
-        const cambiosPendientes = hitoTieneCambiosPendientes(hito, dirty[hito.id]);
-        const esNuevo = !hito.tieneCantidadesGuardadas;
-        const enEdicionCantidades = editandoCantidadesHitoId === hito.id;
-        const cantidadesEditables = !hito.terminado && (esNuevo || enEdicionCantidades);
         return {
           key: hito.id,
           label: (
@@ -716,7 +400,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
               <Space>
                 <span className="font-medium">{hito.nombre}</span>
                 {hito.terminado && <Tag color="default">Terminado</Tag>}
-                {cambiosPendientes && <Tag color="orange">Cambios sin guardar</Tag>}
               </Space>
               {(hito.fechaDesde || hito.fechaHasta) && (
                 <span className="text-xs text-slate-400">
@@ -726,7 +409,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
             </Space>
           ),
           extra: (
-            <Space onClick={(e) => e.stopPropagation()}>
+            <Space wrap onClick={(e) => e.stopPropagation()}>
               <Tooltip title="Subir">
                 <Button
                   size="small"
@@ -830,7 +513,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
           ) : (
             <div className="space-y-2">
               <Table<HitoObraItemizadoItem>
-                columns={buildColumns(hito, cantidadesEditables)}
+                columns={buildColumns(hito)}
                 dataSource={items}
                 rowKey="itemizadoOpcionId"
                 size="small"
@@ -850,46 +533,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
                   <span className="text-slate-400 text-xs">
                     Hito terminado: sin más modificaciones.
                   </span>
-                ) : esNuevo ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={guardandoHitoId === hito.id}
-                    disabled={!cambiosPendientes}
-                    onClick={() => void handleGuardarCantidades(hito)}
-                  >
-                    Guardar cantidades
-                  </Button>
-                ) : enEdicionCantidades ? (
-                  <>
-                    <Button
-                      size="small"
-                      disabled={guardandoHitoId === hito.id}
-                      onClick={() => handleCancelarEdicionCantidades(hito)}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      size="small"
-                      type="primary"
-                      icon={<SaveOutlined />}
-                      loading={guardandoHitoId === hito.id}
-                      disabled={!cambiosPendientes}
-                      onClick={() => handleConfirmarGuardarCambios(hito)}
-                    >
-                      Guardar cambios
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => handleEditarCantidades(hito)}
-                  >
-                    Editar hito
-                  </Button>
-                )}
+                ) : null}
                 {!hito.terminado && (
                   <Popconfirm
                     title="¿Terminar este hito?"
@@ -912,20 +556,10 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
               {(() => {
                 const monedaResumen = monedaPorHito[hito.id] ?? "CLP";
                 const indicadores = { uf: ufIndicador, dolar: dolarIndicador };
-                const { ejecutadoPorMoneda, planificadoPorMoneda } = calcularTotalesHito(hito, items);
+                const { ejecutadoPorMoneda } = calcularTotalesHito(hito, items);
 
                 const { totalConvertido: ejecutadoEnMonedaSeleccionada, monedasExcluidas } =
                   convertirTotalesAMoneda(ejecutadoPorMoneda, monedaResumen, indicadores);
-
-                // El % de avance es una razón (no depende de la moneda que el
-                // usuario elija ver): se calcula siempre en CLP, moneda que
-                // nunca requiere indicador para convertir.
-                const ejecutadoClp = convertirTotalesAMoneda(ejecutadoPorMoneda, "CLP", indicadores).totalConvertido;
-                const planificadoClp = convertirTotalesAMoneda(planificadoPorMoneda, "CLP", indicadores).totalConvertido;
-                const avance =
-                  planificadoClp > 0
-                    ? Math.min(100, Math.max(0, Math.round((ejecutadoClp / planificadoClp) * 100)))
-                    : 0;
 
                 return (
                   <div className="border-t border-slate-200 pt-3 mt-1 flex justify-end">
@@ -955,11 +589,6 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
                           </div>
                         )}
                       </div>
-
-                      <div>
-                        <div className="text-xs text-slate-400 mb-1">Avance del hito</div>
-                        <Progress percent={avance} size="small" />
-                      </div>
                     </div>
                   </div>
                 );
@@ -971,40 +600,21 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     [
       hitos,
       items,
-      dirty,
       editandoHitoId,
       nombreDraft,
       fechaDesdeDraft,
       fechaHastaDraft,
       accionHitoId,
-      guardandoHitoId,
-      editandoCantidadesHitoId,
       monedaPorHito,
       ufIndicador,
       dolarIndicador,
     ]
   );
 
-  const handleRequestClose = () => {
-    if (!hasUnsavedChanges) {
-      onClose();
-      return;
-    }
-
-    Modal.confirm({
-      title: "Descartar cambios sin guardar",
-      content: "Hay cantidades editadas que todavia no se guardaron.",
-      okText: "Descartar",
-      okButtonProps: { danger: true },
-      cancelText: "Volver",
-      onOk: onClose,
-    });
-  };
-
   return (
     <Drawer
       open={open}
-      onClose={handleRequestClose}
+      onClose={onClose}
       width="min(1200px, 98vw)"
       title={
         obraNombre
@@ -1026,35 +636,35 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
         <Alert type="error" showIcon message={error} className="mb-3" />
       )}
 
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <div>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="w-full sm:w-[220px]">
           <div className="text-xs text-slate-500 mb-1">Nombre (opcional)</div>
           <Input
             size="small"
             placeholder={`Ej: Estado de Pago N°${hitos.length + 1}`}
             value={nuevoNombre}
-            style={{ width: 220 }}
+            className="w-full"
             onChange={(e) => setNuevoNombre(e.target.value)}
             onPressEnter={() => void handleCrearHito()}
           />
         </div>
-        <div>
+        <div className="w-full sm:w-[140px]">
           <div className="text-xs text-slate-500 mb-1">Fecha desde</div>
           <DatePicker
             size="small"
             format="DD-MM-YYYY"
             value={nuevoFechaDesde}
-            style={{ width: 140 }}
+            className="w-full"
             onChange={(val) => setNuevoFechaDesde(val)}
           />
         </div>
-        <div>
+        <div className="w-full sm:w-[140px]">
           <div className="text-xs text-slate-500 mb-1">Fecha hasta</div>
           <DatePicker
             size="small"
             format="DD-MM-YYYY"
             value={nuevoFechaHasta}
-            style={{ width: 140 }}
+            className="w-full"
             onChange={(val) => setNuevoFechaHasta(val)}
           />
         </div>
@@ -1064,6 +674,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
           icon={<PlusOutlined />}
           loading={creando}
           onClick={() => void handleCrearHito()}
+          className="w-full sm:w-auto"
         >
           Agregar hito
         </Button>

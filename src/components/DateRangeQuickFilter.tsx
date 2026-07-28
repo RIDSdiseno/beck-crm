@@ -67,8 +67,8 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-1 min-w-[260px]">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-1 flex-col gap-1 min-w-0 sm:min-w-[260px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] text-slate-400 flex items-center gap-1">
           <CalendarOutlined className="text-beck-accent" />
           Rango de fechas
@@ -81,6 +81,7 @@ const DateRangeQuickFilter: React.FC<DateRangeQuickFilterProps> = ({
             size="small"
             value={currentPreset}
             onChange={(val) => applyPreset(val as PresetKey)}
+            className="flex-wrap"
             options={[
               { label: "Toda la obra", value: "todo" },
               { label: "Hoy", value: "hoy" },

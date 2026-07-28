@@ -1209,7 +1209,7 @@ const Obras: React.FC = () => {
               ];
 
               return (
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   <Button
                     size="small"
                     icon={<EditOutlined />}

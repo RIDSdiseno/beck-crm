@@ -149,7 +149,7 @@ function ImportarPdfModal<TResult>({
           {error && <Alert type="error" showIcon message={error} />}
         </div>
       ) : (
-        <div className="py-2">{renderResultado(resultado)}</div>
+        <div className="max-w-full overflow-x-auto py-2">{renderResultado(resultado)}</div>
       )}
     </Modal>
   );

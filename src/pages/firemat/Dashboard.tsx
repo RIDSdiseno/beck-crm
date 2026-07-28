@@ -592,7 +592,7 @@ const FirematDashboard: React.FC = () => {
       {esBodeguero ? (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="firemat-kpi-card" styles={{ body: { padding: "16px" } }}>
               <div className="flex items-center gap-2 text-firemat-primary">
                 <AppstoreOutlined />
@@ -688,7 +688,7 @@ const FirematDashboard: React.FC = () => {
                 loading={inventarioLoading}
                 size="small"
                 pagination={false}
-                scroll={{ y: 220 }}
+                scroll={{ x: "max-content", y: 220 }}
                 locale={{ emptyText: inventarioLoading ? "Cargando..." : "No hay productos bajo mínimo" }}
               />
             </Card>
@@ -716,7 +716,7 @@ const FirematDashboard: React.FC = () => {
         /* ═══════════════════ ROLES COMERCIALES ═══════════════════ */
         <>
           {/* ── Fila 1: KPIs principales (4 columnas) ── */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="firemat-kpi-card" styles={{ body: { padding: "16px" } }}>
               <div className="flex items-center gap-2 text-firemat-primary">
                 <AppstoreOutlined />

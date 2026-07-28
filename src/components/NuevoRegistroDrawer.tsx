@@ -682,7 +682,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               </Form.Item>
             </div>
 
-            <div className="mt-2 flex justify-end gap-2">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button onClick={onClose}>Cancelar</Button>
               <Button
                 type="primary"

@@ -117,14 +117,14 @@ export default function FunnelCalendario({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <span className="text-sm font-medium text-slate-600 whitespace-nowrap">
             Ver calendario por:
           </span>
           <select
             value={calendarMode}
             onChange={(e) => setCalendarMode(e.target.value as CalendarMode)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba]"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-[#d6c680] focus:ring-2 focus:ring-[#f6ebba] sm:w-auto"
           >
             <option value="proximaAccion">Próximas acciones</option>
             <option value="fechaProbableCierre">Fecha probable de cierre</option>
@@ -133,6 +133,7 @@ export default function FunnelCalendario({
         </div>
       </div>
 
+      <div className="overflow-x-auto">
       <FullCalendar
         plugins={[dayGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
@@ -184,6 +185,7 @@ export default function FunnelCalendario({
         dayMaxEvents={true}
         fixedWeekCount={false}
       />
+      </div>
     </div>
   );
 }

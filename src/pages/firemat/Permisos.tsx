@@ -189,7 +189,7 @@ const FirematPermisos: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold tracking-wide text-slate-900">
             Gestión de permisos Firemat
@@ -201,15 +201,9 @@ const FirematPermisos: React.FC = () => {
         {loadingRoles && <Spin size="small" />}
       </div>
 
-      <div
-        className="flex overflow-hidden rounded-xl border border-slate-200 bg-white"
-        style={{ minHeight: 580 }}
-      >
+      <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white lg:flex-row lg:min-h-[580px]">
         {/* Columna izquierda: lista de roles */}
-        <div
-          className="flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50"
-          style={{ width: 220 }}
-        >
+        <div className="w-full flex-shrink-0 overflow-y-auto border-b border-slate-200 bg-slate-50 lg:w-[220px] lg:border-b-0 lg:border-r">
           <div className="p-3">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               Roles
@@ -274,12 +268,9 @@ const FirematPermisos: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-1 overflow-hidden">
+              <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
                 {/* Sección A: permisos del rol */}
-                <div
-                  className="flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-white"
-                  style={{ width: 300 }}
-                >
+                <div className="w-full flex-shrink-0 overflow-y-auto border-b border-slate-200 bg-white lg:w-[300px] lg:border-b-0 lg:border-r">
                   <div className="px-4 py-4">
                     <div className="mb-3 flex items-center justify-between">
                       <p className="text-xs font-semibold text-slate-700">Permisos del rol</p>
@@ -356,58 +347,60 @@ const FirematPermisos: React.FC = () => {
                     ) : usuariosRol.length === 0 ? (
                       <p className="text-xs text-slate-400">No hay usuarios con este rol</p>
                     ) : (
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
-                            <th className="pb-2 text-left font-medium">Nombre</th>
-                            <th className="pb-2 text-left font-medium">Correo</th>
-                            <th className="pb-2 text-center font-medium">Activo</th>
-                            <th className="pb-2 text-center font-medium">Override</th>
-                            <th className="pb-2 font-medium" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {usuariosRol.map((usuario) => (
-                            <tr
-                              key={usuario.id}
-                              className="border-b border-slate-100 last:border-0"
-                            >
-                              <td className="max-w-[150px] truncate py-2.5 font-medium text-slate-800">
-                                {usuario.nombre}
-                              </td>
-                              <td className="max-w-[200px] truncate py-2.5 text-slate-500">
-                                {usuario.email}
-                              </td>
-                              <td className="py-2.5 text-center">
-                                <Tag
-                                  color={usuario.activo ? "green" : "default"}
-                                  style={{ marginInlineEnd: 0, fontSize: 10 }}
-                                >
-                                  {usuario.activo ? "Sí" : "No"}
-                                </Tag>
-                              </td>
-                              <td className="py-2.5 text-center">
-                                {usuario.tienePermisosPersonalizados ? (
-                                  <CheckCircleOutlined
-                                    style={{ color: "#e05c3b", fontSize: 14 }}
-                                  />
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 text-right">
-                                <Button
-                                  size="small"
-                                  icon={<KeyOutlined />}
-                                  onClick={() => void openExcepcion(usuario)}
-                                >
-                                  Editar excepción
-                                </Button>
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[520px] text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+                              <th className="pb-2 text-left font-medium">Nombre</th>
+                              <th className="pb-2 text-left font-medium">Correo</th>
+                              <th className="pb-2 text-center font-medium">Activo</th>
+                              <th className="pb-2 text-center font-medium">Override</th>
+                              <th className="pb-2 font-medium" />
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {usuariosRol.map((usuario) => (
+                              <tr
+                                key={usuario.id}
+                                className="border-b border-slate-100 last:border-0"
+                              >
+                                <td className="max-w-[150px] truncate py-2.5 font-medium text-slate-800">
+                                  {usuario.nombre}
+                                </td>
+                                <td className="max-w-[200px] truncate py-2.5 text-slate-500">
+                                  {usuario.email}
+                                </td>
+                                <td className="py-2.5 text-center">
+                                  <Tag
+                                    color={usuario.activo ? "green" : "default"}
+                                    style={{ marginInlineEnd: 0, fontSize: 10 }}
+                                  >
+                                    {usuario.activo ? "Sí" : "No"}
+                                  </Tag>
+                                </td>
+                                <td className="py-2.5 text-center">
+                                  {usuario.tienePermisosPersonalizados ? (
+                                    <CheckCircleOutlined
+                                      style={{ color: "#e05c3b", fontSize: 14 }}
+                                    />
+                                  ) : (
+                                    <span className="text-slate-300">—</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 text-right">
+                                  <Button
+                                    size="small"
+                                    icon={<KeyOutlined />}
+                                    onClick={() => void openExcepcion(usuario)}
+                                  >
+                                    Editar excepción
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -445,7 +438,9 @@ const FirematPermisos: React.FC = () => {
         confirmLoading={savingExcepcion}
         okText="Guardar excepción"
         cancelText="Cancelar"
-        width={700}
+        width="94vw"
+        style={{ maxWidth: 700 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Los permisos personalizados sobrescriben los permisos del rol. Las columnas{" "}

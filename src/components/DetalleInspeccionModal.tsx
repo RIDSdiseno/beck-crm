@@ -256,11 +256,13 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       title="Detalle de inspección"
       open={open}
       onCancel={onClose}
-      width={720}
+      width="94vw"
+      style={{ maxWidth: 720 }}
+      styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       destroyOnClose
       footer={
-        <div className="flex w-full items-center justify-between">
-          <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
             {puedeAccionarCorreccion && !mostrarMotivoRechazoCorreccion && (
               <>
                 <Button type="primary" loading={confirmando} onClick={handleConfirmarCorreccion}>
@@ -288,8 +290,8 @@ const DetalleInspeccionModal: React.FC<Props> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded border border-slate-200 bg-slate-50 p-4 text-sm">
-            <div className="col-span-2 flex items-center gap-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 rounded border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
+            <div className="col-span-1 flex items-center gap-2 sm:col-span-2">
               <span className="font-medium text-slate-600">Estado:</span>
               <Tag color={estadoColor[estado]}>{estadoLabel[estado]}</Tag>
             </div>
@@ -316,7 +318,7 @@ const DetalleInspeccionModal: React.FC<Props> = ({
               </div>
             )}
             {(detalle.resultado || detalle.conformidad) && (
-              <div className="col-span-2 flex items-center gap-2">
+              <div className="sm:col-span-2 flex items-center gap-2">
                 <span className="font-medium text-slate-600">Resultado:</span>
                 {detalle.conformidad ? (
                   <Tag color={detalle.conformidad === "conforme" ? "green" : "red"}>
@@ -328,12 +330,12 @@ const DetalleInspeccionModal: React.FC<Props> = ({
               </div>
             )}
             {observaciones && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <span className="font-medium text-slate-600">Observaciones:</span> {observaciones}
               </div>
             )}
             {fotos.length > 0 && (
-              <div className="col-span-2 space-y-1">
+              <div className="sm:col-span-2 space-y-1">
                 <span className="font-medium text-slate-600">Fotos:</span>
                 <Image.PreviewGroup items={fotos.map((url) => ({ src: url }))}>
                   <div className="relative inline-block">
@@ -429,7 +431,7 @@ const DetalleInspeccionModal: React.FC<Props> = ({
                 dataSource={parametros}
                 rowKey={(r) => String(r.id ?? r.orden)}
                 pagination={false}
-                scroll={{ y: 380 }}
+                scroll={{ x: "max-content", y: 380 }}
               />
             </div>
           )}

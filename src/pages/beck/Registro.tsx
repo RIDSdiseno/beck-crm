@@ -2609,15 +2609,15 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             </div>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2 text-xs xl:flex-nowrap">
-          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1">
+          <div className="flex w-full flex-col gap-2 text-xs sm:flex-row sm:flex-wrap sm:items-center xl:flex-nowrap">
+          <div className="flex w-full shrink-0 items-center gap-1.5 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 sm:w-auto">
             <FilterOutlined className="text-amber-600 text-[11px]" />
             <span className="text-slate-800">Filtros rápidos</span>
           </div>
 
           <Select
             size="small"
-            className="w-[160px] min-w-[150px] shrink-0"
+            className="w-full sm:w-[160px] sm:min-w-[150px] sm:shrink-0"
             allowClear
             placeholder="Todos los tipos"
             value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
@@ -2629,7 +2629,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             showSearch
             allowClear
             size="small"
-            className="beck-obra-filter-select beck-obra-filter-select--compact !w-[300px] min-w-[300px] shrink-0"
+            className="beck-obra-filter-select beck-obra-filter-select--compact w-full sm:!w-[300px] sm:min-w-[300px] sm:shrink-0"
             placeholder="Empresa / Obra"
             value={obraSeleccionada || undefined}
             onChange={(value) => setObraSeleccionada(String(value ?? ""))}
@@ -2645,7 +2645,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
           <Segmented
             size="small"
-            className="shrink-0"
+            className="w-full shrink-0 sm:w-auto [&_.ant-segmented-group]:flex-wrap"
             value={(() => {
               if (!rangoFechas) return "todo";
               const [s, e] = rangoFechas;
@@ -2680,14 +2680,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             }}
             placeholder={["Desde", "Hasta"]}
             allowClear
-            className="w-[205px] shrink-0"
+            className="w-full sm:w-[205px] sm:shrink-0"
           />
           </div>
 
           <div className="flex w-full flex-wrap items-center gap-2 text-xs">
             <Segmented
               size="small"
-              className="shrink-0"
+              className="w-full shrink-0 sm:w-auto [&_.ant-segmented-group]:flex-wrap"
               value={filtroEstadoRegistro}
               onChange={(val) =>
                 setFiltroEstadoRegistro(
@@ -2985,7 +2985,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         centered
       >
         <div className="space-y-4 pt-2">
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <DatePicker.RangePicker
               format="DD-MM-YYYY"
               value={rendimientoRangoFechas}
@@ -2995,13 +2995,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               }}
               placeholder={["Fecha inicio *", "Fecha fin *"]}
               allowClear
-              className="w-[240px]"
+              className="w-full sm:w-[240px]"
             />
             <Select
               showSearch
               allowClear
               placeholder="Obra (opcional)"
-              className="w-[220px]"
+              className="w-full sm:w-[220px]"
               value={rendimientoObraId || undefined}
               onChange={(val) => setRendimientoObraId(String(val ?? ""))}
               filterOption={(input, option) =>
@@ -3014,7 +3014,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               placeholder="Sellador (opcional)"
               value={rendimientoNombreSellador}
               onChange={(e) => setRendimientoNombreSellador(e.target.value)}
-              className="h-8 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-400 w-[180px]"
+              className="h-8 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-400 sm:w-[180px]"
             />
             <Button
               type="primary"

@@ -1118,7 +1118,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           />
         </div>
 
-        <div className="mt-4 grid gap-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-4 grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           <div className="flex flex-col gap-1">
             <span className="text-[11px] text-slate-500">Filtrar por origen</span>
             <Select
@@ -1177,7 +1177,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
         </div>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
         <Card
           className="border border-amber-100 bg-[#fffbeb] rounded-xl shadow-sm"
           styles={{ body: { padding: 14 } }}

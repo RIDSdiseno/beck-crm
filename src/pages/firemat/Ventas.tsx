@@ -546,7 +546,9 @@ const FirematVentas: React.FC = () => {
         }
         open={modalAbierto && canEditVentas}
         onCancel={cerrarModal}
-        width={800}
+        width="94vw"
+        style={{ maxWidth: 800 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
         footer={[
           <Button key="cancel" onClick={cerrarModal} disabled={guardando}>
             Cancelar
@@ -659,10 +661,7 @@ const FirematVentas: React.FC = () => {
                       key={linea._key}
                       className="rounded-lg border border-gray-100 bg-gray-50 p-3"
                     >
-                      <div
-                        className="grid gap-2 items-end"
-                        style={{ gridTemplateColumns: "1fr 90px 120px 120px 36px" }}
-                      >
+                      <div className="grid grid-cols-1 gap-2 items-end sm:grid-cols-[1fr_90px_120px_120px_36px]">
                         <div>
                           <label className="block text-xs text-beck-muted mb-1">
                             Producto {idx + 1}

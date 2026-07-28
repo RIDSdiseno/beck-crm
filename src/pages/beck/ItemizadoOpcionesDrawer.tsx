@@ -440,7 +440,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
                 Limpiar
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
               <Select
                 size="small"
                 placeholder="Código BECK"
@@ -510,7 +510,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
             <Skeleton active paragraph={{ rows: 6 }} />
           ) : (
             <>
-              <div className="flex items-center justify-between text-xs text-slate-500">
+              <div className="flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                 <span>
                   {filtered.length} de {opciones.length} opciones
                 </span>

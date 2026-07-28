@@ -154,7 +154,7 @@ const MovimientosPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Select
               value={modulo}
               onChange={(value) => {
@@ -162,6 +162,7 @@ const MovimientosPage: React.FC = () => {
                 setPage(1);
               }}
               options={moduloOptions}
+              className="w-full sm:w-auto"
               style={{ width: 180 }}
             />
 
@@ -169,6 +170,7 @@ const MovimientosPage: React.FC = () => {
               icon={<ReloadOutlined />}
               onClick={() => void loadMovimientos()}
               loading={loading}
+              className="w-full sm:w-auto"
             >
               Actualizar
             </Button>

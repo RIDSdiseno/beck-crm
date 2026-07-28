@@ -375,10 +375,11 @@ const ModalEditarInventario: React.FC<{
       onCancel={onClose}
       onOk={canEditInventario ? () => void guardar() : undefined}
       destroyOnClose
-      width={760}
+      width="94vw"
+      style={{ maxWidth: 760 }}
     >
       <Form form={form} layout="vertical" disabled={!canEditInventario}>
-        <div className="grid grid-cols-2 gap-x-4">
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <Form.Item label="Producto">
             <Input value={item?.nombre ?? ""} disabled />
           </Form.Item>
@@ -455,7 +456,7 @@ const ModalEditarInventario: React.FC<{
 /* ────────────── Resultado importación PDF inventario ────────────── */
 const ResultadoImportInventario: React.FC<{ result: ImportarPdfInventarioResult }> = ({ result }) => (
   <div className="space-y-3">
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {[
         { label: "Actualizados", value: result.actualizados, color: "text-blue-600" },
         { label: "No encontrados", value: result.noEncontrados, color: result.noEncontrados > 0 ? "text-orange-500" : "text-gray-500" },

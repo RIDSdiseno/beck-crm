@@ -806,7 +806,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       destroyOnHidden={false}
       title={null}
       styles={{
-        body: { padding: 0 },
+        body: { padding: 0, maxHeight: "75vh", overflowY: "auto" },
         mask: { backdropFilter: "blur(2px)" },
       }}
     >
@@ -1006,7 +1006,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                       disabled={submitting}
                     />
                   </Form.Item>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <Form.Item<CotizacionEditorValues>
                       name="telefonoContactoManual"
                       label={
@@ -1488,7 +1488,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
             <Input placeholder="Ej: Jefe de compras" />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-x-3">
+          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
             <Form.Item
               name="telefono"
               label="Teléfono"
@@ -1575,7 +1575,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
         destroyOnHidden
       >
         <Form form={formEmpresa} layout="vertical" size="small">
-          <div className="grid grid-cols-2 gap-x-3">
+          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
             <Form.Item
               name="rut"
               label="RUT"

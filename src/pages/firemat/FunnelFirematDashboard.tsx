@@ -221,7 +221,7 @@ const SeccionProspectos: React.FC<{ d: NonNullable<FirematDashboardData["prospec
   const porResponsable = d?.porResponsable ?? [];
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <KpiCard
           label="Nuevos esta semana"
           value={formatNum(d?.nuevosSemana)}
@@ -528,6 +528,7 @@ const TablaMotivos: React.FC<{
         dataSource={data ?? []}
         size="small"
         pagination={false}
+        scroll={{ x: "max-content" }}
       />
     )}
   </Card>
@@ -1435,7 +1436,7 @@ const FunnelFirematDashboard: React.FC<Props> = ({
         {data && (
           <>
             {/* ── KPIs base ── */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               <KpiCard
                 label="Total oportunidades"
                 value={formatNum(data.kpis.totalOportunidades)}
@@ -1515,7 +1516,7 @@ const FunnelFirematDashboard: React.FC<Props> = ({
               <Typography.Text className="mb-3 block text-sm font-semibold text-slate-700">
                 Próximas acciones
               </Typography.Text>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <ProximasCard
                   label="Vencidas"
                   value={data.proximasAcciones.accionesVencidas}

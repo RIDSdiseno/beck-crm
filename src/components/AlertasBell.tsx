@@ -37,6 +37,8 @@ type AlertaItem = {
   oportunidadId: string | number;
 };
 
+const DRAWER_WIDTH = "min(420px, 92vw)";
+
 const getBadgeColor = (nuevas: AlertaItem[]): string | undefined => {
   if (nuevas.some((a) => a.severidad === "ALTA")) return "#ef4444";
   if (nuevas.some((a) => a.severidad === "MEDIA")) return "#f59e0b";
@@ -234,7 +236,7 @@ export const AlertasBeckBell: React.FC = () => {
           </div>
         }
         placement="right"
-        width={420}
+        width={DRAWER_WIDTH}
         open={open}
         onClose={() => setOpen(false)}
         styles={{ body: { padding: "12px 16px" } }}
@@ -377,7 +379,7 @@ export const AlertasFirematBell: React.FC = () => {
           </div>
         }
         placement="right"
-        width={420}
+        width={DRAWER_WIDTH}
         open={open}
         onClose={() => setOpen(false)}
         styles={{ body: { padding: "12px 16px" } }}

@@ -1216,11 +1216,6 @@ export type HitoObraItemizadoItem = {
   precioUnitario: number | string | null;
   moneda: "CLP" | "UF" | "USD" | null;
   orden: number | null;
-  // Ejecución acumulada GLOBAL de la obra (sin filtro de fecha) — se usa
-  // exclusivamente para el saldo pendiente (calcularSaldoPendiente). La
-  // ejecución real por período de cada hito vive en
-  // HitoObra.cantidadesEjecutadas/subtotales, no aquí.
-  cantidadEjecutada: number;
 };
 
 export type HitoObra = {
@@ -1235,8 +1230,6 @@ export type HitoObra = {
   // creados antes de este cambio pueden no tenerlo todavía.
   fechaDesde: string | null;
   fechaHasta: string | null;
-  tieneCantidadesGuardadas: boolean;
-  cantidades: Record<string, number | string | null>;
   // Ejecución real y subtotal DE ESTE HITO (registros de terreno validados
   // cuya fecha cae dentro de fechaDesde/fechaHasta), por itemizadoOpcionId.
   // 0/null explícito si el hito no tiene período completo — nunca cae de
@@ -1282,14 +1275,6 @@ export const hitosObraAPI = {
 
   eliminar: async (obraId: string, hitoId: string): Promise<void> => {
     await api.delete(`/obras/${obraId}/hitos/${hitoId}`);
-  },
-
-  guardarCantidades: async (
-    obraId: string,
-    hitoId: string,
-    items: Array<{ itemizadoOpcionId: string; cantidadHito: number | null }>
-  ): Promise<void> => {
-    await api.put(`/obras/${obraId}/hitos/${hitoId}/cantidades`, { items });
   },
 
   terminar: async (obraId: string, hitoId: string): Promise<HitoObra> => {
@@ -4075,6 +4060,7 @@ export interface ClienteRegistroValidado {
   } | null;
   validadoCliente?: boolean | null;
   validadoClienteAt?: string | null;
+  nombreFirmanteCliente?: string | null;
   validadoClientePor?: string | null;
   pdfFirmadoUrl?: string | null;
   fecha?: string | null;
@@ -4557,7 +4543,7 @@ export const clienteAPI = {
 
   validarRegistro: async (
     registroId: string,
-    firma: { pathData: string; canvasWidth: number; canvasHeight: number }
+    firma: { nombreFirmanteCliente: string; pathData: string; canvasWidth: number; canvasHeight: number }
   ): Promise<ClienteRegistroValidado> => {
     const response = await api.patch<ApiResponseEnvelope<ClienteRegistroValidado> | ClienteRegistroValidado>(
       `/cliente/registros/${registroId}/validar`,
@@ -4575,7 +4561,7 @@ export const clienteAPI = {
 
   validarRegistrosMultiple: async (
     registroIds: string[],
-    firma: { pathData: string; canvasWidth: number; canvasHeight: number }
+    firma: { nombreFirmanteCliente: string; pathData: string; canvasWidth: number; canvasHeight: number }
   ): Promise<ClienteFirmaMasivaResultado> => {
     const response = await api.patch<ApiResponseEnvelope<ClienteFirmaMasivaResultado> | ClienteFirmaMasivaResultado>(
       "/cliente/registros/validar-multiple",

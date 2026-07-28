@@ -573,7 +573,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
                   label: tipo.label,
                   children: (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <Tag color={cfg?.personalizado ? "blue" : "default"}>
                           {cfg?.personalizado ? "Personalizado para esta obra" : "Valor por defecto del sistema"}
                         </Tag>
@@ -612,7 +612,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
                           </Typography.Text>
                         ) : (
                           filas.map((fila, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
+                            <div key={idx} className="flex flex-wrap items-center gap-2">
                               <Typography.Text className="w-16 shrink-0 text-xs text-slate-500">
                                 Holgura ≤
                               </Typography.Text>

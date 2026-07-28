@@ -1364,7 +1364,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           body: { padding: 0 },
         }}
         title={
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span>
               {filtroEstado === "activos"
                 ? "Registros para revisión técnica"
@@ -1393,11 +1393,11 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             size="small"
           />
         </div>
-        <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 px-4 py-3">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end">
           <Select
             showSearch
             allowClear
-            className="beck-obra-filter-select"
+            className="beck-obra-filter-select w-full sm:w-[320px]"
             suffixIcon={<SearchOutlined className="text-slate-400" />}
             placeholder="Buscar obra / empresa"
             value={obraSeleccionada || undefined}
@@ -1410,7 +1410,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             optionFilterProp="label"
             options={obraOptions}
             notFoundContent={obrasLoading ? "Cargando obras..." : "Sin obras"}
-            style={{ width: 320, minWidth: 280 }}
+            style={{ minWidth: 0 }}
             size="small"
           />
           <Select
@@ -1419,7 +1419,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             value={tipoSeleccionado === "todos" ? undefined : tipoSeleccionado}
             onChange={(v) => setTipoSeleccionado(v ?? "todos")}
             options={TIPOS_REGISTRO_TERRENO}
-            style={{ width: 200 }}
+            className="w-full sm:w-[200px]"
             size="small"
           />
           <DatePicker.RangePicker
@@ -1429,8 +1429,9 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             placeholder={["Fecha inicio", "Fecha fin"]}
             size="small"
             allowClear
+            className="w-full sm:w-auto"
           />
-          <Button size="small" onClick={limpiarFiltros}>
+          <Button size="small" onClick={limpiarFiltros} className="w-full sm:w-auto">
             Limpiar filtros
           </Button>
         </div>

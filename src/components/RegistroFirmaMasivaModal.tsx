@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, List, Modal, Typography, message } from "antd";
+import { Button, Input, List, Modal, Typography, message } from "antd";
 import { ClearOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ClienteRegistroValidado } from "../services/api";
@@ -10,7 +10,7 @@ const CANVAS_HEIGHT = 200;
 const DEFAULT_CANVAS_WIDTH = 520;
 const SIGNATURE_STROKE_WIDTH = 2.5;
 
-type FirmaPayload = { pathData: string; canvasWidth: number; canvasHeight: number };
+type FirmaPayload = { nombreFirmanteCliente: string; pathData: string; canvasWidth: number; canvasHeight: number };
 
 type Props = {
   open: boolean;
@@ -45,8 +45,9 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
   const isDrawingRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [nombreFirmante, setNombreFirmante] = useState("");
 
-  const resetFirma = useCallback(() => {
+  const liberarCapturaPointer = useCallback(() => {
     const activePointerId = activePointerIdRef.current;
     if (activePointerId !== null && svgRef.current) {
       try {
@@ -57,12 +58,21 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
         // El pointer puede dejar de existir si el modal se cierra durante el trazo.
       }
     }
+  }, []);
+
+  const limpiarDibujo = useCallback(() => {
+    liberarCapturaPointer();
     setCompletedPaths([]);
     setCurrentPath("");
     currentPathRef.current = "";
     isDrawingRef.current = false;
     activePointerIdRef.current = null;
-  }, []);
+  }, [liberarCapturaPointer]);
+
+  const resetFirma = useCallback(() => {
+    limpiarDibujo();
+    setNombreFirmante("");
+  }, [limpiarDibujo]);
 
   useEffect(() => {
     if (open) return;
@@ -150,6 +160,8 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
   const visiblePathData = [...completedPaths, currentPath].filter(Boolean).join(" ").trim();
   const pathData = completedPaths.join(" ").trim();
   const isFirmaVacia = visiblePathData === "";
+  const nombreFirmanteLimpio = nombreFirmante.trim();
+  const isNombreFirmanteVacio = nombreFirmanteLimpio === "";
 
   const handleCerrar = () => {
     if (submitting || procesando) return;
@@ -158,6 +170,11 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
   };
 
   const handleConfirmarClick = () => {
+    if (!nombreFirmanteLimpio) {
+      void message.warning("Ingresa el nombre del firmante antes de confirmar.");
+      return;
+    }
+
     if (!pathData) {
       void message.warning("Dibuja tu firma antes de confirmar.");
       return;
@@ -169,14 +186,21 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
 
     Modal.confirm({
       title: "Confirmación irreversible",
-      content: `¿Estás seguro de validar estos ${n} registros con tu firma? Una vez validados no se podrá deshacer y se generará un PDF firmado individual para cada uno.`,
+      content:
+        `¿Estás seguro de validar estos ${n} registros a nombre de "${nombreFirmanteLimpio}"? ` +
+        "Una vez validados no se podrá deshacer y se generará un PDF firmado individual para cada uno.",
       okText: "Sí, validar",
       cancelText: "Cancelar",
       okButtonProps: { danger: true },
       onOk: async () => {
         setSubmitting(true);
         try {
-          await onConfirmarFirma({ pathData, canvasWidth, canvasHeight });
+          await onConfirmarFirma({
+            nombreFirmanteCliente: nombreFirmanteLimpio,
+            pathData,
+            canvasWidth,
+            canvasHeight,
+          });
           resetFirma();
         } catch {
           // Si falla, mantenemos la firma dibujada para reintentar sin firmar de nuevo.
@@ -194,23 +218,25 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
       open={open}
       onCancel={handleCerrar}
       title="Firmar registros seleccionados"
-      width={560}
+      width="92vw"
+      style={{ maxWidth: 560 }}
+      styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       maskClosable={!loading}
       closable={!loading}
       destroyOnClose
       footer={
-        <div className="flex items-center justify-between">
-          <Button icon={<ClearOutlined />} onClick={resetFirma} disabled={isFirmaVacia || loading}>
-            Limpiar
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Button icon={<ClearOutlined />} onClick={limpiarDibujo} disabled={isFirmaVacia || loading}>
+            Limpiar firma
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button onClick={handleCerrar} disabled={loading}>
               Cancelar
             </Button>
             <Button
               type="primary"
               onClick={handleConfirmarClick}
-              disabled={isFirmaVacia || loading}
+              disabled={isNombreFirmanteVacio || isFirmaVacia || loading}
               loading={loading}
             >
               Confirmar
@@ -250,6 +276,26 @@ const RegistroFirmaMasivaModal: React.FC<Props> = ({
         <Text type="secondary" className="block text-sm">
           Dibuja tu firma en el recuadro con el mouse o el dedo para validar.
         </Text>
+
+        <div>
+          <Text strong style={{ display: "block", marginBottom: 6 }}>
+            Nombre del firmante
+          </Text>
+
+          <Input
+            value={nombreFirmante}
+            onChange={(event) => setNombreFirmante(event.target.value)}
+            placeholder="Ej: Juan Pérez"
+            maxLength={255}
+            showCount
+            disabled={loading}
+            autoComplete="name"
+          />
+
+          <Text type="secondary" className="mt-1 block text-xs">
+            Escribe el nombre completo de la persona que realizará la firma.
+          </Text>
+        </div>
 
         <div
           ref={containerRef}

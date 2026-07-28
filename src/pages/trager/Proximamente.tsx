@@ -7,8 +7,8 @@ const TragerProximamente: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <section className="firemat-panel px-5 py-8">
-      <div className="mx-auto max-w-xl text-center">
+    <section className="firemat-panel px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-xl text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#fde8e4] text-firemat-primary">
           <ClockCircleOutlined />
         </div>

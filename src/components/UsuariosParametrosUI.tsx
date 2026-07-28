@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import dayjs from "dayjs";
 import { Alert, Button, Card, Form, Input, Modal, Select, Switch, Table, Tag, Tooltip, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd/es/form";
-import { EditOutlined, KeyOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
+import { DownOutlined, EditOutlined, KeyOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/useAuth";
 import { usePermisos } from "../hooks/usePermisos";
 import {
@@ -115,6 +115,7 @@ const INGENIERIA_BECK_ROLES = new Set<UsuarioApiRol>([
   "visualizador",
   "vendedor",
   "jefeobra",
+  "cliente",
 ]);
 
 type UsuarioFormValues = {
@@ -136,6 +137,22 @@ const formatClienteBeck = (cliente?: ClienteBeck): string => {
 
 const formatObra = (obra: ObraClienteBeckResumen): string =>
   [obra.nombre, obra.codigo].filter(Boolean).join(" - ");
+
+const normalizarParaCorreo = (valor: string): string =>
+  valor
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toLowerCase();
+
+const generarCorreoDesdeNombre = (nombreCompleto: string, dominio: string): string => {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+  if (partes.length < 2) return "";
+  const inicial = normalizarParaCorreo(partes[0]).charAt(0);
+  const apellido = normalizarParaCorreo(partes[partes.length - 1]);
+  if (!inicial || !apellido) return "";
+  return `${inicial}${apellido}${dominio}`;
+};
 
 const filtrarObrasPorClienteBeck = (
   obras: ObraClienteBeckResumen[],
@@ -253,6 +270,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const [editingUsuario, setEditingUsuario] = useState<UsuarioApi | null>(null);
   const [editing, setEditing] = useState(false);
   const [form] = Form.useForm<UsuarioFormValues>();
+  const correoAutoGeneradoRef = useRef<string>("");
   const [editForm] = Form.useForm<UsuarioEditFormValues>();
   const [editPassword, setEditPassword] = useState("");
   const [editConfirmPassword, setEditConfirmPassword] = useState("");
@@ -391,6 +409,8 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     return true;
   };
   const [createClienteMode, setCreateClienteMode] = useState(false);
+  const [terrenoAbierto, setTerrenoAbierto] = useState(false);
+  const [clienteAbierto, setClienteAbierto] = useState(false);
 
   const [permisosUsuario, setPermisosUsuario] = useState<UsuarioApi | null>(null);
   const [permisosData, setPermisosData] = useState<PermisoModulo[]>([]);
@@ -545,6 +565,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         : await usuariosParametrosAPI.crear(empresa, payload);
       setUsuarios((prev) => [nuevoUsuario, ...prev]);
       form.resetFields();
+      correoAutoGeneradoRef.current = "";
       setObrasCliente([]);
       setCreateOpen(false);
       message.success("Usuario creado correctamente");
@@ -725,7 +746,10 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   };
 
   const safeUsuarios = Array.isArray(usuarios) ? usuarios : [];
-  const usuariosInternos = safeUsuarios.filter((usuario) => usuario.rol !== "cliente");
+  const usuariosInternos = safeUsuarios.filter(
+    (usuario) => usuario.rol !== "cliente" && usuario.rol !== "terreno"
+  );
+  const usuariosTerreno = safeUsuarios.filter((usuario) => usuario.rol === "terreno");
   const usuariosCliente = safeUsuarios.filter((usuario) => usuario.rol === "cliente");
   const activos = safeUsuarios.filter((u) => u.activo).length;
   const inactivos = safeUsuarios.length - activos;
@@ -758,7 +782,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     title: "Nombre",
     dataIndex: "nombre",
     key: "nombre",
-    width: 190,
+    width: 150,
     ellipsis: true,
     render: (value: string) => (
       <span className="block truncate text-xs font-medium text-slate-900" title={value}>
@@ -771,7 +795,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     title: "Correo",
     dataIndex: "email",
     key: "email",
-    width: 280,
+    width: 185,
     ellipsis: true,
     render: (_value: string, record) => (
       <div className="leading-tight">
@@ -779,7 +803,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           {record.email}
         </span>
         <span
-          className="block max-w-[260px] truncate text-[11px] text-slate-400"
+          className="block max-w-[165px] truncate text-[11px] text-slate-400"
           title={record.azureId ?? undefined}
         >
           {record.azureId ? `Azure ID: ${record.azureId}` : "Sin vinculo Microsoft"}
@@ -792,7 +816,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     title: "Rol",
     dataIndex: "rol",
     key: "rol",
-    width: 260,
+    width: 180,
     render: (_value: UsuarioApiRol, record) => (
       <div className="flex min-w-0 items-center gap-2">
         <Tag color={getTagColor(record.rol)} style={{ marginInlineEnd: 0 }}>
@@ -808,7 +832,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             if (!canEditUsuario(record)) return;
             void updateUsuario(record.id, { rol }, "Rol actualizado");
           }}
-          style={{ width: 160 }}
+          style={{ width: 115 }}
         />
       </div>
     ),
@@ -817,7 +841,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const clienteBeckColumn: ColumnsType<UsuarioApi>[number] = {
     title: "Cliente Beck",
     key: "clienteBeck",
-    width: 260,
+    width: 200,
     ellipsis: true,
     render: (_value: unknown, record: UsuarioApi) => {
       if (!record.clienteBeckId) {
@@ -841,7 +865,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const cantidadObrasColumn: ColumnsType<UsuarioApi>[number] = {
     title: "Cantidad obras",
     key: "cantidadObrasAsignadas",
-    width: 130,
+    width: 90,
     align: "center" as const,
     render: (_value: unknown, record: UsuarioApi) => {
       const total = record.cantidadObrasAsignadas ?? record.obras?.length ?? 0;
@@ -853,7 +877,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
     title: "Activo",
     dataIndex: "activo",
     key: "activo",
-    width: 100,
+    width: 80,
     align: "center",
     render: (_value: boolean, record) => (
       canToggleUsuario(record) ? (
@@ -881,7 +905,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const accionesColumn: ColumnsType<UsuarioApi>[number] = {
     title: "Acciones",
     key: "acciones",
-    width: empresa === "beck" && currentUser?.rol === "Administrador" ? 190 : 130,
+    width: empresa === "beck" && currentUser?.rol === "Administrador" ? 160 : 110,
     align: "center",
     render: (_value: unknown, record) => (
       <div className="flex items-center justify-center gap-1">
@@ -1112,12 +1136,12 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             {subtitulo}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {empresa === "beck" && labelCrearCliente && !isCurrentIngenieriaBeck && canEditModulo && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          {empresa === "beck" && labelCrearCliente && canEditModulo && (
             <Button
               icon={<UserAddOutlined />}
               onClick={openCrearUsuarioCliente}
-              className="border-slate-300"
+              className="w-full border-slate-300 sm:w-auto"
             >
               {labelCrearCliente}
             </Button>
@@ -1128,7 +1152,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               icon={<UserAddOutlined />}
               onClick={openCrearUsuario}
               style={buttonBg ? { backgroundColor: buttonBg, borderColor: buttonBg } : undefined}
-              className={!buttonBg ? "bg-orange-500" : undefined}
+              className={!buttonBg ? "w-full bg-orange-500 sm:w-auto" : "w-full sm:w-auto"}
             >
               {labelCrear}
             </Button>
@@ -1137,7 +1161,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             icon={<ReloadOutlined />}
             onClick={refreshUsuarios}
             loading={loadingUsuarios}
-            className="border-slate-200"
+            className="w-full border-slate-200 sm:w-auto"
           >
             Recargar
           </Button>
@@ -1154,9 +1178,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         />
       )}
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[380px,minmax(0,1fr)]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[260px,minmax(0,1fr)]">
         <Card
-          className={`${cardBorderClass} min-w-0`}
+          className={`${cardBorderClass} min-w-0 w-full max-w-[280px]`}
           title={
             <div className="flex items-center gap-2 text-sm">
               <UserAddOutlined className={iconColorClass} />
@@ -1199,7 +1223,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                 >
                   {labelCrear}
                 </Button>
-                {labelCrearCliente && !isCurrentIngenieriaBeck && (
+                {labelCrearCliente && (
                   <Button
                     icon={<UserAddOutlined />}
                     onClick={openCrearUsuarioCliente}
@@ -1242,7 +1266,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                   loading={loadingUsuarios}
                   size="small"
                   pagination={{ pageSize: 8, showSizeChanger: false }}
-                  scroll={{ x: 960 }}
+                  scroll={{ x: "max-content" }}
                   tableLayout="fixed"
                   rowClassName={(record) => (record.activo ? "" : "opacity-70")}
                   locale={{
@@ -1255,10 +1279,20 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             <Card
               className="min-w-0 border border-slate-200 bg-white"
               title={
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span>Usuarios cliente</span>
-                  <span className="text-xs text-slate-500">{usuariosCliente.length}</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setTerrenoAbierto((prev) => !prev)}
+                  aria-expanded={terrenoAbierto}
+                  className="flex w-full items-center justify-between gap-3 border-0 bg-transparent p-0 text-left text-sm"
+                >
+                  <span className="min-w-0 flex-1 truncate">Personal de terreno</span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="text-xs text-slate-500">{usuariosTerreno.length}</span>
+                    <DownOutlined
+                      className={`text-xs text-slate-400 transition-transform ${terrenoAbierto ? "rotate-180" : ""}`}
+                    />
+                  </span>
+                </button>
               }
               styles={{
                 header: {
@@ -1270,22 +1304,72 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                 body: { padding: 0 },
               }}
             >
-              <div className="overflow-x-auto">
-                <Table<UsuarioApi>
-                  rowKey="id"
-                  columns={usuariosClienteColumns}
-                  dataSource={usuariosCliente}
-                  loading={loadingUsuarios}
-                  size="small"
-                  pagination={{ pageSize: 8, showSizeChanger: false }}
-                  scroll={{ x: 1060 }}
-                  tableLayout="fixed"
-                  rowClassName={(record) => (record.activo ? "" : "opacity-70")}
-                  locale={{
-                    emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios cliente para mostrar",
-                  }}
-                />
-              </div>
+              {terrenoAbierto && (
+                <div className="overflow-x-auto">
+                  <Table<UsuarioApi>
+                    rowKey="id"
+                    columns={usuariosInternosColumns}
+                    dataSource={usuariosTerreno}
+                    loading={loadingUsuarios}
+                    size="small"
+                    pagination={{ pageSize: 8, showSizeChanger: false }}
+                    scroll={{ x: "max-content" }}
+                    tableLayout="fixed"
+                    rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+                    locale={{
+                      emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay personal de terreno para mostrar",
+                    }}
+                  />
+                </div>
+              )}
+            </Card>
+
+            <Card
+              className="min-w-0 border border-slate-200 bg-white"
+              title={
+                <button
+                  type="button"
+                  onClick={() => setClienteAbierto((prev) => !prev)}
+                  aria-expanded={clienteAbierto}
+                  className="flex w-full items-center justify-between gap-3 border-0 bg-transparent p-0 text-left text-sm"
+                >
+                  <span className="min-w-0 flex-1 truncate">Usuarios cliente</span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="text-xs text-slate-500">{usuariosCliente.length}</span>
+                    <DownOutlined
+                      className={`text-xs text-slate-400 transition-transform ${clienteAbierto ? "rotate-180" : ""}`}
+                    />
+                  </span>
+                </button>
+              }
+              styles={{
+                header: {
+                  backgroundColor: "#ffffff",
+                  color: "#020617",
+                  borderBottom: "1px solid #e2e8f0",
+                  fontSize: 13,
+                },
+                body: { padding: 0 },
+              }}
+            >
+              {clienteAbierto && (
+                <div className="overflow-x-auto">
+                  <Table<UsuarioApi>
+                    rowKey="id"
+                    columns={usuariosClienteColumns}
+                    dataSource={usuariosCliente}
+                    loading={loadingUsuarios}
+                    size="small"
+                    pagination={{ pageSize: 8, showSizeChanger: false }}
+                    scroll={{ x: "max-content" }}
+                    tableLayout="fixed"
+                    rowClassName={(record) => (record.activo ? "" : "opacity-70")}
+                    locale={{
+                      emptyText: loadingUsuarios ? "Cargando usuarios..." : "No hay usuarios cliente para mostrar",
+                    }}
+                  />
+                </div>
+              )}
             </Card>
           </div>
         ) : (
@@ -1341,12 +1425,16 @@ const UsuariosParametrosUI: React.FC<Props> = ({
           setCreateClienteMode(false);
           setObrasCliente([]);
           form.resetFields();
+          correoAutoGeneradoRef.current = "";
         }}
         onOk={canEditModulo ? crearUsuario : undefined}
         confirmLoading={creating}
         okText={createClienteMode ? labelCrearCliente ?? labelCrear : labelCrear}
         cancelText="Cancelar"
         okButtonProps={{ style: canEditModulo ? undefined : { display: "none" } }}
+        width="94vw"
+        style={{ maxWidth: 520 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         <Form
           form={form}
@@ -1359,7 +1447,18 @@ const UsuariosParametrosUI: React.FC<Props> = ({
             name="nombre"
             rules={[{ required: true, message: "Ingresa el nombre" }]}
           >
-            <Input placeholder="Ej: Juan Pérez" />
+            <Input
+              placeholder="Ej: Juan Pérez"
+              onChange={(e) => {
+                if (createClienteMode) return;
+                const emailActual = form.getFieldValue("email") ?? "";
+                if (emailActual && emailActual !== correoAutoGeneradoRef.current) return;
+                const dominio = isFiremat ? "@firemat.cl" : "@becksoluciones.cl";
+                const correoGenerado = generarCorreoDesdeNombre(e.target.value, dominio);
+                correoAutoGeneradoRef.current = correoGenerado;
+                form.setFieldValue("email", correoGenerado);
+              }}
+            />
           </Form.Item>
           <Form.Item
             label="Correo"
@@ -1436,6 +1535,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         okText="Guardar cambios"
         cancelText="Cancelar"
         okButtonProps={{ style: canEditModulo ? undefined : { display: "none" } }}
+        width="94vw"
+        style={{ maxWidth: 520 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         <Form form={editForm} layout="vertical" disabled={!canEditModulo}>
           <Form.Item
@@ -1566,7 +1668,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         confirmLoading={savingPermisos}
         okText="Guardar permisos"
         cancelText="Cancelar"
-        width={700}
+        width="94vw"
+        style={{ maxWidth: 700 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
       >
         {loadingPermisos ? (
           <div className="space-y-3 py-6" aria-hidden="true">
