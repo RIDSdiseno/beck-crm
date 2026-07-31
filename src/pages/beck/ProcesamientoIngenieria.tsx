@@ -501,6 +501,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [resumenKpis, setResumenKpis] = useState<{ pendientes: number; enRevision: number; validados: number; rechazados: number; total: number } | null>(null);
   const [marcandoInspeccionId, setMarcandoInspeccionId] = useState<string | null>(null);
   const [verInspeccionRegistroId, setVerInspeccionRegistroId] = useState<string | null>(null);
+  const [selectedInspeccionIds, setSelectedInspeccionIds] = useState<React.Key[]>([]);
+  const [descargandoConsolidado, setDescargandoConsolidado] = useState(false);
 
   const cargarRegistros = useCallback(async () => {
     setLoading(true);
@@ -763,6 +765,23 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     } catch (error) {
       console.error(error);
       message.error("No se pudo descargar el PDF del registro");
+    }
+  };
+
+  const handleDescargarInspeccionesConsolidado = async () => {
+    if (selectedInspeccionIds.length === 0) return;
+    setDescargandoConsolidado(true);
+    try {
+      const blob = await inspeccionAPI.descargarInspeccionesPdfConsolidado(
+        selectedInspeccionIds.map(String)
+      );
+      downloadBlob(blob, `inspecciones-consolidado-${selectedInspeccionIds.length}.pdf`);
+      setSelectedInspeccionIds([]);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo descargar el PDF consolidado de inspecciones");
+    } finally {
+      setDescargandoConsolidado(false);
     }
   };
 
@@ -1450,6 +1469,16 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           <Button size="small" onClick={limpiarFiltros} className="w-full sm:w-auto">
             Limpiar filtros
           </Button>
+          <Button
+            size="small"
+            type="primary"
+            disabled={selectedInspeccionIds.length === 0}
+            loading={descargandoConsolidado}
+            onClick={() => void handleDescargarInspeccionesConsolidado()}
+            className="w-full sm:ml-auto sm:w-auto"
+          >
+            Descargar inspecciones seleccionadas ({selectedInspeccionIds.length})
+          </Button>
         </div>
 
         <Table
@@ -1461,6 +1490,15 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           scroll={{ x: "max-content" }}
           tableLayout="auto"
           pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ["10", "20", "50"] }}
+          rowSelection={{
+            selectedRowKeys: selectedInspeccionIds,
+            onChange: (keys) => setSelectedInspeccionIds(keys),
+            getCheckboxProps: (record) => ({
+              disabled:
+                normalizeInspeccionEstado(record.inspeccionEstado, record.seleccionadoParaInspeccion) !==
+                "inspeccionado",
+            }),
+          }}
         />
       </Card>
 

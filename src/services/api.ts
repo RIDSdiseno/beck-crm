@@ -4508,6 +4508,22 @@ export const inspeccionAPI = {
       motivo,
     });
   },
+
+  descargarInspeccionPdf: async (registroId: string): Promise<Blob> => {
+    const response = await api.get<Blob>(`/registros/${registroId}/inspeccion/pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  descargarInspeccionesPdfConsolidado: async (registroIds: string[]): Promise<Blob> => {
+    const response = await api.post<Blob>(
+      `/registros/inspeccion/pdf-consolidado`,
+      { registroIds },
+      { responseType: "blob" }
+    );
+    return response.data;
+  },
 };
 
 

@@ -60,6 +60,17 @@ const resultadoColor: Record<ResultadoParametroInspeccion, string> = {
 const formatFecha = (value?: string | null): string =>
   value ? dayjs(value).format("DD-MM-YYYY HH:mm") : "-";
 
+const downloadBlob = (blob: Blob, fileName: string): void => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 const getNombre = (
   aliases: Array<{ id?: string | null; nombre?: string | null } | null | undefined | string | null>
 ): string | null => {
@@ -105,6 +116,7 @@ const DetalleInspeccionModal: React.FC<Props> = ({
   const [rechazando, setRechazando] = useState(false);
   const [mostrarMotivoRechazoCorreccion, setMostrarMotivoRechazoCorreccion] = useState(false);
   const [motivoRechazoCorreccion, setMotivoRechazoCorreccion] = useState("");
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
 
   const cargarDetalle = async () => {
     if (!registroId) return;
@@ -186,6 +198,20 @@ const DetalleInspeccionModal: React.FC<Props> = ({
       message.error("No se pudo rechazar la corrección");
     } finally {
       setRechazando(false);
+    }
+  };
+
+  const handleDescargarPdf = async () => {
+    if (!registroId) return;
+    setDescargandoPdf(true);
+    try {
+      const blob = await inspeccionAPI.descargarInspeccionPdf(registroId);
+      downloadBlob(blob, `Inspeccion-${registroId.slice(0, 8)}.pdf`);
+    } catch (error) {
+      console.error(error);
+      message.error("No se pudo descargar el PDF de la inspección");
+    } finally {
+      setDescargandoPdf(false);
     }
   };
 
@@ -274,9 +300,14 @@ const DetalleInspeccionModal: React.FC<Props> = ({
               </>
             )}
           </div>
-          <Button type="primary" onClick={onClose}>
-            Cerrar
-          </Button>
+          <div className="flex gap-2">
+            <Button loading={descargandoPdf} disabled={!detalle} onClick={handleDescargarPdf}>
+              Descargar PDF
+            </Button>
+            <Button type="primary" onClick={onClose}>
+              Cerrar
+            </Button>
+          </div>
         </div>
       }
     >

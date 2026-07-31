@@ -200,9 +200,6 @@ const jefeObraConfigurableCampos = new Set([
   "recinto",
   "modulo",
   "holgura",
-  "factor_por_holguras",
-  "cantidad_sellos_con_factores",
-  "cantidad_final",
   "folio",
 ]);
 
@@ -364,7 +361,7 @@ const getRegistroCampoColor = (
     ((role === "jefeobra" || role === "ingenieria") && jefeObraConfigurableCampos.has(campoKey)) ||
     (role === "trabajador" && trabajadorConfigurableCampos.has(campoKey)) ||
     (role === "cliente" && clienteConfigurableCampos.has(campoKey)) ||
-    configurableCatalogKeys.has(campoKey)
+    (role !== "jefeobra" && configurableCatalogKeys.has(campoKey))
   ) {
     return "azul";
   }
@@ -374,7 +371,7 @@ const getRegistroCampoColor = (
   if (role === "trabajador" && [...trabajadorForbiddenCampos].some((item) => identity.includes(item))) {
     return "rojo";
   }
-  if ([...blueRegistroCampos].some((item) => identity.includes(item))) {
+  if (role !== "jefeobra" && [...blueRegistroCampos].some((item) => identity.includes(item))) {
     return "azul";
   }
   if (raw === "verde" || raw === "green") return "verde";
@@ -523,6 +520,9 @@ const Obras: React.FC = () => {
   const [form] = Form.useForm<ObraFormValues>();
   const selectedRegion = Form.useWatch("region", form);
   const selectedTiposRegistro = Form.useWatch("tiposRegistro", form);
+  const funnelBeckIdWatch = Form.useWatch("funnelBeckId", form);
+  const clienteBeckIdWatch = Form.useWatch("clienteBeckId", form);
+  const clienteAsociadoDisabled = modalMode === "editar" && !canCambiarEmpresaBeck;
   const comunasDisponibles =
     regionesComunasChile.find((region) => region.nombre === selectedRegion)
       ?.comunas ?? [];
@@ -648,6 +648,32 @@ const Obras: React.FC = () => {
     if (Object.keys(nextValues).length > 0) {
       form.setFieldsValue(nextValues);
     }
+  };
+
+  const handleSeleccionarClienteAsociado = (clienteBeckId?: string) => {
+    if (!clienteBeckId) return;
+
+    const cliente = clientesBeck.find((c) => c.id === clienteBeckId);
+    if (!cliente) return;
+
+    const current = form.getFieldsValue();
+    const nextValues: Partial<ObraFormValues> = {
+      cliente: cliente.razonSocial || cliente.nombreEmpresa || "",
+    };
+
+    if (!current.direccion?.trim() && cliente.direccion) {
+      nextValues.direccion = cliente.direccion;
+    }
+
+    if (!current.region?.trim() && cliente.region) {
+      nextValues.region = cliente.region;
+    }
+
+    if (!current.comuna?.trim() && cliente.comuna) {
+      nextValues.comuna = cliente.comuna;
+    }
+
+    form.setFieldsValue(nextValues);
   };
 
   const handleCrear = async (values: ObraFormValues) => {
@@ -1555,16 +1581,33 @@ const Obras: React.FC = () => {
           </Form.Item>
 
           <Tooltip
-            title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+            title={
+              clienteAsociadoDisabled
+                ? "No tienes permiso para cambiar empresa"
+                : undefined
+            }
           >
-            <Form.Item name="clienteBeckId" label="Cliente asociado">
+            <Form.Item
+              name="clienteBeckId"
+              label={
+                <span className="flex items-center gap-2">
+                  Cliente asociado
+                  {clienteBeckIdWatch && funnelBeckIdWatch && (
+                    <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                      Desde Funnel
+                    </Tag>
+                  )}
+                </span>
+              }
+            >
               <Select
                 allowClear
                 showSearch
                 loading={loadingClientesBeck}
                 placeholder="Seleccionar cliente asociado"
                 optionFilterProp="label"
-                disabled={!canCambiarEmpresaBeck}
+                disabled={clienteAsociadoDisabled}
+                onChange={(value) => handleSeleccionarClienteAsociado(value)}
                 options={clientesBeck.map((c) => ({
                   value: c.id,
                   label: `${c.razonSocial}${c.nombreEmpresa ? ` / ${c.nombreEmpresa}` : ""} — ${c.rut}`,
