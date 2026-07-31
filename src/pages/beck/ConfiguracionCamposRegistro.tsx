@@ -521,29 +521,37 @@ const ConfiguracionCamposRegistro: React.FC = () => {
     role: RolConfiguracionCamposRegistro,
     field: CampoConfiguracionRegistro
   ) => {
-    const color = colorConfig[field.color] ?? colorConfig.azul;
-    const locked = isFieldLocked(role, field);
-    const trabajadorRojo = role === "trabajador" && field.color === "rojo";
+    const displayField =
+      role === "ingenieria"
+        ? {
+            ...field,
+            color: ingenieriaRojoCampos.has(field.campo) ? ("rojo" as const) : ("verde" as const),
+            visible: !ingenieriaRojoCampos.has(field.campo),
+          }
+        : field;
+    const color = colorConfig[displayField.color] ?? colorConfig.azul;
+    const locked = isFieldLocked(role, displayField);
+    const trabajadorRojo = role === "trabajador" && displayField.color === "rojo";
 
     return (
       <div
-        key={field.campo}
+        key={displayField.campo}
         className={`flex flex-col gap-3 rounded-lg border ${color.border} ${color.background} px-4 py-3 sm:flex-row sm:items-center sm:justify-between`}
       >
         <div className="min-w-0">
           <Space size={[6, 6]} wrap className="mb-1">
-            <Typography.Text strong>{field.label || field.campo}</Typography.Text>
+            <Typography.Text strong>{displayField.label || displayField.campo}</Typography.Text>
             <Tag color={color.tagColor}>{color.label}</Tag>
             {trabajadorRojo && <Tag color="red">Prohibido para trabajador</Tag>}
           </Space>
           <Typography.Text type="secondary" className="block text-xs">
-            {field.descripcion || field.campo}
+            {displayField.descripcion || displayField.campo}
           </Typography.Text>
         </div>
         <Switch
-          checked={field.visible}
+          checked={displayField.visible}
           disabled={locked || saving}
-          onChange={(checked) => updateField(role, field.campo, checked)}
+          onChange={(checked) => updateField(role, displayField.campo, checked)}
           checkedChildren="Visible"
           unCheckedChildren="Oculto"
         />
