@@ -162,6 +162,9 @@ const trabajadorConfigurableCampos = new Set([
   "recinto",
   "modulo",
   "holgura",
+  "accesibilidad",
+  "aislacion",
+  "reparacion_tabique",
 ]);
 
 const trabajadorProhibidoCampos = new Set([
@@ -169,6 +172,14 @@ const trabajadorProhibidoCampos = new Set([
   "cantidad_sellos_con_factores",
   "cantidad_sellos_aislacion",
   "cantidad_final",
+]);
+
+const siempreVisibleCampos = new Set([
+  "numero_sello",
+]);
+
+const ingenieriaRojoCampos = new Set([
+  "rendimientoSellosEsperadoDiario",
 ]);
 
 const clienteConfigurableCampos = new Set([
@@ -200,7 +211,7 @@ const clienteConfigurableCampos = new Set([
 const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
   if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoCampos];
   if (role === "cliente") return [...clienteConfigurableCampos];
-  if (role === "ingenieria") return [...jefeObraConfigurableCampos];
+  if (role === "ingenieria") return [];
   return [...jefeObraConfigurableCampos];
 };
 
@@ -293,14 +304,20 @@ const normalizeFieldForRole = (
     normalizeCampoKey(field.label) ||
     normalizeCampoKey(field.id);
   const isTrabajadorProhibido =
-    role === "trabajador" && trabajadorProhibidoCampos.has(campo);
+    role === "trabajador" && !siempreVisibleCampos.has(campo) && trabajadorProhibidoCampos.has(campo);
   const isConfigurableMatrix =
     role === "jefeobra" || role === "ingenieria"
       ? jefeObraConfigurableCampos.has(campo)
       : role === "cliente"
       ? clienteConfigurableCampos.has(campo)
       : trabajadorConfigurableCampos.has(campo);
-  const color: ColorConfiguracionCampoRegistro = isTrabajadorProhibido
+  const color: ColorConfiguracionCampoRegistro = role === "ingenieria"
+    ? ingenieriaRojoCampos.has(campo)
+      ? "rojo"
+      : "verde"
+    : siempreVisibleCampos.has(campo)
+    ? "verde"
+    : isTrabajadorProhibido
     ? "rojo"
     : isConfigurableMatrix || configurableCatalogKeys.has(campo)
     ? "azul"
