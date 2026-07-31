@@ -182,6 +182,9 @@ const ingenieriaRojoCampos = new Set([
   "rendimientoSellosEsperadoDiario",
 ]);
 
+const isIngenieriaRojoCampo = (campo: unknown) =>
+  ingenieriaRojoCampos.has(normalizeCampoKey(campo));
+
 const clienteConfigurableCampos = new Set([
   "codigo_beck",
   "itemizado_beck",
@@ -238,6 +241,9 @@ const CAMPO_ALIAS_MAP: Record<string, string> = {
   reparaciontabique: "reparacion_tabique",
   cantidadfinal: "cantidad_final",
   factorporholguras: "factor_por_holguras",
+  rendimientosellosesperadodiario: "rendimientoSellosEsperadoDiario",
+  rendimientoreparacionesperadodiario: "rendimientoReparacionEsperadoDiario",
+  rendimientoindividual: "rendimientoIndividual",
 };
 
 const normalizeCampoText = (value: unknown): string =>
@@ -275,6 +281,9 @@ const normalizeCampoKey = (value: unknown): string => {
   if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
   if (normalized === "cantidad final") return "cantidad_final";
   if (normalized === "folio") return "folio";
+  if (normalized === "rendimiento sellos esperado diario") return "rendimientoSellosEsperadoDiario";
+  if (normalized === "rendimiento reparacion esperado diario") return "rendimientoReparacionEsperadoDiario";
+  if (normalized === "rendimiento individual") return "rendimientoIndividual";
   return textFrom(value);
 };
 
@@ -312,7 +321,7 @@ const normalizeFieldForRole = (
       ? clienteConfigurableCampos.has(campo)
       : trabajadorConfigurableCampos.has(campo);
   const color: ColorConfiguracionCampoRegistro = role === "ingenieria"
-    ? ingenieriaRojoCampos.has(campo)
+    ? isIngenieriaRojoCampo(campo)
       ? "rojo"
       : "verde"
     : siempreVisibleCampos.has(campo)
@@ -337,7 +346,11 @@ const normalizeFieldForRole = (
   };
 
   if (color === "verde") {
-    return { ...normalized, visible: true };
+    return { ...normalized, visible: true, configurable: false };
+  }
+
+  if (role === "ingenieria" && color === "rojo") {
+    return { ...normalized, visible: false, prohibido: true, configurable: false };
   }
 
   if (role === "trabajador" && color === "rojo") {
@@ -525,8 +538,9 @@ const ConfiguracionCamposRegistro: React.FC = () => {
       role === "ingenieria"
         ? {
             ...field,
-            color: ingenieriaRojoCampos.has(field.campo) ? ("rojo" as const) : ("verde" as const),
-            visible: !ingenieriaRojoCampos.has(field.campo),
+            color: isIngenieriaRojoCampo(field.campo) ? ("rojo" as const) : ("verde" as const),
+            visible: !isIngenieriaRojoCampo(field.campo),
+            configurable: false,
           }
         : field;
     const color = colorConfig[displayField.color] ?? colorConfig.azul;

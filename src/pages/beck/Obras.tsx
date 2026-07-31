@@ -247,7 +247,7 @@ const clienteConfigurableCampos = new Set([
 const getCatalogKeysForRole = (role: RolConfiguracionCamposRegistro) => {
   if (role === "trabajador") return [...trabajadorConfigurableCampos, ...trabajadorProhibidoMatrixCampos];
   if (role === "cliente") return [...clienteConfigurableCampos];
-  if (role === "ingenieria") return [...jefeObraConfigurableCampos];
+  if (role === "ingenieria") return [];
   return [...jefeObraConfigurableCampos];
 };
 
@@ -283,6 +283,9 @@ const CAMPO_ALIAS_MAP: Record<string, string> = {
   reparaciontabique: "reparacion_tabique",
   cantidadfinal: "cantidad_final",
   factorporholguras: "factor_por_holguras",
+  rendimientosellosesperadodiario: "rendimientoSellosEsperadoDiario",
+  rendimientoreparacionesperadodiario: "rendimientoReparacionEsperadoDiario",
+  rendimientoindividual: "rendimientoIndividual",
 };
 
 const normalizeRegistroCampoKey = (value: unknown): string => {
@@ -314,8 +317,18 @@ const normalizeRegistroCampoKey = (value: unknown): string => {
   if (normalized.includes("reparacion") && normalized.includes("tabique")) return "reparacion_tabique";
   if (normalized === "cantidad final") return "cantidad_final";
   if (normalized === "folio") return "folio";
+  if (normalized === "rendimiento sellos esperado diario") return "rendimientoSellosEsperadoDiario";
+  if (normalized === "rendimiento reparacion esperado diario") return "rendimientoReparacionEsperadoDiario";
+  if (normalized === "rendimiento individual") return "rendimientoIndividual";
   return textFrom(value);
 };
+
+const ingenieriaRojoCampos = new Set([
+  "rendimientoSellosEsperadoDiario",
+]);
+
+const isIngenieriaRojoCampo = (campo: unknown) =>
+  ingenieriaRojoCampos.has(normalizeRegistroCampoKey(campo));
 
 const getRegistroCampoId = (field: CampoConfiguracionRegistro): string =>
   normalizeRegistroCampoKey(field.campo) ||
@@ -356,9 +369,13 @@ const getRegistroCampoColor = (
   const label = normalizeRegistroText(getRegistroCampoLabel(field));
   const identity = `${campo} ${label}`;
 
+  if (role === "ingenieria") {
+    return isIngenieriaRojoCampo(campoKey) ? "rojo" : "verde";
+  }
+
   if (role === "trabajador" && trabajadorProhibidoMatrixCampos.has(campoKey)) return "rojo";
   if (
-    ((role === "jefeobra" || role === "ingenieria") && jefeObraConfigurableCampos.has(campoKey)) ||
+    (role === "jefeobra" && jefeObraConfigurableCampos.has(campoKey)) ||
     (role === "trabajador" && trabajadorConfigurableCampos.has(campoKey)) ||
     (role === "cliente" && clienteConfigurableCampos.has(campoKey)) ||
     (role !== "jefeobra" && configurableCatalogKeys.has(campoKey))
@@ -392,7 +409,10 @@ const normalizeRegistroField = (
     visible: Boolean(field.visible),
   };
 
-  if (color === "verde") return { ...normalized, visible: true };
+  if (color === "verde") return { ...normalized, visible: true, configurable: false };
+  if (role === "ingenieria" && color === "rojo") {
+    return { ...normalized, visible: false, prohibido: true, configurable: false };
+  }
   if (role === "trabajador" && color === "rojo") {
     return { ...normalized, visible: false, prohibido: true, configurable: false };
   }
@@ -991,33 +1011,42 @@ const Obras: React.FC = () => {
     role: RolConfiguracionCamposRegistro,
     field: CampoConfiguracionRegistro
   ) => {
-    const color = registroColorConfig[field.color] ?? registroColorConfig.azul;
-    const trabajadorRojo = role === "trabajador" && field.color === "rojo";
+    const displayField =
+      role === "ingenieria"
+        ? {
+            ...field,
+            color: isIngenieriaRojoCampo(field.campo) ? ("rojo" as const) : ("verde" as const),
+            visible: !isIngenieriaRojoCampo(field.campo),
+            configurable: false,
+          }
+        : field;
+    const color = registroColorConfig[displayField.color] ?? registroColorConfig.azul;
+    const trabajadorRojo = role === "trabajador" && displayField.color === "rojo";
     const locked =
-      field.color === "verde" ||
-      field.configurable === false ||
-      field.prohibido === true ||
+      displayField.color === "verde" ||
+      displayField.configurable === false ||
+      displayField.prohibido === true ||
       trabajadorRojo;
 
     return (
       <div
-        key={field.campo}
+        key={displayField.campo}
         className={`flex flex-col gap-3 rounded-lg border ${color.border} ${color.background} px-4 py-3 sm:flex-row sm:items-center sm:justify-between`}
       >
         <div className="min-w-0">
           <Space size={[6, 6]} wrap className="mb-1">
-            <Typography.Text strong>{field.label || field.campo}</Typography.Text>
+            <Typography.Text strong>{displayField.label || displayField.campo}</Typography.Text>
             <Tag color={color.tagColor}>{color.label}</Tag>
             {trabajadorRojo && <Tag color="red">Prohibido para trabajador</Tag>}
           </Space>
           <Typography.Text type="secondary" className="block text-xs">
-            {field.descripcion || field.campo}
+            {displayField.descripcion || displayField.campo}
           </Typography.Text>
         </div>
         <Switch
-          checked={field.visible}
+          checked={displayField.visible}
           disabled={locked || registroSaving}
-          onChange={(checked) => updateRegistroField(role, field.campo, checked)}
+          onChange={(checked) => updateRegistroField(role, displayField.campo, checked)}
           checkedChildren="Visible"
           unCheckedChildren="Oculto"
         />
