@@ -162,13 +162,9 @@ type RegistroUpdatePayload = {
   eje_alfabetico: string;
   numero_sello: string;
   cantidad_sellos: number;
-  factor_por_holguras?: number | string | null;
   cielo_modular?: number | string | null;
-  cantidad_sellos_con_factores?: number | string | null;
   aislacion?: number | string | null;
-  cantidad_sellos_aislacion?: number | string | null;
   reparacion_tabique?: number | string | null;
-  cantidad_final?: number | string | null;
   metros_lineales: number;
   nombre_sellador: string;
   holgura: number;
@@ -977,13 +973,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       eje_alfabetico: values.ejeAlfabetico,
       numero_sello: values.numeroSello,
       cantidad_sellos: values.cantidadSellos,
-      factor_por_holguras: values.factorPorHolguras ?? null,
       accesibilidad: values.accesibilidad ?? values.cieloModular ?? null,
-      cantidad_sellos_con_factores: values.cantidadSellosConFactores ?? null,
       aislacion: values.aislacion ?? null,
-      cantidad_sellos_aislacion: values.cantidadSellosAislacion ?? null,
       reparacion_tabique: values.reparacionTabique ?? null,
-      cantidad_final: values.cantidadFinal ?? null,
       metros_lineales: values.metrosLineales ?? 0,
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
@@ -3125,4 +3117,3 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 };
 
 export default RegistroSellos;
-
