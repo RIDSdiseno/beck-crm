@@ -314,7 +314,6 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
   useEffect(() => {
     if (empresa !== "beck") return;
-    if (currentUser?.rol !== "Administrador") return;
     let isMounted = true;
 
     const fetchClientesBeck = async () => {
@@ -333,7 +332,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
 
     void fetchClientesBeck();
     return () => { isMounted = false; };
-  }, [empresa, currentUser?.rol]);
+  }, [empresa]);
 
   const cargarObrasDisponibles = async (target: "create" | "edit", clienteBeckId?: string) => {
     const setLoading = target === "create" ? setLoadingObrasCliente : setLoadingEditObrasCliente;
