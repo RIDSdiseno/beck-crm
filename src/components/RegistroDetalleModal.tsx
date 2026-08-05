@@ -227,7 +227,7 @@ const renderDetalleSelloCortafuego = (
     <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
       <FieldView label="Codigo BECK" value={r.codigo} />
       <FieldView label="Itemizado BECK" value={r.itemizadoBeck} />
-      <FieldView label="Itemizado SACYR" value={r.itemizadoSacyr} span={2} />
+      <FieldView label="Itemizado Mandante" value={r.itemizadoMandanteNombre} span={2} />
       <FieldView
         label="Fecha ejecucion sello"
         value={r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
@@ -465,9 +465,9 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               </span>
             </p>
           )}
-          {registro.itemizadoSacyr && (
+          {registro.itemizadoMandanteNombre && (
             <p className="mt-0.5 text-[11px] text-slate-500">
-              SACYR: <span className="font-medium text-slate-700">{registro.itemizadoSacyr}</span>
+              Mandante: <span className="font-medium text-slate-700">{registro.itemizadoMandanteNombre}</span>
             </p>
           )}
         </div>
