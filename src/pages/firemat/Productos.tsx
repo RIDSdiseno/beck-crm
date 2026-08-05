@@ -154,6 +154,7 @@ const ModalProducto: React.FC<{
         precio: producto.precioClp ?? producto.precio,
         precioSugerido: producto.precioSugerido ?? undefined,
         stockMinimo: producto.stockMinimo ?? producto.minStock,
+        stockInicial: producto.stockInicial ?? 0,
         ubicacion: producto.ubicacion ?? undefined,
         criticidad: producto.criticidad,
         activo: producto.activo,
@@ -222,7 +223,7 @@ const ModalProducto: React.FC<{
         formato: values.formato || null,
         cantidadCaja: values.cantidadCaja?.trim() || null,
         stockMinimo: values.stockMinimo,
-        ...(isCreate && { stockInicial: values.stockInicial ?? 0 }),
+        stockInicial: values.stockInicial ?? 0,
         ubicacion: values.ubicacion || null,
         criticidad: values.criticidad,
         activo: values.activo,
@@ -369,6 +370,7 @@ const ModalProducto: React.FC<{
           <Form.Item
             name="stockMinimo"
             label="Stock mínimo"
+            tooltip="Cantidad mínima de stock disponible que debe mantenerse. Cuando el stock disponible cae a este nivel o menos, el producto se marca como bajo stock (se resalta en rojo) para avisar que hay que reponerlo."
             rules={[
               { required: true, message: "Stock mínimo requerido" },
               { type: "number", min: 0, message: "Stock mínimo debe ser >= 0" },
@@ -377,24 +379,22 @@ const ModalProducto: React.FC<{
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
 
-          {isCreate && (
-            <Form.Item
-              name="stockInicial"
-              label="Stock inicial"
-              rules={[
-                { required: true, message: "Stock inicial requerido" },
-                { type: "number", min: 0, message: "Stock inicial debe ser >= 0" },
-                {
-                  validator: (_, value) =>
-                    value !== undefined && !Number.isInteger(value)
-                      ? Promise.reject("Debe ser un número entero")
-                      : Promise.resolve(),
-                },
-              ]}
-            >
-              <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="0" />
-            </Form.Item>
-          )}
+          <Form.Item
+            name="stockInicial"
+            label="Stock"
+            rules={[
+              { required: true, message: "Stock requerido" },
+              { type: "number", min: 0, message: "Stock debe ser >= 0" },
+              {
+                validator: (_, value) =>
+                  value !== undefined && !Number.isInteger(value)
+                    ? Promise.reject("Debe ser un número entero")
+                    : Promise.resolve(),
+              },
+            ]}
+          >
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="0" />
+          </Form.Item>
 
           <Form.Item name="ubicacion" label="Ubicación / Bodega">
             <Input placeholder="Ej: Bodega A - Pasillo 3" />
