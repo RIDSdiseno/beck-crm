@@ -1981,6 +1981,7 @@ export type ProductoFiremat = {
   stockReservado: number;
   stockDisponible: number;
   stockMinimo?: number | null;
+  stockInicial?: number | null;
   minStock: number;
   ubicacion?: string | null;
   criticidad: string;
@@ -2941,6 +2942,8 @@ export type ActualizarInventarioFirematPayload = {
   ubicacion?: string;
   activo?: boolean;
   motivo?: string;
+  nombre?: string;
+  sku?: string | null;
 };
 
 export type ActualizarInventarioFirematResponse = {
@@ -3070,6 +3073,16 @@ export type ImportarPdfInventarioResult = {
   advertencias?: string[];
 };
 
+export type ImportarExcelInventarioResult = {
+  totalFilas: number;
+  actualizados: number;
+  noEncontrados: number;
+  sinSku: number;
+  omitidos: number;
+  errores: string[];
+  advertencias?: string[];
+};
+
 export const firematInventarioAPI = {
   listar: async (params?: {
     q?: string;
@@ -3127,6 +3140,17 @@ export const firematInventarioAPI = {
     formData.append("file", file, file.name);
     const response = await api.post<ApiResponseEnvelope<ImportarPdfInventarioResult>>(
       "/firemat/inventario/importar-pdf",
+      formData,
+      { headers: { "Content-Type": false } }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  importarInventarioExcel: async (file: File): Promise<ImportarExcelInventarioResult> => {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    const response = await api.post<ApiResponseEnvelope<ImportarExcelInventarioResult>>(
+      "/firemat/inventario/importar-excel",
       formData,
       { headers: { "Content-Type": false } }
     );
