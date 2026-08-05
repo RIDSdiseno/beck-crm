@@ -15,7 +15,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import {
   ClearOutlined,
-  FilePdfOutlined,
+  FileExcelOutlined,
   InboxOutlined,
   PictureOutlined,
   ReloadOutlined,
@@ -24,12 +24,11 @@ import {
 import dayjs from "dayjs";
 import {
   firematInventarioAPI,
-  type ImportarPdfInventarioResult,
   type InventarioFirematItem,
   type InventarioFirematResumen,
 } from "../../services/api";
 import { usePermisos } from "../../hooks/usePermisos";
-import ImportarPdfModal from "./ImportarPdfModal";
+import ImportarExcelInventarioModal from "./ImportarExcelInventarioModal";
 
 const EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE =
   "No tienes permiso para editar inventario Firemat.";
@@ -76,32 +75,12 @@ const estadoStockTag = (estado: InventarioFirematItem["estadoStock"]) => {
 
 const columns: ColumnsType<InventarioFirematItem> = [
   {
-    title: "Imagen",
-    key: "imagen",
-    width: 70,
-    align: "center",
-    render: (_, row) =>
-      row.imagen ? (
-        <img
-          src={row.imagen}
-          alt={row.nombre}
-          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            background: "#f5f5f5",
-            borderRadius: 4,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <PictureOutlined style={{ color: "#d1d5db" }} />
-        </div>
-      ),
+    title: "SKU",
+    dataIndex: "sku",
+    key: "sku",
+    width: 130,
+    render: (v: string | null | undefined) =>
+      v ?? <span className="text-beck-muted">—</span>,
   },
   {
     title: "Producto",
@@ -127,7 +106,7 @@ const columns: ColumnsType<InventarioFirematItem> = [
       v ?? <span className="text-beck-muted">—</span>,
   },
   {
-    title: "Stock inicial",
+    title: "Stock",
     dataIndex: "stockInicial",
     key: "stockInicial",
     width: 100,
@@ -224,6 +203,34 @@ const columns: ColumnsType<InventarioFirematItem> = [
       v ? <Tag color="green">Activo</Tag> : <Tag color="default">Inactivo</Tag>,
   },
   {
+    title: "Imagen",
+    key: "imagen",
+    width: 70,
+    align: "center",
+    render: (_, row) =>
+      row.imagen ? (
+        <img
+          src={row.imagen}
+          alt={row.nombre}
+          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            background: "#f5f5f5",
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <PictureOutlined style={{ color: "#d1d5db" }} />
+        </div>
+      ),
+  },
+  {
     title: "Creado",
     dataIndex: "createdAt",
     key: "createdAt",
@@ -287,6 +294,8 @@ const RESUMEN_VACIO: InventarioFirematResumen = {
 };
 
 type InventarioFormValues = {
+  nombre: string;
+  sku?: string;
   stockInicial: number;
   salidas: number;
   fechaUltimaSalida?: string;
@@ -314,6 +323,8 @@ const ModalEditarInventario: React.FC<{
   useEffect(() => {
     if (!open || !item) return;
     form.setFieldsValue({
+      nombre: item.nombre,
+      sku: item.sku ?? undefined,
       stockInicial: item.stockInicial ?? 0,
       salidas: item.salidas ?? 0,
       fechaUltimaSalida: formatDateInput(item.fechaUltimaSalida),
@@ -341,6 +352,8 @@ const ModalEditarInventario: React.FC<{
       setSaving(true);
       await firematInventarioAPI.actualizar(item.id, {
         stockNuevo: totalCalculado,
+        nombre: values.nombre.trim(),
+        sku: values.sku?.trim() || null,
         stockInicial: values.stockInicial,
         salidas: values.salidas,
         fechaUltimaSalida: values.fechaUltimaSalida || null,
@@ -380,18 +393,22 @@ const ModalEditarInventario: React.FC<{
     >
       <Form form={form} layout="vertical" disabled={!canEditInventario}>
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-          <Form.Item label="Producto">
-            <Input value={item?.nombre ?? ""} disabled />
+          <Form.Item
+            name="nombre"
+            label="Producto"
+            rules={[{ required: true, message: "El nombre del producto es obligatorio" }]}
+          >
+            <Input placeholder="Nombre del producto" />
           </Form.Item>
-          <Form.Item label="SKU">
-            <Input value={item?.sku ?? "-"} disabled />
+          <Form.Item name="sku" label="SKU">
+            <Input placeholder="SKU" />
           </Form.Item>
           <Form.Item
             name="stockInicial"
-            label="Stock inicial"
+            label="Stock"
             rules={[
-              { required: true, message: "Stock inicial requerido" },
-              { type: "number", min: 0, message: "Stock inicial debe ser >= 0" },
+              { required: true, message: "Stock requerido" },
+              { type: "number", min: 0, message: "Stock debe ser >= 0" },
             ]}
           >
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
@@ -453,41 +470,6 @@ const ModalEditarInventario: React.FC<{
   );
 };
 
-/* ────────────── Resultado importación PDF inventario ────────────── */
-const ResultadoImportInventario: React.FC<{ result: ImportarPdfInventarioResult }> = ({ result }) => (
-  <div className="space-y-3">
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {[
-        { label: "Actualizados", value: result.actualizados, color: "text-blue-600" },
-        { label: "No encontrados", value: result.noEncontrados, color: result.noEncontrados > 0 ? "text-orange-500" : "text-gray-500" },
-        { label: "Omitidos", value: result.omitidos, color: "text-gray-500" },
-        { label: "Errores", value: result.errores.length, color: result.errores.length > 0 ? "text-red-500" : "text-gray-500" },
-      ].map(({ label, value, color }) => (
-        <div key={label} className="firemat-kpi-card rounded-xl p-3 flex flex-col gap-0.5">
-          <span className="text-xs text-beck-muted">{label}</span>
-          <span className={`text-2xl font-bold tabular-nums ${color}`}>{value}</span>
-        </div>
-      ))}
-    </div>
-    {result.errores.length > 0 && (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 space-y-1">
-        <p className="font-semibold">Errores:</p>
-        <ul className="list-disc list-inside space-y-0.5">
-          {result.errores.map((e, i) => <li key={i}>{e}</li>)}
-        </ul>
-      </div>
-    )}
-    {result.advertencias && result.advertencias.length > 0 && (
-      <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700 space-y-1">
-        <p className="font-semibold">Advertencias:</p>
-        <ul className="list-disc list-inside space-y-0.5">
-          {result.advertencias.map((a, i) => <li key={i}>{a}</li>)}
-        </ul>
-      </div>
-    )}
-  </div>
-);
-
 const FirematInventario: React.FC = () => {
   const { canEdit } = usePermisos();
   const canEditInventario = canEdit("firemat_inventario");
@@ -499,8 +481,8 @@ const FirematInventario: React.FC = () => {
   const [activo, setActivo] = useState<"" | "true" | "false">("");
   const [bajoStock, setBajoStock] = useState<"" | "true">("");
   const [criticidad, setCriticidad] = useState("");
-  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [itemEditando, setItemEditando] = useState<InventarioFirematItem | null>(null);
+  const [importarExcelOpen, setImportarExcelOpen] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -536,34 +518,12 @@ const FirematInventario: React.FC = () => {
 
   const hayFiltros = q !== "" || activo !== "" || bajoStock !== "" || criticidad !== "";
 
-  const abrirImportarPdf = () => {
-    if (!canEditInventario) {
-      void message.error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
-      return;
-    }
-    setPdfModalOpen(true);
-  };
-
   const abrirEditarInventario = (row: InventarioFirematItem) => {
     if (!canEditInventario) {
       void message.error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
       return;
     }
     setItemEditando(row);
-  };
-
-  const importarInventarioPdf = async (file: File): Promise<ImportarPdfInventarioResult> => {
-    if (!canEditInventario) {
-      throw new Error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
-    }
-    try {
-      return await firematInventarioAPI.importarInventarioPdf(file);
-    } catch (err: unknown) {
-      if ((err as { response?: { status?: number } })?.response?.status === 403) {
-        throw new Error(EDIT_INVENTARIO_FIREMAT_PERMISSION_MESSAGE);
-      }
-      throw err;
-    }
   };
 
   const tableColumns: ColumnsType<InventarioFirematItem> = [
@@ -600,10 +560,10 @@ const FirematInventario: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             {canEditInventario && (
               <Button
-                icon={<FilePdfOutlined />}
-                onClick={abrirImportarPdf}
+                icon={<FileExcelOutlined />}
+                onClick={() => setImportarExcelOpen(true)}
               >
-                Importar inventario PDF
+                Importar Excel
               </Button>
             )}
             <Button
@@ -690,7 +650,7 @@ const FirematInventario: React.FC = () => {
             columns={tableColumns}
             rowKey="id"
             size="small"
-            scroll={{ x: 1370 }}
+            scroll={{ x: 1500 }}
             rowClassName={(row) =>
               row.alertaStockBajo ? "bg-orange-50" : ""
             }
@@ -703,21 +663,18 @@ const FirematInventario: React.FC = () => {
         )}
       </section>
 
-      <ImportarPdfModal<ImportarPdfInventarioResult>
-        open={pdfModalOpen && canEditInventario}
-        titulo="Importar inventario PDF"
-        onClose={() => setPdfModalOpen(false)}
-        onImportado={() => void cargar()}
-        importar={importarInventarioPdf}
-        renderResultado={(result) => <ResultadoImportInventario result={result} />}
-      />
-
       <ModalEditarInventario
         item={itemEditando}
         open={itemEditando !== null && canEditInventario}
         canEditInventario={canEditInventario}
         onClose={() => setItemEditando(null)}
         onSaved={() => void cargar()}
+      />
+
+      <ImportarExcelInventarioModal
+        open={importarExcelOpen && canEditInventario}
+        onClose={() => setImportarExcelOpen(false)}
+        onImportado={() => void cargar()}
       />
     </div>
   );
