@@ -500,6 +500,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [savingRechazo, setSavingRechazo] = useState(false);
   const [resumenKpis, setResumenKpis] = useState<{ pendientes: number; enRevision: number; validados: number; rechazados: number; total: number } | null>(null);
   const [marcandoInspeccionId, setMarcandoInspeccionId] = useState<string | null>(null);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
   const [verInspeccionRegistroId, setVerInspeccionRegistroId] = useState<string | null>(null);
   const [selectedInspeccionIds, setSelectedInspeccionIds] = useState<React.Key[]>([]);
   const [descargandoConsolidado, setDescargandoConsolidado] = useState(false);
@@ -754,6 +755,35 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     });
   };
 
+  const handleEliminarRegistro = (record: RegistroSello) => {
+    const id = String(record.id);
+    Modal.confirm({
+      title: "¿Eliminar registro?",
+      content: "Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este registro?",
+      okText: "Eliminar",
+      okType: "danger",
+      cancelText: "Cancelar",
+      onOk: async () => {
+        setEliminandoId(id);
+        try {
+          await api.delete(`/registros/${id}`);
+          setRegistros((prev) => prev.filter((r) => String(r.id) !== id));
+          await cargarResumen();
+          message.success("Registro eliminado correctamente");
+        } catch (err) {
+          const e = err as { response?: { data?: { error?: string; message?: string } } };
+          const msg =
+            e?.response?.data?.error ??
+            e?.response?.data?.message ??
+            "No se pudo eliminar el registro";
+          message.error(msg);
+        } finally {
+          setEliminandoId(null);
+        }
+      },
+    });
+  };
+
   const handleDescargarPdf = async (record: RegistroSello) => {
     const id = String(record.id);
     const codigo = record.codigo || `REG-${id.slice(0, 6)}`;
@@ -874,6 +904,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const estado = normalizeEstado(record.estado);
     const loadingEstado = changingEstadoId === String(record.id);
     const loadingInspeccion = marcandoInspeccionId === String(record.id);
+    const loadingEliminar = eliminandoId === String(record.id);
+    const puedeEliminar = estado === "en_revision";
     const estadoInspeccion = normalizeInspeccionEstado(record.inspeccionEstado, record.seleccionadoParaInspeccion);
     return (
       <div className="flex flex-wrap gap-1">
@@ -887,6 +919,17 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         >
           Ver
         </Button>
+        {puedeEliminar && canEditIngenieria && (
+          <Button
+            size="small"
+            danger
+            className="px-2"
+            loading={loadingEliminar}
+            onClick={() => handleEliminarRegistro(record)}
+          >
+            Eliminar
+          </Button>
+        )}
         {estado === "pendiente" && canEditIngenieria && (
           <Button
             size="small"
