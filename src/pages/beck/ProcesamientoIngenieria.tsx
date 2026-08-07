@@ -919,6 +919,18 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         >
           Ver
         </Button>
+        {canEditIngenieria && (
+          <Button
+            size="small"
+            className="px-2"
+            onClick={() => {
+              setRegistroDetalle(record);
+              setDetalleMode("edit");
+            }}
+          >
+            Editar
+          </Button>
+        )}
         {puedeEliminar && canEditIngenieria && (
           <Button
             size="small"
@@ -943,18 +955,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         )}
         {estado === "en_revision" && (
           <>
-            {canEditIngenieria && (
-              <Button
-                size="small"
-                className="px-2"
-                onClick={() => {
-                  setRegistroDetalle(record);
-                  setDetalleMode("edit");
-                }}
-              >
-                Editar
-              </Button>
-            )}
             {canEditIngenieria && (
               <Button
                 size="small"
@@ -1549,17 +1549,13 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         registro={registroDetalle}
         open={!!registroDetalle}
         mode={detalleMode}
-        canEdit={!!registroDetalle && detalleMode === "edit"}
+        canEdit={!!registroDetalle && canEditIngenieria}
         saving={savingDetalle}
         onClose={() => {
           if (savingDetalle) return;
           setRegistroDetalle(null);
         }}
-        onEdit={() => {
-          if (normalizeEstado(registroDetalle?.estado) === "en_revision") {
-            setDetalleMode("edit");
-          }
-        }}
+        onEdit={() => setDetalleMode("edit")}
         onSave={handleGuardarDetalle}
         onDownloadPdf={handleDescargarPdf}
         showRendimientoSellos={user?.rol === "Administrador" || user?.rol === "Ingenieria"}
