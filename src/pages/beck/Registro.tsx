@@ -73,6 +73,7 @@ type RegistroApiRecord = {
   descripcionMaterial?: string | null;
   descripcion_material?: string | null;
   modulo?: string | null;
+  recinto?: string | null;
   piso?: string | null;
   ejeNumerico?: number | string | null;
   eje_numerico?: number | string | null;
@@ -157,6 +158,7 @@ type RegistroUpdateResponse = {
 type RegistroUpdatePayload = {
   descripcion_material: string;
   modulo: string;
+  recinto?: string;
   piso: string;
   eje_numerico: string;
   eje_alfabetico: string;
@@ -572,7 +574,8 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     nombreSellador,
     fotoUrl,
     fotosUrls,
-    recinto: r.modulo ?? "",
+    recinto: r.recinto ?? "",
+    modulo: r.modulo ?? "",
     numeroSello,
     cantidadSellos,
     metrosLineales,
@@ -968,6 +971,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     const payload: RegistroUpdatePayload = {
       descripcion_material: values.descripcionMaterial,
       modulo: values.modulo,
+      recinto: values.recinto,
       piso: values.piso,
       eje_numerico: values.ejeNumerico,
       eje_alfabetico: values.ejeAlfabetico,
@@ -1187,8 +1191,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Módulo o edificio",
       key: "modulo_edificio",
       width: 160,
-      excel: (record) => toExcelCellValue(displayValue(record.recinto)),
-      render: (_: unknown, r: RegistroSello) => displayValue(r.recinto),
+      excel: (record) => toExcelCellValue(displayValue(record.modulo)),
+      render: (_: unknown, r: RegistroSello) => displayValue(r.modulo),
     },
     {
       title: "N° DEL SELLO",
@@ -1796,7 +1800,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       if (values.ejeAlfabetico) formData.append("eje_alfabetico", values.ejeAlfabetico);
       if (values.ejeNumerico) formData.append("eje_numerico", values.ejeNumerico);
       formData.append("nombre_sellador", values.nombreSellador);
-      if (values.recinto) formData.append("modulo", values.recinto);
+      formData.append("modulo", values.modulo || "");
+      if (values.recinto) formData.append("recinto", values.recinto);
       if (values.numeroSello) formData.append("numero_sello", values.numeroSello);
       if (values.cantidadSellos != null) formData.append("cantidad_sellos", String(values.cantidadSellos));
       if (values.metrosLineales != null) formData.append("metros_lineales", String(values.metrosLineales));

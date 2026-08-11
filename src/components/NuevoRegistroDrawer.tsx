@@ -23,8 +23,8 @@ import dayjs, { Dayjs } from "dayjs";
 import { useAuth } from "../context/useAuth";
 import type { Obra } from "../types/obra";
 import { loadObras, saveObras } from "../data/obrasStorage";
-import { obrasAPI } from "../services/api";
-import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
+import { obrasAPI, factoresAccesibilidadAPI } from "../services/api";
+import type { CampoConfiguracionRegistro, FactorAccesibilidadConfig, ItemizadoMandante } from "../services/api";
 import { TIPOS_REGISTRO_TERRENO, getTipoRegistroLabel, getCantidadLabelPorTipo } from "../constants/roles";
 
 type ObraMin = { id: string; nombre: string; codigo?: string | null };
@@ -42,6 +42,7 @@ export type NuevoRegistroValues = {
   ejeNumerico?: string;
   nombreSellador: string;
   recinto?: string;
+  modulo?: string;
   numeroSello?: string;
   cantidadSellos?: number;
   metrosLineales?: number;
@@ -79,6 +80,8 @@ const createId = (): string => {
   }
   return `obra_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
+
+const DEFAULT_FACTOR_ACCESIBILIDAD: Record<number, number> = { 1: 1, 2: 2, 3: 3 };
 
 const normalizeText = (value: string): string => value.trim().toLowerCase();
 
@@ -143,6 +146,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   const [obraForm] = Form.useForm<CreateObraValues>();
   const [tiposFetchedFor, setTiposFetchedFor] = useState<string | null>(null);
   const [fetchedTipos, setFetchedTipos] = useState<string[]>([]);
+  const [factoresAccesibilidadObra, setFactoresAccesibilidadObra] = useState<FactorAccesibilidadConfig[]>([]);
 
   const obraId = Form.useWatch("obraId", form);
   const tipoRegistro = Form.useWatch("tipoRegistro", form);
@@ -175,6 +179,21 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
     return () => { active = false; };
   }, [obraId, form]);
 
+  useEffect(() => {
+    if (!obraId) {
+      setFactoresAccesibilidadObra([]);
+      return;
+    }
+    let active = true;
+    setFactoresAccesibilidadObra([]);
+    void factoresAccesibilidadAPI.listarPorObra(obraId).then((data) => {
+      if (active) setFactoresAccesibilidadObra(data);
+    }).catch(() => {
+      if (active) setFactoresAccesibilidadObra([]);
+    });
+    return () => { active = false; };
+  }, [obraId]);
+
   const tipoOptions = useMemo(() => {
     if (!tiposRegistroObra || tiposRegistroObra.length === 0) {
       return TIPOS_REGISTRO_TERRENO;
@@ -191,7 +210,11 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
   const preview = useMemo(() => {
     const holgura = Number(holguraCmWatched) || 0;
     const cantidad = Number(cantidadSellosWatched) || 0;
-    const accesibilidad = Number(cieloModularWatched) || 1;
+    const nivelAccesibilidad = Number(cieloModularWatched) || 1;
+    const accesibilidad =
+      factoresAccesibilidadObra.find((f) => f.nivel === nivelAccesibilidad)?.factor ??
+      DEFAULT_FACTOR_ACCESIBILIDAD[nivelAccesibilidad] ??
+      1;
 
     let factorHolgura: number | null = null;
     let holguraAlerta = false;
@@ -218,7 +241,7 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
       cantidadAislacion !== null ? cantidadAislacion + repTabique : null;
 
     return { factorHolgura, holguraAlerta, cantidadConFactores, factorAislacion, cantidadAislacion, cantidadFinal };
-  }, [cantidadSellosWatched, holguraCmWatched, cieloModularWatched, aislacionWatched, reparacionTabiqueWatched]);
+  }, [cantidadSellosWatched, holguraCmWatched, cieloModularWatched, aislacionWatched, reparacionTabiqueWatched, factoresAccesibilidadObra]);
 
   const handleAfterOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -504,9 +527,14 @@ const NuevoRegistroDrawer: React.FC<Props> = ({
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {(showCampo("recinto") || showCampo("modulo")) && (
-                <Form.Item name="recinto" label="Recinto / Módulo">
+                {showCampo("recinto") && (
+                <Form.Item name="recinto" label="Recinto">
                   <Input placeholder="Ej: Sala bombas" />
+                </Form.Item>
+                )}
+                {showCampo("modulo") && (
+                <Form.Item name="modulo" label="Módulo o edificio">
+                  <Input placeholder="Ej: Edificio A" />
                 </Form.Item>
                 )}
 

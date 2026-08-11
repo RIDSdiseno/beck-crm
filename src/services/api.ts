@@ -1321,6 +1321,41 @@ export const factoresHolguraAPI = {
   },
 };
 
+export interface FactorAccesibilidadNivel {
+  nivel: number;
+  factor: number;
+}
+
+export interface FactorAccesibilidadConfig extends FactorAccesibilidadNivel {
+  label: string;
+  personalizado: boolean;
+}
+
+export const factoresAccesibilidadAPI = {
+  listarPorObra: async (obraId: string): Promise<FactorAccesibilidadConfig[]> => {
+    const response = await api.get<ApiResponseEnvelope<FactorAccesibilidadConfig[]>>(
+      `/obras/${obraId}/factores-accesibilidad`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  guardarFactor: async (
+    obraId: string,
+    nivel: number,
+    factor: number
+  ): Promise<FactorAccesibilidadNivel> => {
+    const response = await api.put<ApiResponseEnvelope<FactorAccesibilidadNivel>>(
+      `/obras/${obraId}/factores-accesibilidad/${nivel}`,
+      { factor }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  restaurarPorDefecto: async (obraId: string, nivel: number): Promise<void> => {
+    await api.delete(`/obras/${obraId}/factores-accesibilidad/${nivel}`);
+  },
+};
+
 export interface IndicadorEconomicoResponse {
   success: boolean;
   fallback?: boolean;
@@ -4265,6 +4300,174 @@ export interface ClienteBeckVistaCliente {
 
 type ClienteParams = { clienteUsuarioId?: string; clienteBeckId?: string };
 
+export interface InventarioBeckEpp {
+  id: string;
+  sku?: string | null;
+  item: string;
+  modeloMarca?: string | null;
+  unidadMedida?: string | null;
+  talla?: string | null;
+  color?: string | null;
+  stockInicial: number;
+  entrada: number;
+  salida: number;
+  saldo: number;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventarioBeckImplemento {
+  id: string;
+  sku?: string | null;
+  item: string;
+  modeloMarca?: string | null;
+  cantidad: number;
+  unidadMedida?: string | null;
+  tallaMedida?: string | null;
+  color?: string | null;
+  ubicacion?: string | null;
+  fecha?: string | null;
+  salida: number;
+  saldo: number;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventarioBeckHerramienta {
+  id: string;
+  nombre: string;
+  marca?: string | null;
+  modelo?: string | null;
+  categoria?: string | null;
+  sku?: string | null;
+  ubicacion?: string | null;
+  fecha?: string | null;
+  encargado?: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InventarioBeckEppPayload = Omit<Partial<InventarioBeckEpp>, "id" | "createdAt" | "updatedAt"> & {
+  item: string;
+};
+
+export type InventarioBeckImplementoPayload = Omit<Partial<InventarioBeckImplemento>, "id" | "createdAt" | "updatedAt"> & {
+  item: string;
+};
+
+export type InventarioBeckHerramientaPayload = Omit<Partial<InventarioBeckHerramienta>, "id" | "createdAt" | "updatedAt"> & {
+  nombre: string;
+};
+
+export interface InventarioBeckImportHojaResumen {
+  procesados: number;
+  creados: number;
+  actualizados: number;
+  errores: number;
+  filasValidas: number;
+  encabezadoFila: number;
+  columnasDetectadas: string[];
+}
+
+export interface InventarioBeckImportError {
+  hoja: string;
+  fila: number;
+  motivo: string;
+}
+
+export interface InventarioBeckImportResultado {
+  epp?: InventarioBeckImportHojaResumen;
+  implementos?: InventarioBeckImportHojaResumen;
+  herramientas?: InventarioBeckImportHojaResumen;
+  errores: InventarioBeckImportError[];
+  hojasIgnoradas: string[];
+}
+
+export const inventarioBeckAPI = {
+  epp: {
+    listar: async (params?: { q?: string; activo?: boolean }): Promise<InventarioBeckEpp[]> => {
+      const response = await api.get<InventarioBeckEpp[]>("/inventario-beck/epp", { params });
+      return response.data;
+    },
+    obtener: async (id: string): Promise<InventarioBeckEpp> => {
+      const response = await api.get<InventarioBeckEpp>(`/inventario-beck/epp/${id}`);
+      return response.data;
+    },
+    crear: async (payload: InventarioBeckEppPayload): Promise<InventarioBeckEpp> => {
+      const response = await api.post<InventarioBeckEpp>("/inventario-beck/epp", payload);
+      return response.data;
+    },
+    actualizar: async (id: string, payload: InventarioBeckEppPayload): Promise<InventarioBeckEpp> => {
+      const response = await api.put<InventarioBeckEpp>(`/inventario-beck/epp/${id}`, payload);
+      return response.data;
+    },
+    cambiarEstado: async (id: string, activo: boolean): Promise<InventarioBeckEpp> => {
+      const response = await api.patch<InventarioBeckEpp>(`/inventario-beck/epp/${id}/estado`, { activo });
+      return response.data;
+    },
+  },
+  implementos: {
+    listar: async (params?: { q?: string; activo?: boolean }): Promise<InventarioBeckImplemento[]> => {
+      const response = await api.get<InventarioBeckImplemento[]>("/inventario-beck/implementos", { params });
+      return response.data;
+    },
+    obtener: async (id: string): Promise<InventarioBeckImplemento> => {
+      const response = await api.get<InventarioBeckImplemento>(`/inventario-beck/implementos/${id}`);
+      return response.data;
+    },
+    crear: async (payload: InventarioBeckImplementoPayload): Promise<InventarioBeckImplemento> => {
+      const response = await api.post<InventarioBeckImplemento>("/inventario-beck/implementos", payload);
+      return response.data;
+    },
+    actualizar: async (id: string, payload: InventarioBeckImplementoPayload): Promise<InventarioBeckImplemento> => {
+      const response = await api.put<InventarioBeckImplemento>(`/inventario-beck/implementos/${id}`, payload);
+      return response.data;
+    },
+    cambiarEstado: async (id: string, activo: boolean): Promise<InventarioBeckImplemento> => {
+      const response = await api.patch<InventarioBeckImplemento>(`/inventario-beck/implementos/${id}/estado`, { activo });
+      return response.data;
+    },
+  },
+  herramientas: {
+    listar: async (params?: { q?: string; activo?: boolean }): Promise<InventarioBeckHerramienta[]> => {
+      const response = await api.get<InventarioBeckHerramienta[]>("/inventario-beck/herramientas", { params });
+      return response.data;
+    },
+    obtener: async (id: string): Promise<InventarioBeckHerramienta> => {
+      const response = await api.get<InventarioBeckHerramienta>(`/inventario-beck/herramientas/${id}`);
+      return response.data;
+    },
+    crear: async (payload: InventarioBeckHerramientaPayload): Promise<InventarioBeckHerramienta> => {
+      const response = await api.post<InventarioBeckHerramienta>("/inventario-beck/herramientas", payload);
+      return response.data;
+    },
+    actualizar: async (id: string, payload: InventarioBeckHerramientaPayload): Promise<InventarioBeckHerramienta> => {
+      const response = await api.put<InventarioBeckHerramienta>(`/inventario-beck/herramientas/${id}`, payload);
+      return response.data;
+    },
+    cambiarEstado: async (id: string, activo: boolean): Promise<InventarioBeckHerramienta> => {
+      const response = await api.patch<InventarioBeckHerramienta>(`/inventario-beck/herramientas/${id}/estado`, { activo });
+      return response.data;
+    },
+  },
+  importarExcel: async (file: File): Promise<InventarioBeckImportResultado> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ApiResponseEnvelope<InventarioBeckImportResultado>>(
+      "/inventario-beck/importar-excel",
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 0,
+      }
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
 
 export type ModuloBeck =
   | "beck_dashboard"
@@ -4274,6 +4477,7 @@ export type ModuloBeck =
   | "beck_reportes"
   | "beck_cotizaciones"
   | "beck_movimientos"
+  | "beck_inventario"
   | "beck_obras"
   | "beck_funnel"
   | "beck_clientes"

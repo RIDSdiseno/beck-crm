@@ -22,9 +22,11 @@ import { ReloadOutlined, SaveOutlined, UndoOutlined } from "@ant-design/icons";
 import {
   itemizadoOpcionesAPI,
   factoresHolguraAPI,
+  factoresAccesibilidadAPI,
   type ItemizadoOpcionConfigItem,
   type FactorHolguraTipoConfig,
   type TramoHolgura,
+  type FactorAccesibilidadConfig,
   type MonedaItemizado,
 } from "../../services/api";
 import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
@@ -100,6 +102,33 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   const [savingFactores, setSavingFactores] = useState(false);
   const [errorFactores, setErrorFactores] = useState<string | null>(null);
 
+  const [accesibilidad, setAccesibilidad] = useState<FactorAccesibilidadConfig[]>([]);
+  const [factorAccesibilidadEditado, setFactorAccesibilidadEditado] = useState<
+    Record<number, number | null>
+  >({});
+  const [loadingAccesibilidad, setLoadingAccesibilidad] = useState(false);
+  const [savingAccesibilidadNivel, setSavingAccesibilidadNivel] = useState<number | null>(null);
+  const [errorAccesibilidad, setErrorAccesibilidad] = useState<string | null>(null);
+
+  const cargarAccesibilidad = async () => {
+    if (!obraId) return;
+    setLoadingAccesibilidad(true);
+    setErrorAccesibilidad(null);
+    try {
+      const data = await factoresAccesibilidadAPI.listarPorObra(obraId);
+      setAccesibilidad(data);
+      setFactorAccesibilidadEditado(
+        Object.fromEntries(data.map((cfg) => [cfg.nivel, cfg.factor]))
+      );
+    } catch (err) {
+      setErrorAccesibilidad(
+        getErrorMessage(err, "No se pudieron cargar los factores de accesibilidad")
+      );
+    } finally {
+      setLoadingAccesibilidad(false);
+    }
+  };
+
   const cargarFactores = async () => {
     if (!obraId) return;
     setLoadingFactores(true);
@@ -152,6 +181,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     if (open && obraId) {
       void cargar();
       void cargarFactores();
+      void cargarAccesibilidad();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, obraId]);
@@ -215,6 +245,44 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       void message.error(getErrorMessage(err, "No se pudieron restaurar los tramos"));
     } finally {
       setSavingFactores(false);
+    }
+  };
+
+  const updateFactorAccesibilidad = (nivel: number, value: number | null) => {
+    setFactorAccesibilidadEditado((prev) => ({ ...prev, [nivel]: value }));
+  };
+
+  const handleGuardarFactorAccesibilidad = async (nivel: number) => {
+    if (!obraId) return;
+    const valor = factorAccesibilidadEditado[nivel];
+    if (valor === null || valor === undefined || valor <= 0) {
+      void message.error("Ingrese un factor mayor a 0");
+      return;
+    }
+
+    setSavingAccesibilidadNivel(nivel);
+    try {
+      await factoresAccesibilidadAPI.guardarFactor(obraId, nivel, valor);
+      void message.success("Factor guardado correctamente");
+      await cargarAccesibilidad();
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo guardar el factor"));
+    } finally {
+      setSavingAccesibilidadNivel(null);
+    }
+  };
+
+  const handleRestaurarFactorAccesibilidad = async (nivel: number) => {
+    if (!obraId) return;
+    setSavingAccesibilidadNivel(nivel);
+    try {
+      await factoresAccesibilidadAPI.restaurarPorDefecto(obraId, nivel);
+      void message.success("Factor restaurado al valor por defecto");
+      await cargarAccesibilidad();
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo restaurar el factor"));
+    } finally {
+      setSavingAccesibilidadNivel(null);
     }
   };
 
@@ -499,6 +567,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             onClick={() => {
               void cargar();
               void cargarFactores();
+              void cargarAccesibilidad();
             }}
             disabled={loading || saving}
           >
@@ -652,6 +721,77 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
                 };
               })}
             />
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "factores-accesibilidad",
+              label: "Accesibilidad / Cielo modular",
+              children: (
+                <>
+                  <Typography.Text type="secondary" className="mb-3 block text-xs">
+                    Define el factor que se aplica según el nivel de accesibilidad (cielo modular)
+                    de cada registro al calcular la cantidad de sellos con factores en esta obra.
+                    Si un nivel no tiene factor propio, se usa el valor por defecto del sistema.
+                  </Typography.Text>
+
+                  {errorAccesibilidad && (
+                    <Alert
+                      type="error"
+                      showIcon
+                      message="No se pudieron cargar los factores de accesibilidad"
+                      description={errorAccesibilidad}
+                      className="mb-3"
+                    />
+                  )}
+
+                  {loadingAccesibilidad ? (
+                    <Skeleton active paragraph={{ rows: 3 }} />
+                  ) : (
+                    <div className="space-y-2">
+                      {accesibilidad.map((cfg) => (
+                        <div
+                          key={cfg.nivel}
+                          className="flex flex-col gap-2 rounded border border-slate-200 p-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="flex flex-col gap-1">
+                            <Typography.Text className="text-sm">{cfg.label}</Typography.Text>
+                            <Tag color={cfg.personalizado ? "blue" : "default"} className="w-fit">
+                              {cfg.personalizado ? "Personalizado para esta obra" : "Valor por defecto del sistema"}
+                            </Tag>
+                          </div>
+                          <Space size="small" wrap>
+                            <Typography.Text className="text-xs text-slate-500">Factor</Typography.Text>
+                            <InputNumber
+                              size="small"
+                              min={0.01}
+                              step={0.1}
+                              value={factorAccesibilidadEditado[cfg.nivel] ?? cfg.factor}
+                              onChange={(v) => updateFactorAccesibilidad(cfg.nivel, v)}
+                              style={{ width: 100 }}
+                            />
+                            <Button
+                              size="small"
+                              icon={<UndoOutlined />}
+                              disabled={!cfg.personalizado || savingAccesibilidadNivel === cfg.nivel}
+                              onClick={() => void handleRestaurarFactorAccesibilidad(cfg.nivel)}
+                            >
+                              Restaurar por defecto
+                            </Button>
+                            <Button
+                              size="small"
+                              type="primary"
+                              icon={<SaveOutlined />}
+                              loading={savingAccesibilidadNivel === cfg.nivel}
+                              onClick={() => void handleGuardarFactorAccesibilidad(cfg.nivel)}
+                            >
+                              Guardar
+                            </Button>
+                          </Space>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </>
               ),

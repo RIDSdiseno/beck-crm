@@ -134,6 +134,7 @@ type RegistroNorm = {
   ejeAlfabetico: string;
   ejeNumerico: string;
   recinto: string;
+  modulo?: string;
   numeroSello: string;
   holguraCm: number;
   observaciones: string;
@@ -253,6 +254,7 @@ const normToSello = (r: RegistroNorm): RegistroSello => ({
   fotoUrl: r.fotoUrl ?? undefined,
   fotosUrls: r.fotosUrls,
   recinto: r.recinto,
+  modulo: r.modulo,
   numeroSello: r.numeroSello,
   cantidadSellos: r.cantidadSellos,
   metrosLineales: r.metrosLineales,
@@ -323,7 +325,8 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
     dia: diaSemana,
     ejeAlfabetico: r.ejeAlfabetico ?? r.eje_alfabetico ?? "",
     ejeNumerico: String(r.ejeNumerico ?? r.eje_numerico ?? ""),
-    recinto: r.modulo ?? r.recinto ?? "",
+    recinto: r.recinto ?? "",
+    modulo: r.modulo ?? "",
     numeroSello: r.folio ?? r.FOLIO ?? r.numeroSello ?? r.numero_sello ?? "",
     holguraCm,
     observaciones: r.observaciones ?? "",
@@ -770,7 +773,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       key: "moduloEdificio",
       width: 150,
       ellipsis: true,
-      render: (_: unknown, r: RegistroNorm) => r.recinto || "-",
+      render: (_: unknown, r: RegistroNorm) => r.modulo || "-",
     },
     {
       title: "N° DEL SELLO",

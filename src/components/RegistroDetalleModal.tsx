@@ -22,6 +22,7 @@ import {
 export type RegistroDetalleUpdateValues = {
   descripcionMaterial: string;
   modulo: string;
+  recinto?: string;
   piso: string;
   ejeNumerico: string;
   ejeAlfabetico: string;
@@ -205,7 +206,8 @@ const renderDetalleJuntaLineal = (
     {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
     {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
     <FieldView label="Nombre sellador" value={r.nombreSellador} />
-    {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
+    {showCampo("recinto") && <FieldView label="Recinto" value={r.recinto} />}
+    {showCampo("modulo") && <FieldView label="Módulo o edificio" value={r.modulo} />}
     <FieldView
       label="Longitud (m)"
       value={r.metrosLineales != null ? `${Number(r.metrosLineales).toFixed(2)} m` : "-"}
@@ -237,7 +239,8 @@ const renderDetalleSelloCortafuego = (
       {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
       {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
       <FieldView label="Nombre sellador" value={r.nombreSellador} />
-      {(showCampo("recinto") || showCampo("modulo")) && <FieldView label="Recinto" value={r.recinto} />}
+      {showCampo("recinto") && <FieldView label="Recinto" value={r.recinto} />}
+    {showCampo("modulo") && <FieldView label="Módulo o edificio" value={r.modulo} />}
       <FieldView label="N° DEL SELLO" value={r.numeroSello} />
       <FieldView
         label={getCantidadLabelPorTipo(r.tipoRegistro)}
@@ -372,7 +375,8 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
 
     form.setFieldsValue({
       descripcionMaterial: registro.descripcionMaterial ?? registro.itemizadoBeck,
-      modulo: registro.recinto,
+      modulo: registro.modulo,
+      recinto: registro.recinto,
       piso: registro.piso,
       ejeNumerico: registro.ejeNumerico,
       ejeAlfabetico: registro.ejeAlfabetico,
@@ -748,8 +752,13 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             >
               <Input />
             </Form.Item>
-            {(showCampo("modulo") || showCampo("recinto")) && (
-            <Form.Item name="modulo" label="Módulo" className="mb-3">
+            {showCampo("recinto") && (
+            <Form.Item name="recinto" label="Recinto" className="mb-3">
+              <Input />
+            </Form.Item>
+            )}
+            {showCampo("modulo") && (
+            <Form.Item name="modulo" label="Módulo o edificio" className="mb-3">
               <Input />
             </Form.Item>
             )}

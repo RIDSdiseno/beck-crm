@@ -25,6 +25,7 @@ export type RegistroSello = {
   fotoUrl?: string;
   fotosUrls?: string[];
   recinto: string;
+  modulo?: string;
   numeroSello: string;
   cantidadSellos: number;
   holguraCm: number;

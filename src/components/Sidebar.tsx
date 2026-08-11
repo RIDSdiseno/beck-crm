@@ -43,6 +43,7 @@ export type RoleAccess = {
   reportes: boolean;
   cotizaciones: boolean;
   movimientos: boolean;
+  inventario: boolean;
   obras: boolean;
   configuracion: boolean;
   clientes: boolean;
@@ -84,6 +85,7 @@ const BECK_NAV_MODULO: Partial<Record<string, ModuloBeck>> = {
   reportes: "beck_reportes",
   cotizaciones: "beck_cotizaciones",
   movimientos: "beck_movimientos",
+  inventario: "beck_inventario",
   obras: "beck_obras",
   funnel: "beck_funnel",
   clientes: "beck_clientes",
@@ -219,6 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "reportes", to: "/beck/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.reportes },
     { key: "cotizaciones", to: "/beck/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.cotizaciones },
     { key: "movimientos", to: "/beck/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.movimientos },
+    { key: "inventario", to: "/beck/inventario", icon: <InboxOutlined />, label: "Inventario", access: access.inventario },
     { key: "obras", to: "/beck/obras", icon: <BuildOutlined />, label: "Obras", access: access.obras },
     { key: "funnel", to: "/beck/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.funnel },
     { key: "clientes", to: "/beck/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.clientes },

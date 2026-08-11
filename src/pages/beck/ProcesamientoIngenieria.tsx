@@ -38,6 +38,7 @@ type RegistroApiRecord = {
   descripcionMaterial?: string | null;
   descripcion_material?: string | null;
   modulo?: string | null;
+  recinto?: string | null;
   piso?: string | null;
   ejeNumerico?: number | string | null;
   eje_numerico?: number | string | null;
@@ -145,6 +146,7 @@ type RegistroUpdateResponse = {
 type RegistroUpdatePayload = {
   descripcion_material: string;
   modulo: string;
+  recinto?: string;
   piso: string;
   eje_numerico: string;
   eje_alfabetico: string;
@@ -306,6 +308,11 @@ const getRegistroObraNombre = (r: RegistroApiRecord): string =>
   r.obra_nombre ??
   "Sin obra";
 
+const getRegistroTextoSearchText = (r: RegistroIngenieria): string =>
+  normalizeSearchText(
+    [r.codigoBeck, r.itemizadoBeck, r.nombreSellador].filter(Boolean).join(" ")
+  );
+
 const getRegistroObraEmpresaSearchText = (r: RegistroIngenieria): string =>
   normalizeSearchText(
     [
@@ -398,7 +405,8 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     nombreSellador,
     fotoUrl,
     fotosUrls,
-    recinto: r.modulo ?? "",
+    recinto: r.recinto ?? "",
+    modulo: r.modulo ?? "",
     numeroSello,
     cantidadSellos,
     metrosLineales,
@@ -491,8 +499,9 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [registroDetalle, setRegistroDetalle] = useState<RegistroSello | null>(null);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
+  const [textoBusqueda, setTextoBusqueda] = useState<string>("");
   const [tipoSeleccionado, setTipoSeleccionado] = useState<string>("todos");
-  const [filtroEstado, setFiltroEstado] = useState<"activos" | "validado" | "rechazado" | "todos">("activos");
+  const [filtroEstado, setFiltroEstado] = useState<"en_revision" | "validado" | "rechazado" | "todos">("en_revision");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
   const [rechazandoRegistro, setRechazandoRegistro] = useState<RegistroSello | null>(null);
   const [motivoRechazoInput, setMotivoRechazoInput] = useState("");
@@ -590,11 +599,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
 
   const filteredRegistros = useMemo(() => {
     const obraEmpresaQuery = normalizeSearchText(obraSeleccionada);
+    const textoQuery = normalizeSearchText(textoBusqueda);
 
     return registros.filter((r) => {
       const est = normalizeEstado(r.estado);
-      if (filtroEstado === "activos") {
-        if (est !== "pendiente" && est !== "en_revision") return false;
+      if (filtroEstado === "en_revision") {
+        if (est !== "en_revision") return false;
       } else if (filtroEstado === "validado") {
         if (est !== "validado") return false;
       } else if (filtroEstado === "rechazado") {
@@ -602,6 +612,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       }
       if (tipoSeleccionado !== "todos" && (r.tipoRegistro ?? "sello_cortafuego") !== tipoSeleccionado) return false;
       if (obraEmpresaQuery && !getRegistroObraEmpresaSearchText(r).includes(obraEmpresaQuery)) return false;
+      if (textoQuery && !getRegistroTextoSearchText(r).includes(textoQuery)) return false;
       if (rangoFechas) {
         const d = dayjs(r.fechaEjecucion);
         const [start, end] = rangoFechas;
@@ -613,10 +624,11 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       const db = b.fechaEjecucion ? new Date(b.fechaEjecucion).getTime() : 0;
       return db - da;
     });
-  }, [registros, obraSeleccionada, tipoSeleccionado, rangoFechas, filtroEstado]);
+  }, [registros, obraSeleccionada, textoBusqueda, tipoSeleccionado, rangoFechas, filtroEstado]);
 
   const limpiarFiltros = () => {
     setObraSeleccionada("");
+    setTextoBusqueda("");
     setTipoSeleccionado("todos");
     setRangoFechas(null);
   };
@@ -821,6 +833,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     const payload: RegistroUpdatePayload = {
       descripcion_material: values.descripcionMaterial,
       modulo: values.modulo,
+      recinto: values.recinto,
       piso: values.piso,
       eje_numerico: values.ejeNumerico,
       eje_alfabetico: values.ejeAlfabetico,
@@ -1145,7 +1158,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Módulo o edificio",
       key: "modulo_edificio",
       width: 160,
-      render: (_, r) => displayValue(r.recinto),
+      render: (_, r) => displayValue(r.modulo),
     },
     {
       title: "N° DEL SELLO",
@@ -1189,7 +1202,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       },
     },
     {
-      title: "Accesibilidad",
+      title: "Accesibilidad Cielo modular",
       key: "accesibilidad",
       width: 150,
       render: (_, r) => {
@@ -1198,20 +1211,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           v === 1 ? "F=1 Acceso normal"
           : v === 2 ? "F=2 Americano / estructurado"
           : "F=3 Cielo duro / gateras";
-        return <span className="text-xs">{label}</span>;
-      },
-    },
-    {
-      title: "Cielo modular",
-      key: "cieloModular",
-      width: 130,
-      render: (_, r) => {
-        const v = r.cieloModular;
-        if (v == null) return <span className="text-slate-400">—</span>;
-        const label =
-          v === 1 ? "F=1 Normal"
-          : v === 2 ? "F=2 Americano"
-          : "F=3 Cielo duro";
         return <span className="text-xs">{label}</span>;
       },
     },
@@ -1444,8 +1443,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         title={
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span>
-              {filtroEstado === "activos"
-                ? "Registros para revisión técnica"
+              {filtroEstado === "en_revision"
+                ? "Registros en revisión"
                 : filtroEstado === "validado"
                   ? "Registros validados"
                   : filtroEstado === "rechazado"
@@ -1461,17 +1460,26 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         <div className="border-b border-slate-100 px-4 py-2.5">
           <Segmented
             options={[
-              { label: "Pendientes / En revisión", value: "activos" },
+              { label: "En revisión", value: "en_revision" },
               { label: "Validados", value: "validado" },
               { label: "Rechazados", value: "rechazado" },
               { label: "Todos", value: "todos" },
             ]}
             value={filtroEstado}
-            onChange={(v) => setFiltroEstado(v as "activos" | "validado" | "rechazado" | "todos")}
+            onChange={(v) => setFiltroEstado(v as "en_revision" | "validado" | "rechazado" | "todos")}
             size="small"
           />
         </div>
         <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <Input
+            allowClear
+            placeholder="Buscar código BECK, itemizado BECK o sellador"
+            prefix={<SearchOutlined className="text-slate-400" />}
+            value={textoBusqueda}
+            onChange={(e) => setTextoBusqueda(e.target.value)}
+            className="w-full sm:w-[320px]"
+            size="small"
+          />
           <Select
             showSearch
             allowClear

@@ -24,6 +24,7 @@ import {
   BeckObras,
   BeckReportes,
   BeckMovimientos,
+  BeckInventario,
   BeckRegistro,
   BeckProcesamientoIngenieria,
   BeckOficinaTecnica,
@@ -95,11 +96,11 @@ const NO_FIREMAT: Pick<RoleAccess,
 
 const NO_BECK: Pick<RoleAccess,
   "dashboard" | "funnel" | "registro" | "ingenieria" | "reportes" |
-  "oficinaTecnica" | "cotizaciones" | "movimientos" | "obras" | "configuracion" | "clientes" |
+  "oficinaTecnica" | "cotizaciones" | "movimientos" | "inventario" | "obras" | "configuracion" | "clientes" |
   "clienteRegistros"
 > = {
   dashboard: false, funnel: false, registro: false, ingenieria: false,
-  oficinaTecnica: false, reportes: false, cotizaciones: false, movimientos: false, obras: false,
+  oficinaTecnica: false, reportes: false, cotizaciones: false, movimientos: false, inventario: false, obras: false,
   configuracion: false, clientes: false, clienteRegistros: false,
 };
 
@@ -108,7 +109,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
     case "Administrador":
       return {
         dashboard: true, funnel: true, registro: true, ingenieria: true,
-        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: true, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: true, inventario: true, obras: true,
         configuracion: true, clientes: true,
         firemat: true, firematDashboard: true, firematFunnel: true,
         firematCotizaciones: true, firematProductos: true, firematCategorias: true,
@@ -119,19 +120,19 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
     case "Vendedor":
       return {
         dashboard: false, funnel: true, registro: false, ingenieria: false,
-        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, obras: false,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, inventario: false, obras: false,
         configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "Ingenieria":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: true,
-        oficinaTecnica: true, reportes: true, cotizaciones: false, movimientos: false, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: false, movimientos: false, inventario: true, obras: true,
         configuracion: true, clientes: true, ...NO_FIREMAT,
       };
     case "Visualizador":
       return {
         dashboard: false, funnel: true, registro: true, ingenieria: false,
-        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, obras: true,
+        oficinaTecnica: true, reportes: true, cotizaciones: true, movimientos: false, inventario: true, obras: true,
         configuracion: false, clientes: true, ...NO_FIREMAT,
       };
     case "VendedorFiremat":
@@ -164,7 +165,7 @@ const getRoleAccess = (rol: RolUsuario): RoleAccess => {
     case "JefeObra":
       return {
         dashboard: true, funnel: false, registro: true, ingenieria: false,
-        oficinaTecnica: false, reportes: true, cotizaciones: false, movimientos: false, obras: true,
+        oficinaTecnica: false, reportes: true, cotizaciones: false, movimientos: false, inventario: true, obras: true,
         configuracion: true, clientes: false, ...NO_FIREMAT,
       };
     case "Cliente":
@@ -236,6 +237,7 @@ const canAccessPath = (pathname: string, access: RoleAccess): boolean => {
   if (pathname === "/beck/reportes") return access.reportes;
   if (pathname === "/beck/cotizaciones") return access.cotizaciones;
   if (pathname === "/beck/movimientos") return access.movimientos;
+  if (pathname === "/beck/inventario") return access.inventario;
   if (pathname === "/beck/obras") return access.obras;
   if (pathname === "/beck/clientes") return access.clientes;
   if (pathname === "/beck/usuarios-parametros") return access.configuracion;
@@ -297,6 +299,7 @@ const BECK_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/beck/reportes": "beck_reportes",
   "/beck/cotizaciones": "beck_cotizaciones",
   "/beck/movimientos": "beck_movimientos",
+  "/beck/inventario": "beck_inventario",
   "/beck/obras": "beck_obras",
   "/beck/funnel": "beck_funnel",
   "/beck/clientes": "beck_clientes",
@@ -430,6 +433,7 @@ const AppShell: React.FC = () => {
       { route: "/beck/cotizaciones", modulo: "beck_cotizaciones" },
       { route: "/beck/clientes", modulo: "beck_clientes" },
       { route: "/cliente/registros-mi-empresa", modulo: "beck_vista_cliente" },
+      { route: "/beck/inventario", modulo: "beck_inventario" },
       { route: "/beck/movimientos", modulo: "beck_movimientos" },
       { route: "/beck/reportes", modulo: "beck_reportes" },
       { route: "/beck/usuarios-parametros", modulo: "beck_usuarios_parametros" },
@@ -750,6 +754,14 @@ const AppShell: React.FC = () => {
                   element={
                     <PermisosGate modulo="beck_movimientos" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <BeckMovimientos />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/beck/inventario"
+                  element={
+                    <PermisosGate modulo="beck_inventario" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <BeckInventario />
                     </PermisosGate>
                   }
                 />
