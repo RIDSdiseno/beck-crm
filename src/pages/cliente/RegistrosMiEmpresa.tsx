@@ -216,7 +216,7 @@ const renderRegistroValue = (
   if (typeof value === "number") return value.toLocaleString("es-CL");
   if (typeof value === "boolean") return value ? "Si" : "No";
   if (typeof value === "string" && /fecha|date/i.test(`${key} ${title}`)) {
-    const parsed = dayjs(value);
+    const parsed = dayjs.utc(value);
     return parsed.isValid() ? parsed.format("DD/MM/YYYY") : value;
   }
   if (Array.isArray(value)) return value.filter(Boolean).join(", ") || <Text type="secondary">-</Text>;

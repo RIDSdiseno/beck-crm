@@ -292,7 +292,7 @@ const normalizeRaw = (r: RegistroApiRaw): RegistroNorm => {
   const factor = normalizeFactorHolgura(holguraCm);
   const fecha = r.fecha ?? "";
   const diaSemana =
-    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).format("dddd") : "");
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs.utc(fecha).format("dddd") : "");
   const descripcionMaterial =
     r.descripcionMaterial ?? r.descripcion_material ?? "";
 
@@ -612,7 +612,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       key: "fechaEjecucion",
       width: 150,
       render: (_: unknown, r: RegistroNorm) =>
-        r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
+        r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
     },
     { title: "Día", dataIndex: "dia", key: "dia", width: 90 },
     { title: "Piso", dataIndex: "piso", key: "piso", width: 80 },
@@ -735,7 +735,7 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       key: "fechaEjecucion",
       width: 150,
       render: (_: unknown, r: RegistroNorm) =>
-        r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
+        r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-",
     },
     { title: "Día", dataIndex: "dia", key: "dia", width: 90 },
     { title: "Piso", dataIndex: "piso", key: "piso", width: 80 },

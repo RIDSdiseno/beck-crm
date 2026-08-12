@@ -23,7 +23,7 @@ type Props = {
 
 const getRegistroLabel = (r: ClienteRegistroValidado): string => {
   const codigo = (r.codigoBeck as string | undefined) ?? (r.folio as string | undefined) ?? r.id.slice(0, 8);
-  const fecha = r.fecha ? dayjs(r.fecha as string).format("DD/MM/YYYY") : "-";
+  const fecha = r.fecha ? dayjs.utc(r.fecha as string).format("DD/MM/YYYY") : "-";
   const sellador = (r.nombreSellador as string | undefined) ?? (r.sellador as string | undefined) ?? "-";
   return `${codigo} · ${fecha} · ${sellador}`;
 };

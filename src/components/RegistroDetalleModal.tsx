@@ -199,7 +199,7 @@ const renderDetalleJuntaLineal = (
     <FieldView label="Descripción" value={r.descripcionMaterial || r.itemizadoBeck} />
     <FieldView
       label="Fecha ejecucion sello"
-      value={r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
+      value={r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
     />
     <FieldView label="Día" value={r.dia} />
     <FieldView label="Piso" value={r.piso} />
@@ -232,7 +232,7 @@ const renderDetalleSelloCortafuego = (
       <FieldView label="Itemizado Mandante" value={r.itemizadoMandanteNombre} span={2} />
       <FieldView
         label="Fecha ejecucion sello"
-        value={r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
+        value={r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
       />
       <FieldView label="Día" value={r.dia} />
       <FieldView label="Piso" value={r.piso} />
@@ -414,7 +414,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
     );
   }
 
-  const fecha = dayjs(registro.fechaEjecucion).format("DD-MM-YYYY");
+  const fecha = dayjs.utc(registro.fechaEjecucion).format("DD-MM-YYYY");
 
   const fotos = getFotosRegistro(registro);
 

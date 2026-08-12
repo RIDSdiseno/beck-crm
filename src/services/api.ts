@@ -1356,6 +1356,41 @@ export const factoresAccesibilidadAPI = {
   },
 };
 
+export interface FactorAislacionEstado {
+  aplica: boolean;
+  factor: number;
+}
+
+export interface FactorAislacionConfig extends FactorAislacionEstado {
+  label: string;
+  personalizado: boolean;
+}
+
+export const factoresAislacionAPI = {
+  listarPorObra: async (obraId: string): Promise<FactorAislacionConfig[]> => {
+    const response = await api.get<ApiResponseEnvelope<FactorAislacionConfig[]>>(
+      `/obras/${obraId}/factores-aislacion`
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  guardarFactor: async (
+    obraId: string,
+    aplica: boolean,
+    factor: number
+  ): Promise<FactorAislacionEstado> => {
+    const response = await api.put<ApiResponseEnvelope<FactorAislacionEstado>>(
+      `/obras/${obraId}/factores-aislacion/${aplica}`,
+      { factor }
+    );
+    return unwrapApiResponse(response.data);
+  },
+
+  restaurarPorDefecto: async (obraId: string, aplica: boolean): Promise<void> => {
+    await api.delete(`/obras/${obraId}/factores-aislacion/${aplica}`);
+  },
+};
+
 export interface IndicadorEconomicoResponse {
   success: boolean;
   fallback?: boolean;
@@ -3818,6 +3853,58 @@ export const clientesFirematAPI = {
   },
 };
 
+export interface ClienteTrager {
+  id: number;
+  nombre: string;
+  rut?: string | null;
+  contactoNombre?: string | null;
+  contactoTelefono?: string | null;
+  contactoCorreo?: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClienteTragerPayload {
+  nombre: string;
+  rut?: string | null;
+  contactoNombre?: string | null;
+  contactoTelefono?: string | null;
+  contactoCorreo?: string | null;
+  activo?: boolean;
+}
+
+export const clientesTragerAPI = {
+  listar: async (params?: { q?: string; activo?: boolean }): Promise<ClienteTrager[]> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteTrager[]> | ClienteTrager[]>("/trager/clientes", { params });
+    return unwrapArray(response.data);
+  },
+
+  obtener: async (id: number): Promise<ClienteTrager> => {
+    const response = await api.get<ApiResponseEnvelope<ClienteTrager> | ClienteTrager>(`/trager/clientes/${id}`);
+    return unwrapItem(response.data);
+  },
+
+  crear: async (payload: ClienteTragerPayload): Promise<ClienteTrager> => {
+    const response = await api.post<ApiResponseEnvelope<ClienteTrager> | ClienteTrager>("/trager/clientes", payload);
+    return unwrapItem(response.data);
+  },
+
+  actualizar: async (id: number, payload: ClienteTragerPayload): Promise<ClienteTrager> => {
+    const response = await api.put<ApiResponseEnvelope<ClienteTrager> | ClienteTrager>(`/trager/clientes/${id}`, payload);
+    return unwrapItem(response.data);
+  },
+
+  toggleEstado: async (id: number, activo: boolean): Promise<ClienteTrager> => {
+    const response = await api.patch<ApiResponseEnvelope<ClienteTrager> | ClienteTrager>(`/trager/clientes/${id}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
+
+  eliminar: async (id: number): Promise<void> => {
+    await api.delete(`/trager/clientes/${id}`);
+  },
+};
+
 
 export type ItemizadoOpcion = {
   id: string;
@@ -4497,7 +4584,8 @@ export type ModuloBeck =
   | "firemat_reportes"
   | "firemat_usuarios_parametros"
   | "beck_cambiar_empresa"
-  | "firemat_cambiar_empresa";
+  | "firemat_cambiar_empresa"
+  | "trager_clientes";
 
 export interface PermisoModulo {
   modulo: ModuloBeck;

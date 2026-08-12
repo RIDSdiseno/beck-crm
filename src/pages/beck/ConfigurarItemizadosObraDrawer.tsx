@@ -23,10 +23,12 @@ import {
   itemizadoOpcionesAPI,
   factoresHolguraAPI,
   factoresAccesibilidadAPI,
+  factoresAislacionAPI,
   type ItemizadoOpcionConfigItem,
   type FactorHolguraTipoConfig,
   type TramoHolgura,
   type FactorAccesibilidadConfig,
+  type FactorAislacionConfig,
   type MonedaItemizado,
 } from "../../services/api";
 import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
@@ -110,6 +112,14 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   const [savingAccesibilidadNivel, setSavingAccesibilidadNivel] = useState<number | null>(null);
   const [errorAccesibilidad, setErrorAccesibilidad] = useState<string | null>(null);
 
+  const [aislacion, setAislacion] = useState<FactorAislacionConfig[]>([]);
+  const [factorAislacionEditado, setFactorAislacionEditado] = useState<
+    Record<string, number | null>
+  >({});
+  const [loadingAislacion, setLoadingAislacion] = useState(false);
+  const [savingAislacionEstado, setSavingAislacionEstado] = useState<string | null>(null);
+  const [errorAislacion, setErrorAislacion] = useState<string | null>(null);
+
   const cargarAccesibilidad = async () => {
     if (!obraId) return;
     setLoadingAccesibilidad(true);
@@ -126,6 +136,25 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       );
     } finally {
       setLoadingAccesibilidad(false);
+    }
+  };
+
+  const cargarAislacion = async () => {
+    if (!obraId) return;
+    setLoadingAislacion(true);
+    setErrorAislacion(null);
+    try {
+      const data = await factoresAislacionAPI.listarPorObra(obraId);
+      setAislacion(data);
+      setFactorAislacionEditado(
+        Object.fromEntries(data.map((cfg) => [String(cfg.aplica), cfg.factor]))
+      );
+    } catch (err) {
+      setErrorAislacion(
+        getErrorMessage(err, "No se pudieron cargar los factores de aislación")
+      );
+    } finally {
+      setLoadingAislacion(false);
     }
   };
 
@@ -182,6 +211,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       void cargar();
       void cargarFactores();
       void cargarAccesibilidad();
+      void cargarAislacion();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, obraId]);
@@ -283,6 +313,44 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       void message.error(getErrorMessage(err, "No se pudo restaurar el factor"));
     } finally {
       setSavingAccesibilidadNivel(null);
+    }
+  };
+
+  const updateFactorAislacion = (aplica: boolean, value: number | null) => {
+    setFactorAislacionEditado((prev) => ({ ...prev, [String(aplica)]: value }));
+  };
+
+  const handleGuardarFactorAislacion = async (aplica: boolean) => {
+    if (!obraId) return;
+    const valor = factorAislacionEditado[String(aplica)];
+    if (valor === null || valor === undefined || valor <= 0) {
+      void message.error("Ingrese un factor mayor a 0");
+      return;
+    }
+
+    setSavingAislacionEstado(String(aplica));
+    try {
+      await factoresAislacionAPI.guardarFactor(obraId, aplica, valor);
+      void message.success("Factor guardado correctamente");
+      await cargarAislacion();
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo guardar el factor"));
+    } finally {
+      setSavingAislacionEstado(null);
+    }
+  };
+
+  const handleRestaurarFactorAislacion = async (aplica: boolean) => {
+    if (!obraId) return;
+    setSavingAislacionEstado(String(aplica));
+    try {
+      await factoresAislacionAPI.restaurarPorDefecto(obraId, aplica);
+      void message.success("Factor restaurado al valor por defecto");
+      await cargarAislacion();
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo restaurar el factor"));
+    } finally {
+      setSavingAislacionEstado(null);
     }
   };
 
@@ -568,6 +636,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
               void cargar();
               void cargarFactores();
               void cargarAccesibilidad();
+              void cargarAislacion();
             }}
             disabled={loading || saving}
           >
@@ -785,6 +854,77 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
                               icon={<SaveOutlined />}
                               loading={savingAccesibilidadNivel === cfg.nivel}
                               onClick={() => void handleGuardarFactorAccesibilidad(cfg.nivel)}
+                            >
+                              Guardar
+                            </Button>
+                          </Space>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "factores-aislacion",
+              label: "Aislación",
+              children: (
+                <>
+                  <Typography.Text type="secondary" className="mb-3 block text-xs">
+                    Define el factor que se aplica cuando la Aislación aplica y cuando no aplica
+                    al calcular la cantidad de sellos con aislación en esta obra. Si un estado no
+                    tiene factor propio, se usa el valor por defecto del sistema.
+                  </Typography.Text>
+
+                  {errorAislacion && (
+                    <Alert
+                      type="error"
+                      showIcon
+                      message="No se pudieron cargar los factores de aislación"
+                      description={errorAislacion}
+                      className="mb-3"
+                    />
+                  )}
+
+                  {loadingAislacion ? (
+                    <Skeleton active paragraph={{ rows: 2 }} />
+                  ) : (
+                    <div className="space-y-2">
+                      {aislacion.map((cfg) => (
+                        <div
+                          key={String(cfg.aplica)}
+                          className="flex flex-col gap-2 rounded border border-slate-200 p-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="flex flex-col gap-1">
+                            <Typography.Text className="text-sm">{cfg.label}</Typography.Text>
+                            <Tag color={cfg.personalizado ? "blue" : "default"} className="w-fit">
+                              {cfg.personalizado ? "Personalizado para esta obra" : "Valor por defecto del sistema"}
+                            </Tag>
+                          </div>
+                          <Space size="small" wrap>
+                            <Typography.Text className="text-xs text-slate-500">Factor</Typography.Text>
+                            <InputNumber
+                              size="small"
+                              min={0.01}
+                              step={0.1}
+                              value={factorAislacionEditado[String(cfg.aplica)] ?? cfg.factor}
+                              onChange={(v) => updateFactorAislacion(cfg.aplica, v)}
+                              style={{ width: 100 }}
+                            />
+                            <Button
+                              size="small"
+                              icon={<UndoOutlined />}
+                              disabled={!cfg.personalizado || savingAislacionEstado === String(cfg.aplica)}
+                              onClick={() => void handleRestaurarFactorAislacion(cfg.aplica)}
+                            >
+                              Restaurar por defecto
+                            </Button>
+                            <Button
+                              size="small"
+                              type="primary"
+                              icon={<SaveOutlined />}
+                              loading={savingAislacionEstado === String(cfg.aplica)}
+                              onClick={() => void handleGuardarFactorAislacion(cfg.aplica)}
                             >
                               Guardar
                             </Button>

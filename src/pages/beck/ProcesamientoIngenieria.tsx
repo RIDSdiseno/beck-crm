@@ -335,7 +335,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
   const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
   const fecha = r.fecha ?? "";
   const diaSemana =
-    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).locale("es").format("dddd") : "");
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs.utc(fecha).locale("es").format("dddd") : "");
   const descripcionMaterial = r.descripcionMaterial ?? r.descripcion_material ?? "";
   const ejeNumerico = String(r.ejeNumerico ?? r.eje_numerico ?? "");
   const ejeAlfabetico = r.ejeAlfabetico ?? r.eje_alfabetico ?? "";
@@ -1115,7 +1115,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Fecha ejecución de sello",
       key: "fechaEjecucion",
       width: 155,
-      render: (_, r) => (r.fechaEjecucion ? dayjs(r.fechaEjecucion).format("DD-MM-YYYY") : "-"),
+      render: (_, r) => (r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-"),
     },
     {
       title: "Día",

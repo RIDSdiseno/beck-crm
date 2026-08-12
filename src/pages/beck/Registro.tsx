@@ -321,7 +321,7 @@ const normalizeConfigCampoKey = (value: unknown): string => {
 };
 
 const formatFecha = (fecha?: string | null): string =>
-  fecha ? dayjs(fecha).format("DD-MM-YYYY") : "-";
+  fecha ? dayjs.utc(fecha).format("DD-MM-YYYY") : "-";
 
 const formatDecimal = (value?: number | string | null, decimals = 2): string => {
   if (value === null || value === undefined || value === "") return "-";
@@ -507,7 +507,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
   const usuarioId = r.usuarioId ?? r.usuario_id ?? "";
   const fecha = r.fecha ?? "";
   const diaSemana =
-    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs(fecha).locale("es").format("dddd") : "");
+    r.diaSemana ?? r.dia_semana ?? (fecha ? dayjs.utc(fecha).locale("es").format("dddd") : "");
   const descripcionMaterial =
     r.descripcionMaterial ?? r.descripcion_material ?? "";
   const ejeNumerico = String(r.ejeNumerico ?? r.eje_numerico ?? "");

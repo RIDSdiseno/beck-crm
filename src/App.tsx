@@ -327,7 +327,7 @@ const FIREMAT_ROUTE_MODULO: Record<string, ModuloBeck> = {
 const TRAGER_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/trager/dashboard": "firemat_dashboard",
   "/trager/funnel": "firemat_funnel",
-  "/trager/clientes": "firemat_clientes",
+  "/trager/clientes": "trager_clientes",
 };
 
 const PermisosFallback: React.FC = () => (

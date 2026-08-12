@@ -1,11 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 import App from "./App";
 import "./index.css";
 import { RegistrosProvider } from "./context/RegistrosProvider";
 import { AuthProvider } from "./context/AuthProvider";
 import { PermisosProvider } from "./context/PermisosProvider";
+
+dayjs.extend(utc);
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
