@@ -245,7 +245,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const tragerNav = [
     { key: "dashboard", to: "/trager/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
     { key: "funnel", to: "/trager/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
+    { key: "cotizaciones", to: "/trager/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
     { key: "clientes", to: "/trager/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
+    { key: "productos", to: "/trager/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
+    { key: "categorias", to: "/trager/categorias", icon: <ProfileOutlined />, label: "Categorias", access: access.firematCategorias },
   ];
 
   const clienteNav = [
@@ -539,7 +542,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {!collapsed && (
           <>
-            <p className="text-beck-muted/80">Versión 1.0</p>
+            <p className="text-beck-muted/80">Versión 1.1</p>
             <p className="text-beck-muted/80">
               Copyright 2025 BECK / Firemat / Trager
             </p>

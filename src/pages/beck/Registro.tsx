@@ -172,7 +172,7 @@ type RegistroUpdatePayload = {
   holgura: number;
   accesibilidad: number;
   observaciones: string;
-  estado: RegistroDetalleUpdateValues["estado"];
+  fecha?: string;
   itemizadoMandanteId?: string;
   codigoBeck?: string;
 };
@@ -798,7 +798,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         if (tipoSeleccionado !== "todos" && getTipoRegistro(r) !== tipoSeleccionado) return false;
         if (obraSeleccionada && normalizeSearchText(r.obraNombre) !== normalizeSearchText(obraSeleccionada)) return false;
         if (rangoFechas) {
-          const d = dayjs(r.fechaEjecucion);
+          const d = dayjs(dayjs.utc(r.fechaEjecucion).format("YYYY-MM-DD"));
           const [start, end] = rangoFechas;
           if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
         }
@@ -984,7 +984,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
         observaciones: values.observaciones,
-        estado: values.estado,
+        fecha: values.fecha ? values.fecha.format("YYYY-MM-DD") : undefined,
         itemizadoMandanteId: values.itemizadoMandanteId,
         codigoBeck: values.codigoBeck,
       };
@@ -1087,7 +1087,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       key: "fechaEjecucion",
       width: 155,
       excel: (record) => toExcelCellValue(formatFecha(record.fechaEjecucion)),
-      render: (value: string) => (value ? dayjs(value).format("DD-MM-YYYY") : "-"),
+      render: (value: string) => formatFecha(value),
     },
     {
       title: "Día",

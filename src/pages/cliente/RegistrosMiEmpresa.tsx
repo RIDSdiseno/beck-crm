@@ -753,7 +753,7 @@ const RegistrosMiEmpresa: React.FC = () => {
     return registros.filter((r) => {
       if (filtroPiso && r.piso !== filtroPiso) return false;
       if (filtroFechas) {
-        const fecha = r.fecha ? dayjs(r.fecha) : null;
+        const fecha = r.fecha ? dayjs(dayjs.utc(r.fecha).format("YYYY-MM-DD")) : null;
         if (!fecha) return false;
         if (fecha.isBefore(filtroFechas[0], "day")) return false;
         if (fecha.isAfter(filtroFechas[1], "day")) return false;

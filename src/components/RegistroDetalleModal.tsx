@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Alert, Button, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
+import { Alert, Button, DatePicker, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
 import {
   CameraOutlined,
   CloseOutlined,
@@ -9,7 +9,7 @@ import {
   UserOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
 import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
 import {
@@ -40,7 +40,7 @@ export type RegistroDetalleUpdateValues = {
   reparacionTabique?: number;
   cantidadFinal?: number;
   observaciones: string;
-  estado: "pendiente" | "en_revision" | "validado" | "rechazado";
+  fecha?: Dayjs;
   itemizadoMandanteId?: string;
   codigoBeck?: string;
 };
@@ -66,14 +66,9 @@ type RegistroDetalleModalProps = {
   showRendimientoIndividual?: boolean;
 };
 
-const estadoOptions = [
-  { label: "Pendiente", value: "pendiente" },
-  { label: "En revisión", value: "en_revision" },
-];
-
 const normalizeEstado = (
   estado?: string
-): RegistroDetalleUpdateValues["estado"] => {
+): "pendiente" | "en_revision" | "validado" | "rechazado" => {
   if (
     estado === "en_revision" ||
     estado === "validado" ||
@@ -394,7 +389,9 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       reparacionTabique: registro.reparacionTabique != null ? Number(registro.reparacionTabique) : undefined,
       cantidadFinal: registro.cantidadFinal != null ? Number(registro.cantidadFinal) : undefined,
       observaciones: registro.observaciones ?? "",
-      estado: normalizeEstado(registro.estado),
+      fecha: registro.fechaEjecucion
+        ? dayjs(dayjs.utc(registro.fechaEjecucion).format("YYYY-MM-DD"))
+        : undefined,
       itemizadoMandanteId: registro.itemizadoMandanteId,
       codigoBeck: registro.codigoBeck,
     });
@@ -883,8 +880,8 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                 )}
               </div>
             </div>
-            <Form.Item name="estado" label="Estado" className="mb-3">
-              <Select options={estadoOptions} />
+            <Form.Item name="fecha" label="Fecha ejecución" className="mb-3">
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
             </Form.Item>
             <Form.Item
               name="observaciones"

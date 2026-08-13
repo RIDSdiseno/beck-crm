@@ -53,6 +53,9 @@ import {
   TragerDashboard,
   TragerFunnel,
   TragerProximamente,
+  TragerCategorias,
+  TragerProductos,
+  TragerCotizaciones,
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
@@ -325,9 +328,12 @@ const FIREMAT_ROUTE_MODULO: Record<string, ModuloBeck> = {
 };
 
 const TRAGER_ROUTE_MODULO: Record<string, ModuloBeck> = {
-  "/trager/dashboard": "firemat_dashboard",
-  "/trager/funnel": "firemat_funnel",
+  "/trager/dashboard": "trager_dashboard",
+  "/trager/funnel": "trager_funnel",
   "/trager/clientes": "trager_clientes",
+  "/trager/productos": "trager_productos",
+  "/trager/categorias": "trager_categorias",
+  "/trager/cotizaciones": "trager_cotizaciones",
 };
 
 const PermisosFallback: React.FC = () => (
@@ -942,7 +948,7 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/trager/dashboard"
                   element={
-                    <PermisosGate modulo="firemat_dashboard" homeRoute={homeRoute} permisosReady={permisosReady}>
+                    <PermisosGate modulo="trager_dashboard" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <TragerDashboard />
                     </PermisosGate>
                   }
@@ -950,7 +956,7 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/trager/funnel"
                   element={
-                    <PermisosGate modulo="firemat_funnel" homeRoute={homeRoute} permisosReady={permisosReady}>
+                    <PermisosGate modulo="trager_funnel" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <TragerFunnel />
                     </PermisosGate>
                   }
@@ -958,8 +964,32 @@ const AppShell: React.FC = () => {
                 <Route
                   path="/trager/clientes"
                   element={
-                    <PermisosGate modulo="firemat_clientes" homeRoute={homeRoute} permisosReady={permisosReady}>
+                    <PermisosGate modulo="trager_clientes" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <TragerClientes />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/productos"
+                  element={
+                    <PermisosGate modulo="trager_productos" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerProductos />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/categorias"
+                  element={
+                    <PermisosGate modulo="trager_categorias" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerCategorias />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/cotizaciones"
+                  element={
+                    <PermisosGate modulo="trager_cotizaciones" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerCotizaciones />
                     </PermisosGate>
                   }
                 />

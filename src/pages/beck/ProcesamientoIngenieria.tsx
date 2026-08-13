@@ -156,7 +156,7 @@ type RegistroUpdatePayload = {
   holgura: number;
   accesibilidad: number;
   observaciones: string;
-  estado: RegistroDetalleUpdateValues["estado"];
+  fecha?: string;
 };
 
 const normalizeEstado = (estado?: string | null): RegistroEstado => {
@@ -614,7 +614,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       if (obraEmpresaQuery && !getRegistroObraEmpresaSearchText(r).includes(obraEmpresaQuery)) return false;
       if (textoQuery && !getRegistroTextoSearchText(r).includes(textoQuery)) return false;
       if (rangoFechas) {
-        const d = dayjs(r.fechaEjecucion);
+        const d = dayjs(dayjs.utc(r.fechaEjecucion).format("YYYY-MM-DD"));
         const [start, end] = rangoFechas;
         if (d.isBefore(start, "day") || d.isAfter(end, "day")) return false;
       }
@@ -843,7 +843,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       holgura: Number(values.holguraCm || 0),
       accesibilidad: Number(values.accesibilidad || 0),
       observaciones: values.observaciones,
-      estado: values.estado,
+      fecha: values.fecha ? values.fecha.format("YYYY-MM-DD") : undefined,
     };
     setSavingDetalle(true);
     try {

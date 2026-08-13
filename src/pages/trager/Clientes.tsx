@@ -48,7 +48,7 @@ const validarRut = (_: unknown, value?: string): Promise<void> => {
 };
 
 const validarTelefono = (_: unknown, value?: string): Promise<void> => {
-  if (!value || !value.trim()) return Promise.reject(new Error("El teléfono es obligatorio"));
+  if (!value || !value.trim()) return Promise.resolve();
   const limpio = value.replace(/\s/g, "");
   if (!/^(\+?56)?9\d{8}$/.test(limpio)) {
     return Promise.reject(
@@ -62,7 +62,7 @@ type FormValues = {
   nombre: string;
   rut?: string;
   contactoNombre: string;
-  contactoTelefono: string;
+  contactoTelefono?: string;
   contactoCorreo: string;
 };
 
@@ -263,7 +263,7 @@ const TragerClientes: React.FC = () => {
             label="Teléfono de contacto"
             rules={[{ validator: validarTelefono }]}
           >
-            <Input placeholder="Ej: +56 9 1234 5678" />
+            <Input placeholder="Ej: 912345678, 56912345678 o +56912345678" />
           </Form.Item>
           <Form.Item
             name="contactoCorreo"
