@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { usePermisos } from "../../hooks/usePermisos";
-import { Button, Modal, Spin, Switch, Tag, message } from "antd";
-import { CheckCircleOutlined, KeyOutlined, TeamOutlined } from "@ant-design/icons";
+import { useAuth } from "../../context/useAuth";
+import { Button, Modal, Spin, Switch, Tag, Tooltip, message } from "antd";
+import { BankOutlined, CheckCircleOutlined, KeyOutlined, TeamOutlined } from "@ant-design/icons";
 import {
   permisosRolAPI,
   permisosUsuarioAPI,
@@ -29,6 +30,25 @@ const MODULOS_FIREMAT: Array<{ key: ModuloBeck; label: string }> = [
   { key: "firemat_reportes", label: "Reportes" },
   { key: "firemat_usuarios_parametros", label: "Usuarios y parámetros" },
 ];
+
+const MODULOS_BECK_MODAL: Array<{ key: ModuloBeck; label: string }> = [
+  { key: "beck_dashboard", label: "Dashboard" },
+  { key: "beck_procesamiento_ingenieria", label: "Procesamiento Ingeniería" },
+  { key: "beck_oficina_tecnica", label: "Oficina Técnica" },
+  { key: "beck_registro", label: "Registro" },
+  { key: "beck_reportes", label: "Reportes" },
+  { key: "beck_cotizaciones", label: "Cotizaciones" },
+  { key: "beck_movimientos", label: "Movimientos" },
+  { key: "beck_inventario", label: "Inventario" },
+  { key: "beck_obras", label: "Obras" },
+  { key: "beck_funnel", label: "Funnel" },
+  { key: "beck_clientes", label: "Clientes" },
+  { key: "beck_vista_cliente", label: "Vista Cliente" },
+  { key: "beck_usuarios_parametros", label: "Usuarios y parámetros" },
+  { key: "beck_reglas_validacion", label: "Reglas de Validación" },
+];
+
+const EMPRESA_KEYS: ModuloBeck[] = ["beck_cambiar_empresa", "firemat_cambiar_empresa"];
 
 const ROL_TAG_COLOR: Partial<Record<UsuarioApiRol, string>> = {
   vendedor_firemat: "orange",
@@ -60,6 +80,7 @@ const applyToggle = (
 
 const FirematPermisos: React.FC = () => {
   const { refreshPermisos } = usePermisos();
+  const { user: currentUser } = useAuth();
   const [rolesInfo, setRolesInfo] = useState<PermisosRolResponse[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [selectedRol, setSelectedRol] = useState<UsuarioApiRol | null>(null);
@@ -68,6 +89,13 @@ const FirematPermisos: React.FC = () => {
   const [savingRol, setSavingRol] = useState(false);
   const [usuariosRol, setUsuariosRol] = useState<UsuarioConOverride[]>([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
+
+  const [usuarioPermisosCache, setUsuarioPermisosCache] = useState<Record<string, PermisoModulo[]>>({});
+  const [loadingPermisosCache, setLoadingPermisosCache] = useState(false);
+  const [savingPermisoRapido, setSavingPermisoRapido] = useState<Record<string, boolean>>({});
+  const [savingUsuario, setSavingUsuario] = useState<Record<string, boolean>>({});
+
+  const [beckModalUsuario, setBeckModalUsuario] = useState<UsuarioConOverride | null>(null);
 
   const [excepcionUsuario, setExcepcionUsuario] = useState<UsuarioApi | null>(null);
   const [excepcionDetalle, setExcepcionDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
@@ -91,10 +119,35 @@ const FirematPermisos: React.FC = () => {
     void fetchRoles();
   }, [fetchRoles]);
 
+  const cargarPermisosUsuarios = useCallback(async (usuarios: UsuarioConOverride[]) => {
+    if (usuarios.length === 0) return;
+    setLoadingPermisosCache(true);
+    try {
+      const resultados = await Promise.all(
+        usuarios.map((u) =>
+          permisosUsuarioAPI.obtenerDetallado(u.id).then((d) => ({
+            id: u.id,
+            permisos: d.permisosEfectivos ?? d.permisos ?? [],
+          })),
+        ),
+      );
+      const cache: Record<string, PermisoModulo[]> = {};
+      resultados.forEach((r) => {
+        cache[r.id] = r.permisos;
+      });
+      setUsuarioPermisosCache(cache);
+    } catch {
+      // silent: quick switch shows default off if cache fails
+    } finally {
+      setLoadingPermisosCache(false);
+    }
+  }, []);
+
   const selectRol = async (rol: UsuarioApiRol) => {
     setSelectedRol(rol);
     setLoadingRolPermisos(true);
     setLoadingUsuarios(true);
+    setUsuarioPermisosCache({});
     try {
       const [rolData, usuarios] = await Promise.all([
         permisosRolAPI.obtenerRol(rol),
@@ -105,7 +158,9 @@ const FirematPermisos: React.FC = () => {
         : Array.isArray(rolData.permisos) ? rolData.permisos
         : [];
       setRolPermisos(permisosEfectivos);
-      setUsuariosRol(Array.isArray(usuarios) ? usuarios : []);
+      const listaUsuarios = Array.isArray(usuarios) ? usuarios : [];
+      setUsuariosRol(listaUsuarios);
+      void cargarPermisosUsuarios(listaUsuarios);
     } catch {
       message.error("No se pudieron cargar los datos del rol");
       setRolPermisos([]);
@@ -113,6 +168,96 @@ const FirematPermisos: React.FC = () => {
     } finally {
       setLoadingRolPermisos(false);
       setLoadingUsuarios(false);
+    }
+  };
+
+  const toggleCambiarEmpresa = async (usuarioId: string, value: boolean) => {
+    if (savingUsuario[usuarioId]) return;
+
+    setSavingUsuario((prev) => ({ ...prev, [usuarioId]: true }));
+    try {
+      const payload: PermisoModuloInput[] = EMPRESA_KEYS.map((key) => ({
+        modulo: key,
+        puedeVer: value,
+        puedeEditar: value,
+      }));
+
+      await permisosUsuarioAPI.actualizar(usuarioId, payload);
+      message.success("Permiso actualizado correctamente");
+
+      const detalleRefrescado = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
+      const permisosRefrescados = detalleRefrescado.permisosEfectivos ?? detalleRefrescado.permisos ?? [];
+      setUsuarioPermisosCache((prev) => ({ ...prev, [usuarioId]: permisosRefrescados }));
+
+      if (currentUser?.id === usuarioId) {
+        await refreshPermisos();
+      }
+
+      if (selectedRol) {
+        const usuarios = await permisosRolAPI.usuariosPorRol(selectedRol);
+        setUsuariosRol(Array.isArray(usuarios) ? usuarios : []);
+      }
+    } catch {
+      message.error("No se pudo actualizar el permiso");
+    } finally {
+      setSavingUsuario((prev) => {
+        const next = { ...prev };
+        delete next[usuarioId];
+        return next;
+      });
+    }
+  };
+
+  const togglePermisoBeck = async (
+    usuarioId: string,
+    modulo: ModuloBeck,
+    field: "puedeVer" | "puedeEditar",
+    value: boolean,
+  ) => {
+    if (savingUsuario[usuarioId]) return;
+
+    const fieldKey = field === "puedeVer" ? "ver" : "editar";
+    const savingKey = `${usuarioId}-${modulo}-${fieldKey}`;
+    setSavingUsuario((prev) => ({ ...prev, [usuarioId]: true }));
+    setSavingPermisoRapido((prev) => ({ ...prev, [savingKey]: true }));
+    try {
+      const detalle = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
+      const currentPermisos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
+      const updatedPermisos = applyToggle(currentPermisos, modulo, field, value);
+
+      const payload: PermisoModuloInput[] = MODULOS_BECK_MODAL.map(({ key }) => {
+        const p = getFromList(updatedPermisos, key);
+        return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
+      });
+
+      await permisosUsuarioAPI.actualizar(usuarioId, payload);
+      message.success("Permiso actualizado correctamente");
+
+      const detalleRefrescado = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
+      const permisosRefrescados = detalleRefrescado.permisosEfectivos ?? detalleRefrescado.permisos ?? [];
+      setUsuarioPermisosCache((prev) => ({ ...prev, [usuarioId]: permisosRefrescados }));
+
+      if (currentUser?.id === usuarioId) {
+        await refreshPermisos();
+      }
+
+      if (selectedRol) {
+        const usuarios = await permisosRolAPI.usuariosPorRol(selectedRol);
+        setUsuariosRol(Array.isArray(usuarios) ? usuarios : []);
+      }
+    } catch {
+      message.error("No se pudo actualizar el permiso");
+    } finally {
+      setSavingUsuario((prev) => {
+        const next = { ...prev };
+        delete next[usuarioId];
+        return next;
+      });
+      setSavingPermisoRapido((prev) => {
+        const next = { ...prev };
+        delete next[savingKey];
+        return next;
+      });
     }
   };
 
@@ -348,56 +493,112 @@ const FirematPermisos: React.FC = () => {
                       <p className="text-xs text-slate-400">No hay usuarios con este rol</p>
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[520px] text-xs">
+                        <table className="w-full min-w-[760px] text-xs">
                           <thead>
                             <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
                               <th className="pb-2 text-left font-medium">Nombre</th>
                               <th className="pb-2 text-left font-medium">Correo</th>
                               <th className="pb-2 text-center font-medium">Activo</th>
                               <th className="pb-2 text-center font-medium">Override</th>
+                              <th className="pb-2 text-center font-medium whitespace-nowrap">
+                                <Tooltip title="Controla el acceso a cambiar de plataforma entre Beck CRM y Firemat CRM">
+                                  <span>Cambiar plataforma</span>
+                                </Tooltip>
+                              </th>
+                              <th className="pb-2 text-center font-medium whitespace-nowrap">
+                                <span className="flex items-center justify-center gap-1">
+                                  <BankOutlined className="text-amber-500" />
+                                  Beck
+                                </span>
+                              </th>
                               <th className="pb-2 font-medium" />
                             </tr>
                           </thead>
                           <tbody>
-                            {usuariosRol.map((usuario) => (
-                              <tr
-                                key={usuario.id}
-                                className="border-b border-slate-100 last:border-0"
-                              >
-                                <td className="max-w-[150px] truncate py-2.5 font-medium text-slate-800">
-                                  {usuario.nombre}
-                                </td>
-                                <td className="max-w-[200px] truncate py-2.5 text-slate-500">
-                                  {usuario.email}
-                                </td>
-                                <td className="py-2.5 text-center">
-                                  <Tag
-                                    color={usuario.activo ? "green" : "default"}
-                                    style={{ marginInlineEnd: 0, fontSize: 10 }}
-                                  >
-                                    {usuario.activo ? "Sí" : "No"}
-                                  </Tag>
-                                </td>
-                                <td className="py-2.5 text-center">
-                                  {usuario.tienePermisosPersonalizados ? (
-                                    <CheckCircleOutlined
-                                      style={{ color: "#e05c3b", fontSize: 14 }}
-                                    />
-                                  ) : (
-                                    <span className="text-slate-300">—</span>
-                                  )}
-                                </td>
-                                <td className="py-2.5 text-right">
-                                  <Button
-                                    size="small"
-                                    icon={<KeyOutlined />}
-                                    onClick={() => void openExcepcion(usuario)}
-                                  >
-                                    Editar excepción
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
+                            {usuariosRol.map((usuario) => {
+                              const permisos = usuarioPermisosCache[usuario.id] ?? [];
+                              const hasBeckEmpresa = getFromList(permisos, "beck_cambiar_empresa").puedeVer;
+                              const hasFirematEmpresa = getFromList(permisos, "firemat_cambiar_empresa").puedeVer;
+                              const hasCambiarEmpresa = hasBeckEmpresa || hasFirematEmpresa;
+                              const isUserSaving = Boolean(savingUsuario[usuario.id]);
+                              const cacheLoading = loadingPermisosCache && !usuarioPermisosCache[usuario.id];
+
+                              return (
+                                <tr
+                                  key={usuario.id}
+                                  className="border-b border-slate-100 last:border-0"
+                                >
+                                  <td className="max-w-[150px] truncate py-2.5 font-medium text-slate-800">
+                                    {usuario.nombre}
+                                  </td>
+                                  <td className="max-w-[200px] truncate py-2.5 text-slate-500">
+                                    {usuario.email}
+                                  </td>
+                                  <td className="py-2.5 text-center">
+                                    <Tag
+                                      color={usuario.activo ? "green" : "default"}
+                                      style={{ marginInlineEnd: 0, fontSize: 10 }}
+                                    >
+                                      {usuario.activo ? "Sí" : "No"}
+                                    </Tag>
+                                  </td>
+                                  <td className="py-2.5 text-center">
+                                    {usuario.tienePermisosPersonalizados ? (
+                                      <CheckCircleOutlined
+                                        style={{ color: "#e05c3b", fontSize: 14 }}
+                                      />
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 text-center">
+                                    <Tooltip
+                                      title={
+                                        hasCambiarEmpresa
+                                          ? "Quitar permiso para cambiar de plataforma"
+                                          : "Dar permiso para cambiar de plataforma"
+                                      }
+                                    >
+                                      <Switch
+                                        size="small"
+                                        checked={hasCambiarEmpresa}
+                                        loading={isUserSaving || cacheLoading}
+                                        disabled={isUserSaving || cacheLoading}
+                                        onChange={(val) => void toggleCambiarEmpresa(usuario.id, val)}
+                                      />
+                                    </Tooltip>
+                                  </td>
+                                  <td className="py-2.5 text-center">
+                                    {hasCambiarEmpresa ? (
+                                      <Button
+                                        size="small"
+                                        icon={<BankOutlined />}
+                                        disabled={isUserSaving}
+                                        style={{
+                                          borderColor: "#fcd34d",
+                                          color: "#b45309",
+                                          fontSize: 10,
+                                        }}
+                                        onClick={() => setBeckModalUsuario(usuario)}
+                                      >
+                                        Permisos Beck
+                                      </Button>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 text-right">
+                                    <Button
+                                      size="small"
+                                      icon={<KeyOutlined />}
+                                      onClick={() => void openExcepcion(usuario)}
+                                    >
+                                      Editar excepción
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -409,6 +610,95 @@ const FirematPermisos: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Modal permisos Beck por usuario */}
+      <Modal
+        title={
+          beckModalUsuario ? (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <BankOutlined style={{ color: "#b45309" }} />
+                Permisos Beck
+              </div>
+              <div className="mt-0.5 text-xs font-normal text-slate-500">
+                {beckModalUsuario.nombre}
+                {" — "}
+                {beckModalUsuario.email}
+              </div>
+            </div>
+          ) : null
+        }
+        open={Boolean(beckModalUsuario)}
+        onCancel={() => setBeckModalUsuario(null)}
+        footer={<Button onClick={() => setBeckModalUsuario(null)}>Cerrar</Button>}
+        width="94vw"
+        style={{ maxWidth: 520 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
+      >
+        {beckModalUsuario && (() => {
+          const modalUserId = beckModalUsuario.id;
+          const isModalUserSaving = Boolean(savingUsuario[modalUserId]);
+          const modalCacheLoading = loadingPermisosCache && !usuarioPermisosCache[modalUserId];
+          return (
+            <div>
+              <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
+                Activa los módulos de Beck a los que tendrá acceso este usuario.
+                El permiso "Cambiar plataforma" se controla desde la tabla principal.
+              </div>
+              {isModalUserSaving && (
+                <div className="mb-2 flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">
+                  <Spin size="small" />
+                  Guardando permiso...
+                </div>
+              )}
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+                    <th className="pb-2 text-left font-medium">Módulo</th>
+                    <th className="pb-2 text-center font-medium">Ver</th>
+                    <th className="pb-2 text-center font-medium">Editar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MODULOS_BECK_MODAL.map(({ key, label }) => {
+                    const permisos = usuarioPermisosCache[modalUserId] ?? [];
+                    const p = getFromList(permisos, key);
+                    const isSavingVer = Boolean(savingPermisoRapido[`${modalUserId}-${key}-ver`]);
+                    const isSavingEditar = Boolean(savingPermisoRapido[`${modalUserId}-${key}-editar`]);
+                    return (
+                      <tr key={key} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 text-slate-700">{label}</td>
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={p.puedeVer}
+                            loading={isSavingVer}
+                            disabled={isModalUserSaving || modalCacheLoading}
+                            onChange={(val) =>
+                              void togglePermisoBeck(modalUserId, key, "puedeVer", val)
+                            }
+                          />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={p.puedeEditar}
+                            loading={isSavingEditar}
+                            disabled={isModalUserSaving || modalCacheLoading || !p.puedeVer}
+                            onChange={(val) =>
+                              void togglePermisoBeck(modalUserId, key, "puedeEditar", val)
+                            }
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Modal de excepción por usuario */}
       <Modal

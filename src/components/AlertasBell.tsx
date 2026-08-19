@@ -7,6 +7,7 @@ import {
 import {
   Badge,
   Button,
+  Collapse,
   Drawer,
   Empty,
   Spin,
@@ -34,7 +35,10 @@ type AlertaItem = {
   responsable: string | null;
   severidad: "ALTA" | "MEDIA" | "BAJA";
   fechaReferencia?: string | null;
-  oportunidadId: string | number;
+  categoria?: "FUNNEL" | "COTIZACION" | "HERRAMIENTA";
+  oportunidadId?: string | number;
+  cotizacionId?: string | number;
+  herramientaId?: string | number;
 };
 
 const DRAWER_WIDTH = "min(420px, 92vw)";
@@ -104,7 +108,7 @@ const AlertaCard: React.FC<AlertaCardProps> = ({
         icon={<EyeOutlined />}
         onClick={() => onVerOportunidad(alerta)}
       >
-        Ver oportunidad
+        {alerta.categoria === "COTIZACION" ? "Ver cotización" : "Ver oportunidad"}
       </Button>
       {esNueva && (
         <Button
@@ -120,6 +124,71 @@ const AlertaCard: React.FC<AlertaCardProps> = ({
 );
 
 
+type GrupoAlertaDef = {
+  key: string;
+  titulo: string;
+  descripcion: string;
+  filtro: (alerta: AlertaItem) => boolean;
+};
+
+const renderGrupoLabel = (titulo: string, descripcion: string, cantidad: number) => (
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+    <div>
+      <Text strong style={{ fontSize: 13 }}>{titulo}</Text>
+      <div>
+        <Text type="secondary" style={{ fontSize: 12 }}>{descripcion}</Text>
+      </div>
+    </div>
+    <Tag>{cantidad}</Tag>
+  </div>
+);
+
+const renderAlertasAgrupadas = (
+  alertas: AlertaItem[],
+  esNueva: boolean,
+  grupos: GrupoAlertaDef[],
+  marcarVista: (key: string) => void,
+  onVerAlerta: (alerta: AlertaItem) => void
+) => {
+  if (alertas.length === 0) {
+    return (
+      <Empty
+        description={esNueva ? "Sin alertas nuevas" : "Sin alertas vistas"}
+        imageStyle={{ height: 48 }}
+      />
+    );
+  }
+
+  const renderLista = (lista: AlertaItem[]) =>
+    lista.length === 0 ? (
+      <Empty description="Sin alertas" imageStyle={{ height: 32 }} />
+    ) : (
+      lista.map((a) => (
+        <AlertaCard
+          key={a.alertaKey}
+          alerta={a}
+          esNueva={esNueva}
+          onMarcarVista={marcarVista}
+          onVerOportunidad={onVerAlerta}
+        />
+      ))
+    );
+
+  return (
+    <Collapse
+      defaultActiveKey={grupos.map((g) => g.key)}
+      items={grupos.map((g) => {
+        const lista = alertas.filter(g.filtro);
+        return {
+          key: g.key,
+          label: renderGrupoLabel(g.titulo, g.descripcion, lista.length),
+          children: renderLista(lista),
+        };
+      })}
+    />
+  );
+};
+
 export const AlertasBeckBell: React.FC = () => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -128,9 +197,19 @@ export const AlertasBeckBell: React.FC = () => {
 
   const badgeColor = getBadgeColor(nuevas);
 
-  const handleVerOportunidad = async (alerta: AlertaItem) => {
+  const handleVerAlerta = async (alerta: AlertaItem) => {
     await marcarVista([alerta.alertaKey]);
     setOpen(false);
+    if (alerta.categoria === "HERRAMIENTA") {
+      navigate("/beck/inventario", {
+        state: {
+          herramientaId: alerta.herramientaId,
+          openFromAlert: true,
+          alertNavigationTs: Date.now(),
+        },
+      });
+      return;
+    }
     navigate("/beck/funnel", {
       state: {
         oportunidadId: alerta.oportunidadId,
@@ -140,42 +219,43 @@ export const AlertasBeckBell: React.FC = () => {
     });
   };
 
+  const GRUPOS_BECK: GrupoAlertaDef[] = [
+    {
+      key: "funnel",
+      titulo: "Oportunidades (Funnel)",
+      descripcion: "Seguimiento comercial de oportunidades.",
+      filtro: (a) => a.categoria !== "HERRAMIENTA",
+    },
+    {
+      key: "herramientas",
+      titulo: "Herramientas",
+      descripcion: "Mantenciones por vencer o vencidas.",
+      filtro: (a) => a.categoria === "HERRAMIENTA",
+    },
+  ];
+
   const tabItems = [
     {
       key: "nuevas",
       label: `Nuevas (${nuevas.length})`,
-      children:
-        nuevas.length === 0 ? (
-          <Empty description="Sin alertas nuevas" imageStyle={{ height: 48 }} />
-        ) : (
-          nuevas.map((a) => (
-            <AlertaCard
-              key={a.alertaKey}
-              alerta={a}
-              esNueva
-              onMarcarVista={(key) => marcarVista([key])}
-              onVerOportunidad={handleVerOportunidad}
-            />
-          ))
-        ),
+      children: renderAlertasAgrupadas(
+        nuevas,
+        true,
+        GRUPOS_BECK,
+        (key) => marcarVista([key]),
+        handleVerAlerta
+      ),
     },
     {
       key: "vistas",
       label: `Vistas (${vistas.length})`,
-      children:
-        vistas.length === 0 ? (
-          <Empty description="Sin alertas vistas" imageStyle={{ height: 48 }} />
-        ) : (
-          vistas.map((a) => (
-            <AlertaCard
-              key={a.alertaKey}
-              alerta={a}
-              esNueva={false}
-              onMarcarVista={() => undefined}
-              onVerOportunidad={handleVerOportunidad}
-            />
-          ))
-        ),
+      children: renderAlertasAgrupadas(
+        vistas,
+        false,
+        GRUPOS_BECK,
+        () => undefined,
+        handleVerAlerta
+      ),
     },
   ];
 
@@ -271,9 +351,19 @@ export const AlertasFirematBell: React.FC = () => {
 
   const badgeColor = getBadgeColor(nuevas);
 
-  const handleVerOportunidad = async (alerta: AlertaItem) => {
+  const handleVerAlerta = async (alerta: AlertaItem) => {
     await marcarVista([alerta.alertaKey]);
     setOpen(false);
+    if (alerta.categoria === "COTIZACION") {
+      navigate("/firemat/cotizaciones", {
+        state: {
+          cotizacionId: alerta.cotizacionId,
+          openFromAlert: true,
+          alertNavigationTs: Date.now(),
+        },
+      });
+      return;
+    }
     navigate("/firemat/funnel", {
       state: {
         oportunidadId: alerta.oportunidadId,
@@ -283,42 +373,43 @@ export const AlertasFirematBell: React.FC = () => {
     });
   };
 
+  const GRUPOS_FIREMAT: GrupoAlertaDef[] = [
+    {
+      key: "funnel",
+      titulo: "Oportunidades (Funnel)",
+      descripcion: "Seguimiento comercial de oportunidades.",
+      filtro: (a) => a.categoria !== "COTIZACION",
+    },
+    {
+      key: "cotizaciones",
+      titulo: "Cotizaciones",
+      descripcion: "Vencimiento y stock reservado.",
+      filtro: (a) => a.categoria === "COTIZACION",
+    },
+  ];
+
   const tabItems = [
     {
       key: "nuevas",
       label: `Nuevas (${nuevas.length})`,
-      children:
-        nuevas.length === 0 ? (
-          <Empty description="Sin alertas nuevas" imageStyle={{ height: 48 }} />
-        ) : (
-          nuevas.map((a) => (
-            <AlertaCard
-              key={a.alertaKey}
-              alerta={a}
-              esNueva
-              onMarcarVista={(key) => marcarVista([key])}
-              onVerOportunidad={handleVerOportunidad}
-            />
-          ))
-        ),
+      children: renderAlertasAgrupadas(
+        nuevas,
+        true,
+        GRUPOS_FIREMAT,
+        (key) => marcarVista([key]),
+        handleVerAlerta
+      ),
     },
     {
       key: "vistas",
       label: `Vistas (${vistas.length})`,
-      children:
-        vistas.length === 0 ? (
-          <Empty description="Sin alertas vistas" imageStyle={{ height: 48 }} />
-        ) : (
-          vistas.map((a) => (
-            <AlertaCard
-              key={a.alertaKey}
-              alerta={a}
-              esNueva={false}
-              onMarcarVista={() => undefined}
-              onVerOportunidad={handleVerOportunidad}
-            />
-          ))
-        ),
+      children: renderAlertasAgrupadas(
+        vistas,
+        false,
+        GRUPOS_FIREMAT,
+        () => undefined,
+        handleVerAlerta
+      ),
     },
   ];
 

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Badge,
   Button,
@@ -20,6 +21,7 @@ import {
 import type { UploadFile } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
+  BarcodeOutlined,
   CheckOutlined,
   EditOutlined,
   EyeOutlined,
@@ -127,6 +129,9 @@ const EstadoBadge: React.FC<{ activo: boolean }> = ({ activo }) =>
 const Inventario: React.FC = () => {
   const { canEdit } = usePermisos();
   const canEditInventario = canEdit("beck_inventario");
+  const location = useLocation();
+  const pendingHerramientaId = useRef<string | null>(null);
+  const lastOpenedAlertTs = useRef<number | null>(null);
 
   const [tab, setTab] = useState<TabKey>("epp");
   const [q, setQ] = useState("");
@@ -136,6 +141,8 @@ const Inventario: React.FC = () => {
   const [epp, setEpp] = useState<InventarioBeckEpp[]>([]);
   const [implementos, setImplementos] = useState<InventarioBeckImplemento[]>([]);
   const [herramientas, setHerramientas] = useState<InventarioBeckHerramienta[]>([]);
+  const [generandoSkuId, setGenerandoSkuId] = useState<string | null>(null);
+  const [generandoSkuMasivo, setGenerandoSkuMasivo] = useState(false);
 
   const [eppForm] = Form.useForm<InventarioBeckEppPayload>();
   const [implementoForm] = Form.useForm<InventarioBeckImplementoPayload>();
@@ -169,6 +176,35 @@ const Inventario: React.FC = () => {
     void cargar();
   }, [cargar]);
 
+  useEffect(() => {
+    const state = location.state as {
+      herramientaId?: string;
+      alertNavigationTs?: number;
+    } | null;
+    const ts = state?.alertNavigationTs;
+    const id = state?.herramientaId;
+    if (!ts || !id) return;
+    if (lastOpenedAlertTs.current === ts) return;
+    lastOpenedAlertTs.current = ts;
+    setTab("herramientas");
+    if (herramientas.length > 0) {
+      const target = herramientas.find((h) => h.id === id);
+      if (target) abrirEditar(target, "herramientas");
+    } else {
+      pendingHerramientaId.current = id;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!pendingHerramientaId.current || herramientas.length === 0) return;
+    const id = pendingHerramientaId.current;
+    pendingHerramientaId.current = null;
+    const target = herramientas.find((h) => h.id === id);
+    if (target) abrirEditar(target, "herramientas");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [herramientas]);
+
   const abrirCrear = () => {
     setEditing(null);
     eppForm.resetFields();
@@ -180,16 +216,24 @@ const Inventario: React.FC = () => {
     setModalOpen(true);
   };
 
-  const abrirEditar = (row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta) => {
+  const abrirEditar = (
+    row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta,
+    tabOverride?: TabKey
+  ) => {
+    const tabActual = tabOverride ?? tab;
     setEditing(row);
-    if (tab === "epp") eppForm.setFieldsValue(row as InventarioBeckEpp);
-    if (tab === "implementos") {
+    if (tabActual === "epp") eppForm.setFieldsValue(row as InventarioBeckEpp);
+    if (tabActual === "implementos") {
       const item = row as InventarioBeckImplemento;
       implementoForm.setFieldsValue({ ...item, fecha: dateInput(item.fecha) });
     }
-    if (tab === "herramientas") {
+    if (tabActual === "herramientas") {
       const item = row as InventarioBeckHerramienta;
-      herramientaForm.setFieldsValue({ ...item, fecha: dateInput(item.fecha) });
+      herramientaForm.setFieldsValue({
+        ...item,
+        fechaCompra: dateInput(item.fechaCompra),
+        fechaMantencion: dateInput(item.fechaMantencion),
+      });
     }
     setModalOpen(true);
   };
@@ -239,6 +283,36 @@ const Inventario: React.FC = () => {
       if (selected?.id === row.id) setSelected({ ...selected, activo: nuevoEstado });
     } catch {
       message.error("No se pudo cambiar el estado");
+    }
+  };
+
+  const generarSkuUno = async (row: InventarioBeckEpp) => {
+    setGenerandoSkuId(row.id);
+    try {
+      await inventarioBeckAPI.epp.generarSku(row.id);
+      message.success("SKU generado");
+      await cargar();
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, "No se pudo generar el SKU"));
+    } finally {
+      setGenerandoSkuId(null);
+    }
+  };
+
+  const generarSkuTodos = async () => {
+    setGenerandoSkuMasivo(true);
+    try {
+      const { actualizados } = await inventarioBeckAPI.epp.generarSkuMasivo();
+      message.success(
+        actualizados > 0
+          ? `Se generaron ${actualizados} SKU nuevo(s)`
+          : "No hay EPP sin SKU"
+      );
+      await cargar();
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, "No se pudo generar los SKU"));
+    } finally {
+      setGenerandoSkuMasivo(false);
     }
   };
 
@@ -321,6 +395,60 @@ const Inventario: React.FC = () => {
     [canEditInventario, selected, tab, cargar]
   );
 
+  const eppActionColumn = useMemo(
+    () => ({
+      title: "Acciones",
+      key: "acciones",
+      width: 150,
+      render: (_: unknown, row: InventarioBeckEpp) => (
+        <Space size="small" wrap>
+          <Button type="text" size="small" icon={<EyeOutlined />} title="Ver" onClick={() => abrirDetalle(row)} />
+          {canEditInventario && (
+            <Button type="text" size="small" icon={<EditOutlined />} title="Editar" onClick={() => abrirEditar(row)} />
+          )}
+          {canEditInventario && !row.sku?.trim() && (
+            <Button
+              type="text"
+              size="small"
+              icon={<BarcodeOutlined />}
+              title="Generar SKU"
+              loading={generandoSkuId === row.id}
+              onClick={() => void generarSkuUno(row)}
+            />
+          )}
+          {canEditInventario && (
+            row.activo ? (
+              <Popconfirm
+                title="¿Eliminar registro?"
+                description="Esta acción quitará este elemento del inventario. ¿Deseas continuar?"
+                okText="Eliminar"
+                cancelText="Cancelar"
+                onConfirm={() => cambiarEstado(row)}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  title="Eliminar"
+                />
+              </Popconfirm>
+            ) : (
+              <Button
+                type="text"
+                size="small"
+                icon={<CheckOutlined />}
+                title="Activar"
+                onClick={() => cambiarEstado(row)}
+              />
+            )
+          )}
+        </Space>
+      ),
+    }),
+    [canEditInventario, selected, tab, cargar, generandoSkuId]
+  );
+
   const eppColumns: ColumnsType<InventarioBeckEpp> = [
     { title: "SKU", dataIndex: "sku", width: 110, render: dash },
     { title: "Item", dataIndex: "item", width: 200, ellipsis: true, render: (v: string) => <Text strong>{v}</Text> },
@@ -330,7 +458,7 @@ const Inventario: React.FC = () => {
     { title: "Color", dataIndex: "color", width: 100, render: dash },
     { title: "Stock", dataIndex: "saldo", width: 90, align: "right", render: (v: number) => v ?? 0 },
     { title: "Estado", dataIndex: "activo", width: 95, render: (v: boolean) => <EstadoBadge activo={v} /> },
-    actionColumn as ColumnsType<InventarioBeckEpp>[number],
+    eppActionColumn as ColumnsType<InventarioBeckEpp>[number],
   ];
 
   const implementoColumns: ColumnsType<InventarioBeckImplemento> = [
@@ -354,7 +482,8 @@ const Inventario: React.FC = () => {
     { title: "Modelo", dataIndex: "modelo", width: 150, ellipsis: true, render: dash },
     { title: "Categoría", dataIndex: "categoria", width: 130, render: dash },
     { title: "Ubicación", dataIndex: "ubicacion", width: 130, render: dash },
-    { title: "Fecha", dataIndex: "fecha", width: 105, render: formatDate },
+    { title: "F. Compra", dataIndex: "fechaCompra", width: 105, render: formatDate },
+    { title: "F. Mantención", dataIndex: "fechaMantencion", width: 115, render: formatDate },
     { title: "Encargado", dataIndex: "encargado", width: 140, ellipsis: true, render: dash },
     { title: "Estado", dataIndex: "activo", width: 95, render: (v: boolean) => <EstadoBadge activo={v} /> },
     actionColumn as ColumnsType<InventarioBeckHerramienta>[number],
@@ -409,7 +538,8 @@ const Inventario: React.FC = () => {
           <Form.Item name="modelo" label="Modelo"><Input /></Form.Item>
           <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
           <Form.Item name="ubicacion" label="Ubicación"><Input /></Form.Item>
-          <Form.Item name="fecha" label="Fecha"><Input type="date" /></Form.Item>
+          <Form.Item name="fechaCompra" label="Fecha de compra"><Input type="date" /></Form.Item>
+          <Form.Item name="fechaMantencion" label="Fecha de mantención"><Input type="date" /></Form.Item>
           <Form.Item name="encargado" label="Encargado"><Input /></Form.Item>
           <Form.Item name="activo" label="Estado"><Select options={[{ value: true, label: "Activo" }, { value: false, label: "Inactivo" }]} /></Form.Item>
         </div>
@@ -424,7 +554,7 @@ const Inventario: React.FC = () => {
       <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered>
         {entries.map(([key, value]) => (
           <Descriptions.Item key={key} label={key}>
-            {key === "activo" ? <EstadoBadge activo={Boolean(value)} /> : value == null || value === "" ? "-" : String(key === "fecha" ? formatDate(value as string) : value)}
+            {key === "activo" ? <EstadoBadge activo={Boolean(value)} /> : value == null || value === "" ? "-" : String(["fecha", "fechaCompra", "fechaMantencion"].includes(key) ? formatDate(value as string) : value)}
           </Descriptions.Item>
         ))}
       </Descriptions>
@@ -469,6 +599,17 @@ const Inventario: React.FC = () => {
               children: (
                 <Space direction="vertical" size="middle" className="w-full">
                   <Toolbar q={q} filtro={filtroActivo} canEdit={canEditInventario} nuevoLabel="Nuevo EPP" onQChange={setQ} onFiltroChange={setFiltroActivo} onBuscar={() => void cargar()} onNuevo={abrirCrear} />
+                  {canEditInventario && (
+                    <div className="flex justify-end">
+                      <Button
+                        icon={<BarcodeOutlined />}
+                        loading={generandoSkuMasivo}
+                        onClick={() => void generarSkuTodos()}
+                      >
+                        Generar SKU faltantes
+                      </Button>
+                    </div>
+                  )}
                   <Table dataSource={epp} columns={eppColumns} rowKey="id" loading={loading} size="small" scroll={{ x: 1180 }} pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} EPP` }} />
                 </Space>
               ),

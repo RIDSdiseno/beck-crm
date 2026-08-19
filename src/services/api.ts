@@ -2251,6 +2251,7 @@ export type FirematCotizacionLinea = {
   cantidad: number;
   precioUnitario: number;
   descuentoPct: number;
+  gananciaPct?: number;
   subtotal: number;
   producto?: ProductoFiremat | null;
 };
@@ -2315,6 +2316,7 @@ export type FirematCotizacionPayload = {
     cantidad: number;
     precioUnitario: number;
     descuentoPct: number;
+    gananciaPct?: number;
     observacion?: string | null;
   }>;
 };
@@ -5011,12 +5013,15 @@ export const itemizadoOpcionesAPI = {
 
 
 export type AlertaBeckSeveridad = "ALTA" | "MEDIA" | "BAJA";
+export type AlertaBeckCategoria = "FUNNEL" | "HERRAMIENTA";
 
 export interface AlertaBeck {
   alertaKey: string;
   modulo: "BECK";
+  categoria: AlertaBeckCategoria;
   tipo: string;
-  oportunidadId: string;
+  oportunidadId?: string;
+  herramientaId?: string;
   titulo: string;
   descripcion: string;
   responsable: string | null;
@@ -5035,12 +5040,15 @@ export interface AlertasBeckResponse {
 
 
 export type AlertaFirematSeveridad = "ALTA" | "MEDIA" | "BAJA";
+export type AlertaFirematCategoria = "FUNNEL" | "COTIZACION";
 
 export interface AlertaFiremat {
   alertaKey: string;
   modulo: "FIREMAT";
+  categoria: AlertaFirematCategoria;
   tipo: string;
-  oportunidadId: number;
+  oportunidadId?: number;
+  cotizacionId?: number;
   titulo: string;
   descripcion: string;
   responsable: string | null;
@@ -5320,7 +5328,8 @@ export interface InventarioBeckHerramienta {
   categoria?: string | null;
   sku?: string | null;
   ubicacion?: string | null;
-  fecha?: string | null;
+  fechaCompra?: string | null;
+  fechaMantencion?: string | null;
   encargado?: string | null;
   activo: boolean;
   createdAt: string;
@@ -5383,6 +5392,14 @@ export const inventarioBeckAPI = {
     },
     cambiarEstado: async (id: string, activo: boolean): Promise<InventarioBeckEpp> => {
       const response = await api.patch<InventarioBeckEpp>(`/inventario-beck/epp/${id}/estado`, { activo });
+      return response.data;
+    },
+    generarSku: async (id: string): Promise<InventarioBeckEpp> => {
+      const response = await api.post<InventarioBeckEpp>(`/inventario-beck/epp/${id}/generar-sku`, {});
+      return response.data;
+    },
+    generarSkuMasivo: async (): Promise<{ actualizados: number }> => {
+      const response = await api.post<{ actualizados: number }>("/inventario-beck/epp/generar-sku-masivo", {});
       return response.data;
     },
   },

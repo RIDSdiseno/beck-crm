@@ -105,6 +105,34 @@ const FIREMAT_NAV_MODULO: Partial<Record<string, ModuloBeck>> = {
   reportes: "firemat_reportes",
 };
 
+const BECK_ROUTE_ORDER: Array<{ path: string; modulo: ModuloBeck }> = [
+  { path: "/beck/dashboard", modulo: "beck_dashboard" },
+  { path: "/beck/procesamiento-ingenieria", modulo: "beck_procesamiento_ingenieria" },
+  { path: "/beck/registro", modulo: "beck_registro" },
+  { path: "/beck/obras", modulo: "beck_obras" },
+  { path: "/beck/funnel", modulo: "beck_funnel" },
+  { path: "/beck/cotizaciones", modulo: "beck_cotizaciones" },
+  { path: "/beck/clientes", modulo: "beck_clientes" },
+  { path: "/beck/inventario", modulo: "beck_inventario" },
+  { path: "/beck/movimientos", modulo: "beck_movimientos" },
+  { path: "/beck/reportes", modulo: "beck_reportes" },
+  { path: "/beck/usuarios-parametros", modulo: "beck_usuarios_parametros" },
+];
+
+const FIREMAT_LIKE_ROUTE_ORDER: Array<{ suffix: string; modulo: ModuloBeck }> = [
+  { suffix: "dashboard", modulo: "firemat_dashboard" },
+  { suffix: "funnel", modulo: "firemat_funnel" },
+  { suffix: "cotizaciones", modulo: "firemat_cotizaciones" },
+  { suffix: "clientes", modulo: "firemat_clientes" },
+  { suffix: "productos", modulo: "firemat_productos" },
+  { suffix: "categorias", modulo: "firemat_categorias" },
+  { suffix: "inventario", modulo: "firemat_inventario" },
+  { suffix: "ventas", modulo: "firemat_ventas" },
+  { suffix: "movimientos", modulo: "firemat_movimientos" },
+  { suffix: "reportes", modulo: "firemat_reportes" },
+  { suffix: "usuarios-parametros", modulo: "firemat_usuarios_parametros" },
+];
+
 const Sidebar: React.FC<SidebarProps> = ({
   themeMode,
   collapsed,
@@ -158,6 +186,23 @@ const Sidebar: React.FC<SidebarProps> = ({
   const canCambiarEmpresaTrager = canCambiarEmpresaFiremat;
   const puedeCambiarEmpresa = canCambiarEmpresaBeck || canCambiarEmpresaFiremat || canCambiarEmpresaTrager;
 
+  const resolveAccessiblePath = (company: Company, fallbackPath: string): string => {
+    if (isAdmin) return fallbackPath;
+
+    if (company === "beck") {
+      const direct = BECK_ROUTE_ORDER.find((r) => r.path === fallbackPath);
+      if (direct && hasViewPermission(direct.modulo)) return fallbackPath;
+      const accessible = BECK_ROUTE_ORDER.find((r) => hasViewPermission(r.modulo));
+      return accessible?.path ?? fallbackPath;
+    }
+
+    const directSuffix = fallbackPath.split("/")[2] ?? "dashboard";
+    const direct = FIREMAT_LIKE_ROUTE_ORDER.find((r) => r.suffix === directSuffix);
+    if (direct && hasViewPermission(direct.modulo)) return fallbackPath;
+    const accessible = FIREMAT_LIKE_ROUTE_ORDER.find((r) => hasViewPermission(r.modulo));
+    return accessible ? `/${company}/${accessible.suffix}` : fallbackPath;
+  };
+
   const handleCompanySwitch = (company: Company) => {
     if (company === "beck" && !canCambiarEmpresaBeck) return;
     if (company === "firemat" && !canCambiarEmpresaFiremat) return;
@@ -166,7 +211,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (company === activeCompany) return;
 
     window.localStorage.setItem(EMPRESA_STORAGE_KEY, company);
-    navigate(getEquivalentCompanyPath(location.pathname, company), { replace: true });
+    const equivalentPath = getEquivalentCompanyPath(location.pathname, company);
+    navigate(resolveAccessiblePath(company, equivalentPath), { replace: true });
   };
 
   const renderLogo = (className: string) =>

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -65,6 +66,7 @@ type LineaForm = {
   cantidad?: number;
   precioUnitario?: number;
   descuentoPct?: number;
+  gananciaPct?: number;
   observacion?: string | null;
 };
 
@@ -203,20 +205,28 @@ const normalizeTipoClienteFiremat = (value?: string | null) => {
   return map[value] ?? value;
 };
 
-const calculateLineSubtotal = (linea: LineaForm) => {
+const calculateLineSubtotal = (linea: LineaForm, canManageGanancia = false) => {
   const cantidad = Number(linea.cantidad || 0);
   const precio = Number(linea.precioUnitario || 0);
+  const gananciaPct = canManageGanancia ? Number(linea.gananciaPct || 0) : 0;
+  const precioConMargen = precio * (1 + gananciaPct / 100);
   const descuentoPct = Number(linea.descuentoPct || 0);
-  return Math.round(cantidad * precio * (1 - descuentoPct / 100));
+  return Math.round(cantidad * precioConMargen * (1 - descuentoPct / 100));
 };
 
-const calculateTotals = (lineas: LineaForm[] = [], aplicaImpuesto = true) => {
+const calculateTotals = (
+  lineas: LineaForm[] = [],
+  aplicaImpuesto = true,
+  canManageGanancia = false
+) => {
   const subtotal = lineas.reduce(
-    (acc, linea) => acc + calculateLineSubtotal(linea),
+    (acc, linea) => acc + calculateLineSubtotal(linea, canManageGanancia),
     0
   );
   const descuento = lineas.reduce((acc, linea) => {
-    const bruto = Number(linea.cantidad || 0) * Number(linea.precioUnitario || 0);
+    const gananciaPct = canManageGanancia ? Number(linea.gananciaPct || 0) : 0;
+    const precioConMargen = Number(linea.precioUnitario || 0) * (1 + gananciaPct / 100);
+    const bruto = Number(linea.cantidad || 0) * precioConMargen;
     return acc + Math.round(bruto * (Number(linea.descuentoPct || 0) / 100));
   }, 0);
   const iva = aplicaImpuesto ? Math.round(subtotal * 0.19) : 0;
@@ -260,6 +270,9 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
 );
 
 const FirematCotizaciones: React.FC = () => {
+  const location = useLocation();
+  const pendingCotizacionId = useRef<string | null>(null);
+  const lastOpenedAlertTs = useRef<number | null>(null);
   const { canEdit: canEditPerm, canView: canViewPerm } = usePermisos();
   const [form] = Form.useForm<CotizacionFormValues>();
   const lineasWatch = Form.useWatch("lineas", form) ?? [];
@@ -269,6 +282,7 @@ const FirematCotizaciones: React.FC = () => {
   const canCreate = canEditPerm("firemat_cotizaciones");
   const canEdit = canCreate;
   const canDelete = canEditPerm("firemat_cotizaciones");
+  const canManageGanancia = canCreate;
   const canCambiarEmpresaFiremat =
     canViewPerm("firemat_cambiar_empresa") || canEditPerm("firemat_cambiar_empresa");
 
@@ -326,8 +340,8 @@ const FirematCotizaciones: React.FC = () => {
     [productos]
   );
   const totals = useMemo(
-    () => calculateTotals(lineasWatch, aplicaImpuestoWatch),
-    [lineasWatch, aplicaImpuestoWatch]
+    () => calculateTotals(lineasWatch, aplicaImpuestoWatch, canManageGanancia),
+    [lineasWatch, aplicaImpuestoWatch, canManageGanancia]
   );
 
   const oportunidadFirematOptions = useMemo(() => {
@@ -370,6 +384,7 @@ const FirematCotizaciones: React.FC = () => {
       cantidad: Number(linea.cantidad || 1),
       precioUnitario: Number(linea.precioUnitario || 0),
       descuentoPct: Number(linea.descuentoPct || 0),
+      gananciaPct: Number(linea.gananciaPct || 0),
     }));
 
     const clienteFirematId =
@@ -660,6 +675,35 @@ const FirematCotizaciones: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const state = location.state as {
+      cotizacionId?: string | number;
+      alertNavigationTs?: number;
+    } | null;
+    const ts = state?.alertNavigationTs;
+    const rawId = state?.cotizacionId;
+    if (!ts || rawId == null) return;
+    if (lastOpenedAlertTs.current === ts) return;
+    lastOpenedAlertTs.current = ts;
+    const id = String(rawId);
+    if (cotizaciones.length > 0) {
+      const target = cotizaciones.find((c) => String(c.id) === id);
+      if (target) void openCotizacion(target, "ver");
+    } else {
+      pendingCotizacionId.current = id;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!pendingCotizacionId.current || cotizaciones.length === 0) return;
+    const id = pendingCotizacionId.current;
+    pendingCotizacionId.current = null;
+    const target = cotizaciones.find((c) => String(c.id) === id);
+    if (target) void openCotizacion(target, "ver");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cotizaciones]);
+
   const buildPayload = (values: CotizacionFormValues): FirematCotizacionPayload => {
     const detalles = (values.lineas ?? [])
       .filter((linea) => linea.productoId && Number(linea.cantidad || 0) > 0)
@@ -668,9 +712,14 @@ const FirematCotizaciones: React.FC = () => {
         cantidad: Number(linea.cantidad || 0),
         precioUnitario: Number(linea.precioUnitario || 0),
         descuentoPct: Number(linea.descuentoPct || 0),
+        gananciaPct: canManageGanancia ? Number(linea.gananciaPct || 0) : 0,
         observacion: linea.observacion?.trim() || null,
       }));
-    const nextTotals = calculateTotals(values.lineas ?? [], values.aplicaImpuesto ?? true);
+    const nextTotals = calculateTotals(
+      values.lineas ?? [],
+      values.aplicaImpuesto ?? true,
+      canManageGanancia
+    );
 
     return {
       clienteId: values.clienteId ?? selectedClienteId,
@@ -1311,7 +1360,13 @@ const FirematCotizaciones: React.FC = () => {
                       key={field.key}
                       className="rounded-lg border border-slate-200 bg-slate-50 p-3"
                     >
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[2fr,90px,130px,110px,130px,auto]">
+                      <div
+                        className={
+                          canManageGanancia
+                            ? "grid grid-cols-1 gap-3 lg:grid-cols-[2fr,90px,130px,110px,110px,130px,auto]"
+                            : "grid grid-cols-1 gap-3 lg:grid-cols-[2fr,90px,130px,110px,130px,auto]"
+                        }
+                      >
                         <Form.Item
                           name={[field.name, "productoId"]}
                           label="Producto"
@@ -1331,6 +1386,7 @@ const FirematCotizaciones: React.FC = () => {
                                 precioUnitario: selectedProduct?.precio ?? 0,
                                 cantidad: current[field.name]?.cantidad ?? 1,
                                 descuentoPct: current[field.name]?.descuentoPct ?? 0,
+                                gananciaPct: current[field.name]?.gananciaPct ?? 0,
                               };
                               form.setFieldValue("lineas", [...current]);
                             }}
@@ -1355,10 +1411,18 @@ const FirematCotizaciones: React.FC = () => {
                         >
                           <InputNumber min={0} max={100} className="w-full" />
                         </Form.Item>
+                        {canManageGanancia && (
+                          <Form.Item
+                            name={[field.name, "gananciaPct"]}
+                            label="% Ganancia"
+                          >
+                            <InputNumber min={0} max={100} className="w-full" />
+                          </Form.Item>
+                        )}
                         <div className="space-y-1">
                           <p className="text-xs text-beck-muted">Subtotal</p>
                           <p className="rounded-md border border-slate-200 bg-white px-2 py-[5px] text-right text-sm font-semibold tabular-nums">
-                            {formatCLP(calculateLineSubtotal(linea))}
+                            {formatCLP(calculateLineSubtotal(linea, canManageGanancia))}
                           </p>
                         </div>
                         {!modalReadOnly && (

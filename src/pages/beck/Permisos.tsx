@@ -25,6 +25,7 @@ const MODULOS_BECK: Array<{ key: ModuloBeck; label: string }> = [
   { key: "beck_reportes", label: "Reportes" },
   { key: "beck_cotizaciones", label: "Cotizaciones" },
   { key: "beck_movimientos", label: "Movimientos" },
+  { key: "beck_inventario", label: "Inventario" },
   { key: "beck_obras", label: "Obras" },
   { key: "beck_funnel", label: "Funnel" },
   { key: "beck_clientes", label: "Clientes" },

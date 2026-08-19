@@ -7,6 +7,7 @@ import {
   Input,
   InputNumber,
   DatePicker,
+  Spin,
   Table,
   Switch,
   Tooltip,
@@ -218,6 +219,11 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
     (Form.useWatch("contactoBeckId", form) as string | null | undefined) ?? null;
   const contextoOrigen: "BECK" | "FIREMAT" =
     initialValues?.origen === "FIREMAT" ? "FIREMAT" : "BECK";
+  const cargandoDatosReferencia =
+    clientesLoading ||
+    opportunitiesLoading ||
+    responsablesLoading ||
+    (contextoOrigen === "FIREMAT" && productosLoading);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -268,7 +274,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   }, [canManageGanancia, form, initialValues, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || opportunities.length > 0) return;
     let ignore = false;
 
     const loadOpportunities = async () => {
@@ -289,10 +295,12 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
     void loadOpportunities();
     return () => { ignore = true; };
+  // opportunities.length se consulta a proposito para no recargar si ya esta en cache
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || responsables.length > 0) return;
     let ignore = false;
 
     const loadResponsables = async () => {
@@ -313,10 +321,12 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
     void loadResponsables();
     return () => { ignore = true; };
+  // responsables.length se consulta a proposito para no recargar si ya esta en cache
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || clientes.length > 0) return;
     let ignore = false;
 
     const loadClientes = async () => {
@@ -333,6 +343,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 
     void loadClientes();
     return () => { ignore = true; };
+  // clientes.length se consulta a proposito para no recargar si ya esta en cache
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -772,6 +784,11 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
   }, [aplicaImpuesto, canManageGanancia, descuento, lineas]);
 
   const handleFinish = (values: CotizacionEditorValues) => {
+    if (clientesLoading || contactosLoading) {
+      void message.warning("Espera a que termine de cargar el cliente seleccionado antes de guardar");
+      return;
+    }
+
     onSubmit({
       ...values,
       lineas: lineas.map((linea, index) => {
@@ -804,28 +821,27 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
       footer={null}
       width={modalWidth}
       destroyOnHidden={false}
-      title={null}
+      title={
+        <div className="flex flex-col gap-2">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-orange-700">
+            <FileTextOutlined className="text-[12px]" />
+            <span>
+              {mode === "create" ? "Creacion de cotizacion" : "Edicion de cotizacion"}
+            </span>
+          </div>
+          <h2 className="text-base font-semibold text-slate-900">
+            Cotizacion de sellos cortafuego · BECK
+          </h2>
+        </div>
+      }
       styles={{
-        body: { padding: 0, maxHeight: "75vh", overflowY: "auto" },
+        body: { maxHeight: "75vh", overflowY: "auto" },
         mask: { backdropFilter: "blur(2px)" },
       }}
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
-        <div className="space-y-4 p-5">
-          <div className="flex flex-col gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-orange-700">
-              <FileTextOutlined className="text-[12px]" />
-              <span>
-                {mode === "create"
-                  ? "Creacion de cotizacion"
-                  : "Edicion de cotizacion"}
-              </span>
-            </div>
-            <h2 className="text-base font-semibold text-slate-900">
-              Cotizacion de sellos cortafuego · BECK
-            </h2>
-          </div>
-
+        <Spin spinning={cargandoDatosReferencia} tip="Cargando...">
+        <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -834,16 +850,16 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
               </h3>
 
               {/* Cliente / empresa registrada */}
-              <Form.Item<CotizacionEditorValues>
-                name="clienteBeckId"
-                label={
-                  <span className="text-xs font-medium text-slate-800">
-                    Cliente / empresa registrada
-                  </span>
-                }
+              <Tooltip
+                title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
               >
-                <Tooltip
-                  title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+                <Form.Item<CotizacionEditorValues>
+                  name="clienteBeckId"
+                  label={
+                    <span className="text-xs font-medium text-slate-800">
+                      Cliente / empresa registrada
+                    </span>
+                  }
                 >
                   <Select
                     showSearch
@@ -862,40 +878,40 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                       clientesLoading ? "Cargando..." : "Sin resultados"
                     }
                   />
-                </Tooltip>
-              </Form.Item>
+                </Form.Item>
+              </Tooltip>
 
               {/* Cliente / empresa no registrada — solo visible si no hay cliente registrado */}
               {!clienteBeckIdWatched && (
-                <Form.Item<CotizacionEditorValues>
-                  name="cliente"
-                  dependencies={["clienteBeckId"]}
-                  label={
-                    <span className="text-xs font-medium text-slate-800">
-                      Cliente / empresa no registrada
-                    </span>
-                  }
-                  rules={[
-                    {
-                      validator: async (_, value) => {
-                        const regId = form.getFieldValue(
-                          "clienteBeckId"
-                        ) as string | null;
-                        const nombre = String(value || "").trim();
-                        if (!regId && !nombre) {
-                          return Promise.reject(
-                            new Error(
-                              "Selecciona un cliente registrado o escribe el nombre"
-                            )
-                          );
-                        }
-                        return Promise.resolve();
-                      },
-                    },
-                  ]}
+                <Tooltip
+                  title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
                 >
-                  <Tooltip
-                    title={!canCambiarEmpresaBeck ? "No tienes permiso para cambiar empresa" : undefined}
+                  <Form.Item<CotizacionEditorValues>
+                    name="cliente"
+                    dependencies={["clienteBeckId"]}
+                    label={
+                      <span className="text-xs font-medium text-slate-800">
+                        Cliente / empresa no registrada
+                      </span>
+                    }
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          const regId = form.getFieldValue(
+                            "clienteBeckId"
+                          ) as string | null;
+                          const nombre = String(value || "").trim();
+                          if (!regId && !nombre) {
+                            return Promise.reject(
+                              new Error(
+                                "Selecciona un cliente registrado o escribe el nombre"
+                              )
+                            );
+                          }
+                          return Promise.resolve();
+                        },
+                      },
+                    ]}
                   >
                     <Input
                       size="small"
@@ -903,8 +919,8 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                       placeholder="Constructora XYZ, Cliente particular…"
                       disabled={!canCambiarEmpresaBeck}
                     />
-                  </Tooltip>
-                </Form.Item>
+                  </Form.Item>
+                </Tooltip>
               )}
 
               {clienteBeckIdWatched && (
@@ -1454,7 +1470,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
                 size="small"
                 type="primary"
                 htmlType="submit"
-                loading={submitting}
+                loading={submitting || clientesLoading || contactosLoading}
                 className="border-none bg-sky-500 hover:bg-sky-600"
               >
                 {mode === "create" ? "Crear cotizacion" : "Guardar cambios"}
@@ -1462,6 +1478,7 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
             </div>
           </div>
         </div>
+        </Spin>
       </Form>
 
       {/* Modal rápido: Nuevo contacto */}

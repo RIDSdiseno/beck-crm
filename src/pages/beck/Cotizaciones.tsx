@@ -491,7 +491,6 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   const [cotizaciones, setCotizaciones] = useState<CotizacionListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
-  const [detalleLoading, setDetalleLoading] = useState(false);
   const [selectedCotizacion, setSelectedCotizacion] =
     useState<CotizacionListItem | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -501,6 +500,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
   const [saving, setSaving] = useState(false);
   const [editorLoading, setEditorLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [filaAbriendoId, setFilaAbriendoId] = useState<string | null>(null);
 
   const [filtroEstado, setFiltroEstado] = useState<string | undefined>();
   const [filtroOrigen, setFiltroOrigen] = useState<string | undefined>();
@@ -649,6 +649,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
 
     try {
       setEditorLoading(true);
+      setFilaAbriendoId(record.id);
       const response = await cotizacionesAPI.getById(record.id);
       setEditorMode("edit");
       setEditingRecord(mapCotizacion(response));
@@ -657,22 +658,22 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
       message.error(getErrorMessage(error, "No se pudo cargar la cotizacion"));
     } finally {
       setEditorLoading(false);
+      setFilaAbriendoId(null);
     }
   };
 
   const handleVerDetalle = async (id: string) => {
-    setDetalleOpen(true);
-    setDetalleLoading(true);
+    setFilaAbriendoId(id);
     setSelectedCotizacion(null);
 
     try {
       const response = await cotizacionesAPI.getById(id);
       setSelectedCotizacion(mapCotizacion(response));
+      setDetalleOpen(true);
     } catch (error) {
       message.error(getErrorMessage(error, "No se pudo cargar la cotizacion"));
-      setDetalleOpen(false);
     } finally {
-      setDetalleLoading(false);
+      setFilaAbriendoId(null);
     }
   };
 
@@ -993,6 +994,8 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
               type="text"
               size="small"
               icon={<EyeOutlined />}
+              loading={filaAbriendoId === record.id}
+              disabled={filaAbriendoId !== null && filaAbriendoId !== record.id}
               onClick={() => {
                 void handleVerDetalle(record.id);
               }}
@@ -1004,7 +1007,12 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
                 type="text"
                 size="small"
                 icon={<EditOutlined />}
-                disabled={saving || editorLoading}
+                loading={filaAbriendoId === record.id}
+                disabled={
+                  saving ||
+                  editorLoading ||
+                  (filaAbriendoId !== null && filaAbriendoId !== record.id)
+                }
                 onClick={() => {
                   void openEditar(record);
                 }}
@@ -1322,11 +1330,7 @@ const Cotizaciones: React.FC<CotizacionesProps> = ({ themeMode }) => {
           </Button>,
         ]}
       >
-        {detalleLoading ? (
-          <div className="py-10 text-center text-sm text-slate-500">
-            Cargando detalle...
-          </div>
-        ) : selectedCotizacion ? (
+        {selectedCotizacion ? (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="Nro.">
               {selectedCotizacion.numero}
