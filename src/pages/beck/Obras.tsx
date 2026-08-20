@@ -151,6 +151,7 @@ const trabajadorForbiddenCampos = new Set([
 ]);
 
 const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
+  { campo: "dimensiones", label: "Dimensiones", color: "azul", visible: false },
   { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
   { campo: "accesibilidad", label: "Accesibilidad", color: "azul", visible: false },
   { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
@@ -175,6 +176,7 @@ const matrixCampoLabels: Record<string, string> = {
   itemizado_mandante: "Itemizado Mandante",
   codigo_beck: "Código Beck",
   itemizado_beck: "Itemizado Beck",
+  dimensiones: "Dimensiones",
   fecha_ejecucion_sello: "Fecha ejecución sello",
   dia: "Día",
   diaSemana: "Día",
@@ -195,6 +197,7 @@ const clienteCampoLabels: Record<string, string> = {
 };
 
 const jefeObraConfigurableCampos = new Set([
+  "dimensiones",
   "eje_alfabetico",
   "eje_numerico",
   "recinto",
@@ -204,6 +207,7 @@ const jefeObraConfigurableCampos = new Set([
 ]);
 
 const trabajadorConfigurableCampos = new Set([
+  "dimensiones",
   "eje_alfabetico",
   "eje_numerico",
   "recinto",
@@ -219,6 +223,7 @@ const trabajadorProhibidoMatrixCampos = new Set([
 ]);
 
 const clienteConfigurableCampos = new Set([
+  "dimensiones",
   "codigo_beck",
   "itemizado_beck",
   "itemizado_mandante",
@@ -370,6 +375,7 @@ const getRegistroCampoColor = (
   const identity = `${campo} ${label}`;
 
   if (role === "ingenieria") {
+    if (campoKey === "dimensiones") return "azul";
     return isIngenieriaRojoCampo(campoKey) ? "rojo" : "verde";
   }
 

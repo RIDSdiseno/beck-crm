@@ -224,6 +224,7 @@ const renderDetalleSelloCortafuego = (
     <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
       <FieldView label="Codigo BECK" value={r.codigo} />
       <FieldView label="Itemizado BECK" value={r.itemizadoBeck} />
+      {showCampo("dimensiones") && <FieldView label="Dimensiones" value={r.dimensiones} />}
       <FieldView label="Itemizado Mandante" value={r.itemizadoMandanteNombre} span={2} />
       <FieldView
         label="Fecha ejecucion sello"

@@ -15,6 +15,7 @@ export type RegistroSello = {
   itemizadoMandanteId?: string;
   itemizadoMandanteNombre?: string;
   itemizadoBeck: string;
+  dimensiones?: string | null;
   itemizadoSacyr: string;
   fechaEjecucion: string; // ISO
   dia: string;

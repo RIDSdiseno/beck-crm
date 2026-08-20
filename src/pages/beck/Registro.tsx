@@ -72,6 +72,7 @@ type RegistroApiRecord = {
   dia_semana?: string | null;
   descripcionMaterial?: string | null;
   descripcion_material?: string | null;
+  dimensiones?: string | null;
   modulo?: string | null;
   recinto?: string | null;
   piso?: string | null;
@@ -356,6 +357,7 @@ const REGISTRO_COLUMN_ALIASES: Record<string, string[]> = {
   codigo_beck:                    ["codigoBeck", "codigo_beck"],
   itemizado_mandante:             ["itemizadoMandanteNombre", "itemizadoMandante"],
   itemizado_beck:                 ["itemizadoBeck", "itemizado_beck"],
+  dimensiones:                    ["dimensiones"],
   itemizado_sacyr:                ["itemizadoSacyr", "itemizado_sacyr"],
   obra:                           ["obraNombre", "obra"],
   usuario:                        ["usuarioNombre", "usuario"],
@@ -550,6 +552,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     obraNombre,
     usuarioNombre,
     itemizadoBeck: descripcionMaterial || `REG-${r.id.slice(0, 6)}`,
+    dimensiones: r.dimensiones ?? null,
     itemizadoMandanteId:
       r.itemizadoMandanteId ??
       r.itemizado_mandante_id ??
@@ -1072,6 +1075,14 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
           <span className="font-semibold text-orange-700">{displayValue(text)}</span>
         </div>
       ),
+    },
+    {
+      title: "Dimensiones",
+      dataIndex: "dimensiones",
+      key: "dimensiones",
+      width: 150,
+      excel: (record) => toExcelCellValue(displayValue(record.dimensiones)),
+      render: (text?: string | null) => displayValue(text),
     },
     {
       title: "Itemizado Mandante",
@@ -1689,6 +1700,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
     "tipoRegistro",
     "codigoBeck",
     "itemizadoBeck",
+    "dimensiones",
     "itemizadoMandanteNombre",
     "fechaEjecucion",
     "dia",

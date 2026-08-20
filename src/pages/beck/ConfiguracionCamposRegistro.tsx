@@ -73,6 +73,7 @@ const colorConfig: Record<
 };
 
 const camposRegistroNuevos: CampoConfiguracionRegistro[] = [
+  { campo: "dimensiones", label: "Dimensiones", color: "azul", visible: false },
   { campo: "factor_por_holguras", label: "Factor por holguras", color: "azul", visible: false },
   { campo: "accesibilidad", label: "Accesibilidad", color: "azul", visible: false },
   { campo: "cantidad_sellos_con_factores", label: "Cantidad sellos con factores", color: "azul", visible: false },
@@ -97,6 +98,7 @@ const matrixCampoLabels: Record<string, string> = {
   itemizado_mandante: "Itemizado Mandante",
   codigo_beck: "Código Beck",
   itemizado_beck: "Itemizado Beck",
+  dimensiones: "Dimensiones",
   fecha_ejecucion_sello: "Fecha ejecución sello",
   dia: "Día",
   diaSemana: "Día",
@@ -114,6 +116,7 @@ const matrixCampoLabels: Record<string, string> = {
 const MASTER_CAMPO_ORDER: string[] = [
   "codigo_beck",
   "itemizado_beck",
+  "dimensiones",
   "itemizado_mandante",
   "fecha_ejecucion_sello",
   "diaSemana",
@@ -144,6 +147,7 @@ const clienteCampoLabels: Record<string, string> = {
 };
 
 const jefeObraConfigurableCampos = new Set([
+  "dimensiones",
   "eje_alfabetico",
   "eje_numerico",
   "recinto",
@@ -157,6 +161,7 @@ const jefeObraConfigurableCampos = new Set([
 ]);
 
 const trabajadorConfigurableCampos = new Set([
+  "dimensiones",
   "eje_alfabetico",
   "eje_numerico",
   "recinto",
@@ -186,6 +191,7 @@ const isIngenieriaRojoCampo = (campo: unknown) =>
   ingenieriaRojoCampos.has(normalizeCampoKey(campo));
 
 const clienteConfigurableCampos = new Set([
+  "dimensiones",
   "codigo_beck",
   "itemizado_beck",
   "itemizado_mandante",
@@ -321,9 +327,11 @@ const normalizeFieldForRole = (
       ? clienteConfigurableCampos.has(campo)
       : trabajadorConfigurableCampos.has(campo);
   const color: ColorConfiguracionCampoRegistro = role === "ingenieria"
-    ? isIngenieriaRojoCampo(campo)
-      ? "rojo"
-      : "verde"
+    ? campo === "dimensiones"
+      ? "azul"
+      : isIngenieriaRojoCampo(campo)
+        ? "rojo"
+        : "verde"
     : siempreVisibleCampos.has(campo)
     ? "verde"
     : isTrabajadorProhibido

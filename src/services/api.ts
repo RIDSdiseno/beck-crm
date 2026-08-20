@@ -5119,6 +5119,7 @@ export interface ClienteRegistroValidado {
   material?: string | null;
   sellador?: string | null;
   itemizadoBeck?: string | null;
+  dimensiones?: string | null;
   itemizadoMandante?: string | null;
   fotosUrls?: string[] | null;
   fotoUrl?: string | null;

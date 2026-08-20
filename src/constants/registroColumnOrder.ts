@@ -13,6 +13,7 @@ const REGISTRO_COLUMN_KEY_ALIASES: Record<string, string> = {
 export const REGISTRO_PROCESAMIENTO_COLUMN_ORDER = [
   "codigoBeck",
   "itemizadoBeck",
+  "dimensiones",
   "itemizadoMandante",
   "fechaEjecucion",
   "dia",
