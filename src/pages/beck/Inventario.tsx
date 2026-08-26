@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import Barcode from "react-barcode";
+import JsBarcode from "jsbarcode";
+import { jsPDF } from "jspdf";
 import {
   Badge,
   Button,
   Descriptions,
-  Drawer,
   Form,
   Input,
   InputNumber,
@@ -23,6 +25,7 @@ import type { ColumnsType } from "antd/es/table";
 import {
   BarcodeOutlined,
   CheckOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   FileExcelOutlined,
@@ -53,6 +56,14 @@ const dash = (value?: string | null) => value?.trim() || "-";
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString("es-CL") : "-");
 const dateInput = (value?: string | null) => (value ? value.slice(0, 10) : undefined);
 
+function getNombreItem(
+  row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta,
+  tabKey: TabKey
+): string {
+  if (tabKey === "herramientas") return (row as InventarioBeckHerramienta).nombre ?? "";
+  return (row as InventarioBeckEpp | InventarioBeckImplemento).item ?? "";
+}
+
 function buildParams(q: string, filtro: FiltroActivo): { q?: string; activo?: boolean } {
   const params: { q?: string; activo?: boolean } = {};
   if (q.trim()) params.q = q.trim();
@@ -67,6 +78,83 @@ function getErrorMessage(err: unknown, fallback: string): string {
     message?: string;
   } | null;
   return apiErr?.response?.data?.error || apiErr?.response?.data?.message || apiErr?.message || fallback;
+}
+
+type EtiquetaItem = { sku: string; nombre: string };
+
+const LABEL_W_MM = 60;
+const LABEL_H_MM = 32;
+const LABEL_GAP_MM = 4;
+const LABEL_PAGE_MARGIN_MM = 8;
+
+function renderBarcodeCanvas(sku: string): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  JsBarcode(canvas, sku, {
+    format: "CODE128",
+    displayValue: true,
+    fontSize: 16,
+    height: 45,
+    margin: 6,
+  });
+  return canvas;
+}
+
+function descargarEtiquetasPdf(items: EtiquetaItem[], filename: string) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const cols = Math.max(1, Math.floor((pageW - LABEL_PAGE_MARGIN_MM * 2 + LABEL_GAP_MM) / (LABEL_W_MM + LABEL_GAP_MM)));
+
+  let col = 0;
+  let x = LABEL_PAGE_MARGIN_MM;
+  let y = LABEL_PAGE_MARGIN_MM;
+
+  items.forEach((item, index) => {
+    if (index > 0) {
+      col += 1;
+      if (col >= cols) {
+        col = 0;
+        x = LABEL_PAGE_MARGIN_MM;
+        y += LABEL_H_MM + LABEL_GAP_MM;
+      } else {
+        x += LABEL_W_MM + LABEL_GAP_MM;
+      }
+    }
+    if (y + LABEL_H_MM > pageH - LABEL_PAGE_MARGIN_MM) {
+      doc.addPage();
+      col = 0;
+      x = LABEL_PAGE_MARGIN_MM;
+      y = LABEL_PAGE_MARGIN_MM;
+    }
+
+    doc.setDrawColor(200);
+    doc.rect(x, y, LABEL_W_MM, LABEL_H_MM);
+
+    const canvas = renderBarcodeCanvas(item.sku);
+    const availW = LABEL_W_MM - 6;
+    const availH = LABEL_H_MM - 12;
+    const aspect = canvas.width / canvas.height;
+    let imgW = availW;
+    let imgH = imgW / aspect;
+    if (imgH > availH) {
+      imgH = availH;
+      imgW = imgH * aspect;
+    }
+    const imgX = x + (LABEL_W_MM - imgW) / 2;
+    const imgY = y + 3;
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", imgX, imgY, imgW, imgH);
+
+    if (item.nombre) {
+      doc.setFontSize(7);
+      doc.setTextColor(80);
+      doc.text(item.nombre, x + LABEL_W_MM / 2, y + LABEL_H_MM - 3, {
+        align: "center",
+        maxWidth: LABEL_W_MM - 6,
+      });
+    }
+  });
+
+  doc.save(filename);
 }
 
 type ToolbarProps = {
@@ -143,6 +231,13 @@ const Inventario: React.FC = () => {
   const [herramientas, setHerramientas] = useState<InventarioBeckHerramienta[]>([]);
   const [generandoSkuId, setGenerandoSkuId] = useState<string | null>(null);
   const [generandoSkuMasivo, setGenerandoSkuMasivo] = useState(false);
+
+  const [eppModoSeleccion, setEppModoSeleccion] = useState(false);
+  const [eppSeleccionados, setEppSeleccionados] = useState<React.Key[]>([]);
+  const [implementosModoSeleccion, setImplementosModoSeleccion] = useState(false);
+  const [implementosSeleccionados, setImplementosSeleccionados] = useState<React.Key[]>([]);
+  const [herramientasModoSeleccion, setHerramientasModoSeleccion] = useState(false);
+  const [herramientasSeleccionadas, setHerramientasSeleccionadas] = useState<React.Key[]>([]);
 
   const [eppForm] = Form.useForm<InventarioBeckEppPayload>();
   const [implementoForm] = Form.useForm<InventarioBeckImplementoPayload>();
@@ -316,6 +411,34 @@ const Inventario: React.FC = () => {
     }
   };
 
+  const descargarEtiquetaUna = (row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta, tabKey: TabKey) => {
+    if (!row.sku?.trim()) {
+      message.warning("Este registro no tiene SKU");
+      return;
+    }
+    descargarEtiquetasPdf([{ sku: row.sku, nombre: getNombreItem(row, tabKey) }], `etiqueta-${row.sku}.pdf`);
+  };
+
+  const descargarEtiquetasSeleccionadas = (
+    dataset: (InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta)[],
+    keys: React.Key[],
+    tabKey: TabKey
+  ) => {
+    const seleccionados = dataset.filter((row) => keys.includes(row.id));
+    const items = seleccionados
+      .filter((row) => row.sku?.trim())
+      .map((row) => ({ sku: row.sku as string, nombre: getNombreItem(row, tabKey) }));
+    const sinSku = seleccionados.length - items.length;
+    if (items.length === 0) {
+      message.warning("Los registros seleccionados no tienen SKU");
+      return;
+    }
+    descargarEtiquetasPdf(items, `etiquetas-${tabKey}-${items.length}.pdf`);
+    if (sinSku > 0) {
+      message.warning(`${sinSku} registro(s) sin SKU no se incluyeron`);
+    }
+  };
+
   const refrescarHojasImportadas = async (resultado: InventarioBeckImportResultado) => {
     const params = buildParams(q, filtroActivo);
     const requests: Promise<void>[] = [];
@@ -359,6 +482,9 @@ const Inventario: React.FC = () => {
       render: (_: unknown, row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta) => (
         <Space size="small" wrap>
           <Button type="text" size="small" icon={<EyeOutlined />} title="Ver" onClick={() => abrirDetalle(row)} />
+          {row.sku?.trim() && (
+            <Button type="text" size="small" icon={<DownloadOutlined />} title="Descargar etiqueta" onClick={() => descargarEtiquetaUna(row, tab)} />
+          )}
           {canEditInventario && (
             <Button type="text" size="small" icon={<EditOutlined />} title="Editar" onClick={() => abrirEditar(row)} />
           )}
@@ -403,6 +529,9 @@ const Inventario: React.FC = () => {
       render: (_: unknown, row: InventarioBeckEpp) => (
         <Space size="small" wrap>
           <Button type="text" size="small" icon={<EyeOutlined />} title="Ver" onClick={() => abrirDetalle(row)} />
+          {row.sku?.trim() && (
+            <Button type="text" size="small" icon={<DownloadOutlined />} title="Descargar etiqueta" onClick={() => descargarEtiquetaUna(row, "epp")} />
+          )}
           {canEditInventario && (
             <Button type="text" size="small" icon={<EditOutlined />} title="Editar" onClick={() => abrirEditar(row)} />
           )}
@@ -551,13 +680,20 @@ const Inventario: React.FC = () => {
     if (!selected) return null;
     const entries = Object.entries(selected).filter(([key]) => !["id", "createdAt", "updatedAt"].includes(key));
     return (
-      <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered>
-        {entries.map(([key, value]) => (
-          <Descriptions.Item key={key} label={key}>
-            {key === "activo" ? <EstadoBadge activo={Boolean(value)} /> : value == null || value === "" ? "-" : String(["fecha", "fechaCompra", "fechaMantencion"].includes(key) ? formatDate(value as string) : value)}
-          </Descriptions.Item>
-        ))}
-      </Descriptions>
+      <div className="flex flex-col gap-4">
+        {selected.sku?.trim() && (
+          <div className="flex justify-center overflow-x-auto rounded-lg border border-slate-200 bg-white p-3">
+            <Barcode value={selected.sku} height={60} fontSize={14} margin={0} />
+          </div>
+        )}
+        <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered>
+          {entries.map(([key, value]) => (
+            <Descriptions.Item key={key} label={key}>
+              {key === "activo" ? <EstadoBadge activo={Boolean(value)} /> : value == null || value === "" ? "-" : String(["fecha", "fechaCompra", "fechaMantencion"].includes(key) ? formatDate(value as string) : value)}
+            </Descriptions.Item>
+          ))}
+        </Descriptions>
+      </div>
     );
   };
 
@@ -599,8 +735,26 @@ const Inventario: React.FC = () => {
               children: (
                 <Space direction="vertical" size="middle" className="w-full">
                   <Toolbar q={q} filtro={filtroActivo} canEdit={canEditInventario} nuevoLabel="Nuevo EPP" onQChange={setQ} onFiltroChange={setFiltroActivo} onBuscar={() => void cargar()} onNuevo={abrirCrear} />
-                  {canEditInventario && (
-                    <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {eppModoSeleccion && eppSeleccionados.length > 0 && (
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => descargarEtiquetasSeleccionadas(epp, eppSeleccionados, "epp")}
+                      >
+                        Descargar etiquetas ({eppSeleccionados.length})
+                      </Button>
+                    )}
+                    <Button
+                      type={eppModoSeleccion ? "default" : undefined}
+                      danger={eppModoSeleccion}
+                      onClick={() => {
+                        setEppModoSeleccion((v) => !v);
+                        setEppSeleccionados([]);
+                      }}
+                    >
+                      {eppModoSeleccion ? "Cancelar selección" : "Seleccionar"}
+                    </Button>
+                    {canEditInventario && (
                       <Button
                         icon={<BarcodeOutlined />}
                         loading={generandoSkuMasivo}
@@ -608,9 +762,18 @@ const Inventario: React.FC = () => {
                       >
                         Generar SKU faltantes
                       </Button>
-                    </div>
-                  )}
-                  <Table dataSource={epp} columns={eppColumns} rowKey="id" loading={loading} size="small" scroll={{ x: 1180 }} pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} EPP` }} />
+                    )}
+                  </div>
+                  <Table
+                    dataSource={epp}
+                    columns={eppColumns}
+                    rowKey="id"
+                    loading={loading}
+                    size="small"
+                    scroll={{ x: 1180 }}
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} EPP` }}
+                    rowSelection={eppModoSeleccion ? { selectedRowKeys: eppSeleccionados, onChange: setEppSeleccionados } : undefined}
+                  />
                 </Space>
               ),
             },
@@ -620,7 +783,36 @@ const Inventario: React.FC = () => {
               children: (
                 <Space direction="vertical" size="middle" className="w-full">
                   <Toolbar q={q} filtro={filtroActivo} canEdit={canEditInventario} nuevoLabel="Nuevo implemento" onQChange={setQ} onFiltroChange={setFiltroActivo} onBuscar={() => void cargar()} onNuevo={abrirCrear} />
-                  <Table dataSource={implementos} columns={implementoColumns} rowKey="id" loading={loading} size="small" scroll={{ x: 1300 }} pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} implementos` }} />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {implementosModoSeleccion && implementosSeleccionados.length > 0 && (
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => descargarEtiquetasSeleccionadas(implementos, implementosSeleccionados, "implementos")}
+                      >
+                        Descargar etiquetas ({implementosSeleccionados.length})
+                      </Button>
+                    )}
+                    <Button
+                      type={implementosModoSeleccion ? "default" : undefined}
+                      danger={implementosModoSeleccion}
+                      onClick={() => {
+                        setImplementosModoSeleccion((v) => !v);
+                        setImplementosSeleccionados([]);
+                      }}
+                    >
+                      {implementosModoSeleccion ? "Cancelar selección" : "Seleccionar"}
+                    </Button>
+                  </div>
+                  <Table
+                    dataSource={implementos}
+                    columns={implementoColumns}
+                    rowKey="id"
+                    loading={loading}
+                    size="small"
+                    scroll={{ x: 1300 }}
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} implementos` }}
+                    rowSelection={implementosModoSeleccion ? { selectedRowKeys: implementosSeleccionados, onChange: setImplementosSeleccionados } : undefined}
+                  />
                 </Space>
               ),
             },
@@ -630,7 +822,36 @@ const Inventario: React.FC = () => {
               children: (
                 <Space direction="vertical" size="middle" className="w-full">
                   <Toolbar q={q} filtro={filtroActivo} canEdit={canEditInventario} nuevoLabel="Nueva herramienta" onQChange={setQ} onFiltroChange={setFiltroActivo} onBuscar={() => void cargar()} onNuevo={abrirCrear} />
-                  <Table dataSource={herramientas} columns={herramientaColumns} rowKey="id" loading={loading} size="small" scroll={{ x: 1220 }} pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} herramientas` }} />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {herramientasModoSeleccion && herramientasSeleccionadas.length > 0 && (
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => descargarEtiquetasSeleccionadas(herramientas, herramientasSeleccionadas, "herramientas")}
+                      >
+                        Descargar etiquetas ({herramientasSeleccionadas.length})
+                      </Button>
+                    )}
+                    <Button
+                      type={herramientasModoSeleccion ? "default" : undefined}
+                      danger={herramientasModoSeleccion}
+                      onClick={() => {
+                        setHerramientasModoSeleccion((v) => !v);
+                        setHerramientasSeleccionadas([]);
+                      }}
+                    >
+                      {herramientasModoSeleccion ? "Cancelar selección" : "Seleccionar"}
+                    </Button>
+                  </div>
+                  <Table
+                    dataSource={herramientas}
+                    columns={herramientaColumns}
+                    rowKey="id"
+                    loading={loading}
+                    size="small"
+                    scroll={{ x: 1220 }}
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} herramientas` }}
+                    rowSelection={herramientasModoSeleccion ? { selectedRowKeys: herramientasSeleccionadas, onChange: setHerramientasSeleccionadas } : undefined}
+                  />
                 </Space>
               ),
             },
@@ -653,16 +874,27 @@ const Inventario: React.FC = () => {
         {renderForm()}
       </Modal>
 
-      <Drawer
+      <Modal
         title="Detalle inventario"
         open={detailOpen}
-        onClose={() => setDetailOpen(false)}
+        onCancel={() => setDetailOpen(false)}
+        footer={selected ? [
+          selected.sku?.trim() && (
+            <Button key="descargar" icon={<DownloadOutlined />} onClick={() => descargarEtiquetaUna(selected, tab)}>
+              Descargar etiqueta
+            </Button>
+          ),
+          canEditInventario && (
+            <Button key="editar" icon={<EditOutlined />} onClick={() => abrirEditar(selected)}>Editar</Button>
+          ),
+        ] : null}
         width="92vw"
         style={{ maxWidth: 680 }}
-        extra={selected && canEditInventario ? <Button icon={<EditOutlined />} onClick={() => abrirEditar(selected)}>Editar</Button> : null}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
+        destroyOnClose
       >
         {renderDetalle()}
-      </Drawer>
+      </Modal>
 
       <Modal
         title="Importar Excel"
