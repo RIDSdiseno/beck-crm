@@ -588,7 +588,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {!collapsed && (
           <>
-            <p className="text-beck-muted/80">Versión 1.1</p>
+            <p className="text-beck-muted/80">Versión 1.2</p>
             <p className="text-beck-muted/80">
               Copyright 2025 BECK / Firemat / Trager
             </p>

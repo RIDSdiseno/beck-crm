@@ -31,12 +31,18 @@ import {
   FileExcelOutlined,
   InboxOutlined,
   PlusOutlined,
+  RollbackOutlined,
   SearchOutlined,
   StopOutlined,
   UploadOutlined,
+  UserSwitchOutlined,
 } from "@ant-design/icons";
 import {
   inventarioBeckAPI,
+  obrasAPI,
+  usuariosAPI,
+  type AsignacionInventarioBeck,
+  type EstadoAsignacionInventario,
   type InventarioBeckEpp,
   type InventarioBeckEppPayload,
   type InventarioBeckHerramienta,
@@ -44,24 +50,51 @@ import {
   type InventarioBeckImportResultado,
   type InventarioBeckImplemento,
   type InventarioBeckImplementoPayload,
+  type Obra,
+  type TipoInventarioBeckItem,
+  type UsuarioResumen,
 } from "../../services/api";
 import { usePermisos } from "../../hooks/usePermisos";
+import { useAuth } from "../../context/useAuth";
+import AsignarInventarioModal from "../../components/AsignarInventarioModal";
+import AsignarATrabajadorModal from "../../components/AsignarATrabajadorModal";
+import DevolverInventarioModal from "../../components/DevolverInventarioModal";
 
 const { Text, Title } = Typography;
 
 type FiltroActivo = "activos" | "inactivos" | "todos";
-type TabKey = "epp" | "implementos" | "herramientas";
+type TabKey = "epp" | "implementos" | "herramientas" | "asignaciones";
 
 const dash = (value?: string | null) => value?.trim() || "-";
+const capitalizar = (value?: string | null) => {
+  const v = value?.trim();
+  if (!v) return "-";
+  return v.charAt(0).toLocaleUpperCase("es-CL") + v.slice(1);
+};
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString("es-CL") : "-");
+const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString("es-CL") : "-");
 const dateInput = (value?: string | null) => (value ? value.slice(0, 10) : undefined);
 
 function getNombreItem(
   row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta,
   tabKey: TabKey
 ): string {
-  if (tabKey === "herramientas") return (row as InventarioBeckHerramienta).nombre ?? "";
-  return (row as InventarioBeckEpp | InventarioBeckImplemento).item ?? "";
+  const nombre = tabKey === "herramientas" ? (row as InventarioBeckHerramienta).nombre : (row as InventarioBeckEpp | InventarioBeckImplemento).item;
+  return nombre?.trim() ? capitalizar(nombre) : "";
+}
+
+function tabATipoItem(tabKey: TabKey): TipoInventarioBeckItem {
+  if (tabKey === "implementos") return "implemento";
+  if (tabKey === "herramientas") return "herramienta";
+  return "epp";
+}
+
+function getStockDisponible(
+  row: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta,
+  tabKey: TabKey
+): number {
+  if (tabKey === "herramientas") return 1;
+  return (row as InventarioBeckEpp | InventarioBeckImplemento).saldo ?? 0;
 }
 
 function buildParams(q: string, filtro: FiltroActivo): { q?: string; activo?: boolean } {
@@ -217,6 +250,8 @@ const EstadoBadge: React.FC<{ activo: boolean }> = ({ activo }) =>
 const Inventario: React.FC = () => {
   const { canEdit } = usePermisos();
   const canEditInventario = canEdit("beck_inventario");
+  const { user } = useAuth();
+  const esSupervisor = user?.rol === "JefeObra";
   const location = useLocation();
   const pendingHerramientaId = useRef<string | null>(null);
   const lastOpenedAlertTs = useRef<number | null>(null);
@@ -253,6 +288,40 @@ const Inventario: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<InventarioBeckImportResultado | null>(null);
 
+  const [asignarModalOpen, setAsignarModalOpen] = useState(false);
+  const [asignarTrabajadorModalOpen, setAsignarTrabajadorModalOpen] = useState(false);
+  const [devolverModalOpen, setDevolverModalOpen] = useState(false);
+  const [asignarItemInicial, setAsignarItemInicial] = useState<{
+    tipoItem: TipoInventarioBeckItem;
+    itemId: string;
+    nombre: string;
+    stockDisponible: number;
+  } | null>(null);
+
+  const [asignaciones, setAsignaciones] = useState<AsignacionInventarioBeck[]>([]);
+  const [obrasFiltro, setObrasFiltro] = useState<Obra[]>([]);
+  const [jefesObraFiltro, setJefesObraFiltro] = useState<UsuarioResumen[]>([]);
+  const [filtroObraId, setFiltroObraId] = useState<string | null>(null);
+  const [filtroJefeObraId, setFiltroJefeObraId] = useState<string | null>(null);
+
+  useEffect(() => {
+    obrasAPI.listar({ activa: true }).then(setObrasFiltro).catch(() => {});
+    usuariosAPI.listarJefesObra().then(setJefesObraFiltro).catch(() => {});
+  }, []);
+
+  const abrirAsignar = (row?: InventarioBeckEpp | InventarioBeckImplemento | InventarioBeckHerramienta) => {
+    if (esSupervisor) {
+      setAsignarTrabajadorModalOpen(true);
+      return;
+    }
+    setAsignarItemInicial(
+      row
+        ? { tipoItem: tabATipoItem(tab), itemId: row.id, nombre: getNombreItem(row, tab), stockDisponible: getStockDisponible(row, tab) }
+        : null
+    );
+    setAsignarModalOpen(true);
+  };
+
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
@@ -260,12 +329,20 @@ const Inventario: React.FC = () => {
       if (tab === "epp") setEpp(await inventarioBeckAPI.epp.listar(params));
       if (tab === "implementos") setImplementos(await inventarioBeckAPI.implementos.listar(params));
       if (tab === "herramientas") setHerramientas(await inventarioBeckAPI.herramientas.listar(params));
+      if (tab === "asignaciones") {
+        setAsignaciones(
+          await inventarioBeckAPI.asignaciones.listar({
+            obraId: filtroObraId ?? undefined,
+            jefeObraId: filtroJefeObraId ?? undefined,
+          })
+        );
+      }
     } catch {
       message.error("No se pudo cargar el inventario");
     } finally {
       setLoading(false);
     }
-  }, [filtroActivo, q, tab]);
+  }, [filtroActivo, q, tab, filtroObraId, filtroJefeObraId]);
 
   useEffect(() => {
     void cargar();
@@ -488,6 +565,9 @@ const Inventario: React.FC = () => {
           {canEditInventario && (
             <Button type="text" size="small" icon={<EditOutlined />} title="Editar" onClick={() => abrirEditar(row)} />
           )}
+          {canEditInventario && row.activo && !esSupervisor && (
+            <Button type="text" size="small" icon={<UserSwitchOutlined />} title="Asignar a supervisor" onClick={() => abrirAsignar(row)} />
+          )}
           {canEditInventario && (
             row.activo ? (
               <Popconfirm
@@ -545,6 +625,9 @@ const Inventario: React.FC = () => {
               onClick={() => void generarSkuUno(row)}
             />
           )}
+          {canEditInventario && row.activo && !esSupervisor && (
+            <Button type="text" size="small" icon={<UserSwitchOutlined />} title="Asignar a supervisor" onClick={() => abrirAsignar(row)} />
+          )}
           {canEditInventario && (
             row.activo ? (
               <Popconfirm
@@ -580,7 +663,7 @@ const Inventario: React.FC = () => {
 
   const eppColumns: ColumnsType<InventarioBeckEpp> = [
     { title: "SKU", dataIndex: "sku", width: 110, render: dash },
-    { title: "Item", dataIndex: "item", width: 200, ellipsis: true, render: (v: string) => <Text strong>{v}</Text> },
+    { title: "Item", dataIndex: "item", width: 200, ellipsis: true, render: (v: string) => <Text strong>{capitalizar(v)}</Text> },
     { title: "Modelo / Marca", dataIndex: "modeloMarca", width: 160, ellipsis: true, render: dash },
     { title: "Unidad", dataIndex: "unidadMedida", width: 110, render: dash },
     { title: "Talla", dataIndex: "talla", width: 90, render: dash },
@@ -592,7 +675,7 @@ const Inventario: React.FC = () => {
 
   const implementoColumns: ColumnsType<InventarioBeckImplemento> = [
     { title: "SKU", dataIndex: "sku", width: 110, render: dash },
-    { title: "Item", dataIndex: "item", width: 190, ellipsis: true, render: (v: string) => <Text strong>{v}</Text> },
+    { title: "Item", dataIndex: "item", width: 190, ellipsis: true, render: (v: string) => <Text strong>{capitalizar(v)}</Text> },
     { title: "Modelo / Marca", dataIndex: "modeloMarca", width: 150, ellipsis: true, render: dash },
     { title: "Cantidad", dataIndex: "cantidad", width: 90, align: "right", render: (v: number) => v ?? 0 },
     { title: "Unidad", dataIndex: "unidadMedida", width: 130, render: dash },
@@ -606,7 +689,7 @@ const Inventario: React.FC = () => {
 
   const herramientaColumns: ColumnsType<InventarioBeckHerramienta> = [
     { title: "SKU", dataIndex: "sku", width: 120, render: dash },
-    { title: "Nombre", dataIndex: "nombre", width: 200, ellipsis: true, render: (v: string) => <Text strong>{v}</Text> },
+    { title: "Nombre", dataIndex: "nombre", width: 200, ellipsis: true, render: (v: string) => <Text strong>{capitalizar(v)}</Text> },
     { title: "Marca", dataIndex: "marca", width: 120, render: dash },
     { title: "Modelo", dataIndex: "modelo", width: 150, ellipsis: true, render: dash },
     { title: "Categoría", dataIndex: "categoria", width: 130, render: dash },
@@ -616,6 +699,35 @@ const Inventario: React.FC = () => {
     { title: "Encargado", dataIndex: "encargado", width: 140, ellipsis: true, render: dash },
     { title: "Estado", dataIndex: "activo", width: 95, render: (v: boolean) => <EstadoBadge activo={v} /> },
     actionColumn as ColumnsType<InventarioBeckHerramienta>[number],
+  ];
+
+  const TIPO_ITEM_LABEL: Record<TipoInventarioBeckItem, string> = {
+    epp: "EPP",
+    implemento: "Implemento",
+    herramienta: "Herramienta",
+  };
+
+  const asignacionesColumns: ColumnsType<AsignacionInventarioBeck> = [
+    { title: "Fecha", dataIndex: "createdAt", width: 150, render: formatDateTime },
+    { title: "Obra", width: 160, ellipsis: true, render: (_: unknown, row: AsignacionInventarioBeck) => row.obra?.nombre ?? "-" },
+    { title: "Tipo", dataIndex: "tipoItem", width: 110, render: (v: TipoInventarioBeckItem) => TIPO_ITEM_LABEL[v] },
+    {
+      title: "Item",
+      ellipsis: true,
+      render: (_: unknown, row: AsignacionInventarioBeck) => capitalizar(row.epp?.item ?? row.implemento?.item ?? row.herramienta?.nombre),
+    },
+    { title: "Cantidad", dataIndex: "cantidad", width: 90, align: "right" },
+    { title: "Asignado por", width: 160, ellipsis: true, render: (_: unknown, row: AsignacionInventarioBeck) => row.asignadoPor?.nombre ?? "-" },
+    { title: "Supervisor", width: 160, ellipsis: true, render: (_: unknown, row: AsignacionInventarioBeck) => row.jefeObra?.nombre ?? "-" },
+    { title: "Trabajador", width: 160, ellipsis: true, render: (_: unknown, row: AsignacionInventarioBeck) => row.trabajador?.nombre ?? "-" },
+    { title: "Observación", dataIndex: "observacion", ellipsis: true, render: dash },
+    {
+      title: "Estado",
+      dataIndex: "estado",
+      width: 110,
+      render: (v: EstadoAsignacionInventario) =>
+        v === "devuelto" ? <Badge status="default" text="Devuelto" /> : <Badge status="processing" text="Asignado" />,
+    },
   ];
 
   const renderForm = () => {
@@ -709,13 +821,17 @@ const Inventario: React.FC = () => {
             <Text type="secondary" className="text-xs">EPP, implementos y herramientas</Text>
           </div>
           {canEditInventario && (
-            <Button
-              icon={<FileExcelOutlined />}
-              onClick={() => setImportModalOpen(true)}
-              className="ml-auto"
-            >
-              Importar Excel
-            </Button>
+            <Space className="ml-auto">
+              <Button icon={<UserSwitchOutlined />} onClick={() => abrirAsignar()}>
+                Asignar
+              </Button>
+              <Button icon={<RollbackOutlined />} onClick={() => setDevolverModalOpen(true)}>
+                Devolver
+              </Button>
+              <Button icon={<FileExcelOutlined />} onClick={() => setImportModalOpen(true)}>
+                Importar Excel
+              </Button>
+            </Space>
           )}
         </div>
       </section>
@@ -855,6 +971,57 @@ const Inventario: React.FC = () => {
                 </Space>
               ),
             },
+            {
+              key: "asignaciones",
+              label: "Asignaciones",
+              children: (
+                <Space direction="vertical" size="middle" className="w-full">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <Space wrap>
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Filtrar por obra"
+                        className="!w-full sm:!w-[220px]"
+                        value={filtroObraId ?? undefined}
+                        onChange={(value) => setFiltroObraId(value ?? null)}
+                        options={obrasFiltro.map((obra) => ({ value: obra.id, label: obra.nombre }))}
+                      />
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Filtrar por supervisor"
+                        className="!w-full sm:!w-[220px]"
+                        value={filtroJefeObraId ?? undefined}
+                        onChange={(value) => setFiltroJefeObraId(value ?? null)}
+                        options={jefesObraFiltro.map((usuario) => ({ value: usuario.id, label: usuario.nombre }))}
+                      />
+                    </Space>
+                    {canEditInventario && (
+                      <Space>
+                        <Button icon={<RollbackOutlined />} onClick={() => setDevolverModalOpen(true)}>
+                          Devolver
+                        </Button>
+                        <Button type="primary" icon={<UserSwitchOutlined />} onClick={() => abrirAsignar()}>
+                          Asignar
+                        </Button>
+                      </Space>
+                    )}
+                  </div>
+                  <Table
+                    dataSource={asignaciones}
+                    columns={asignacionesColumns}
+                    rowKey="id"
+                    loading={loading}
+                    size="small"
+                    scroll={{ x: 1300 }}
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} asignaciones` }}
+                  />
+                </Space>
+              ),
+            },
           ]}
         />
       </section>
@@ -988,6 +1155,26 @@ const Inventario: React.FC = () => {
           )}
         </div>
       </Modal>
+
+      <AsignarInventarioModal
+        open={asignarModalOpen}
+        onClose={() => setAsignarModalOpen(false)}
+        onAsignado={() => void cargar()}
+        itemInicial={asignarItemInicial}
+      />
+
+      <AsignarATrabajadorModal
+        open={asignarTrabajadorModalOpen}
+        onClose={() => setAsignarTrabajadorModalOpen(false)}
+        onAsignado={() => void cargar()}
+      />
+
+      <DevolverInventarioModal
+        open={devolverModalOpen}
+        onClose={() => setDevolverModalOpen(false)}
+        onDevuelto={() => void cargar()}
+        soloSupervisor={esSupervisor && user ? { id: user.id, nombre: user.nombre } : undefined}
+      />
     </div>
   );
 };

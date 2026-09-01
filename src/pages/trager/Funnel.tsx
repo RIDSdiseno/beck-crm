@@ -864,7 +864,7 @@ const TragerFunnel: React.FC<{
   const loadUsuariosComercialesTrager = useCallback(async () => {
     setUsuariosComercialesTragerLoading(true);
     try {
-      const usuarios = await usuariosAPI.listarComerciales();
+      const usuarios = await usuariosAPI.listarComercialesTrager();
       setUsuariosComercialesTrager(usuarios);
     } catch {
       void message.error("No se pudo cargar la lista de responsables comerciales");

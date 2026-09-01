@@ -1632,6 +1632,13 @@ export const usuariosAPI = {
     return data;
   },
 
+  listarComercialesTrager: async (): Promise<UsuarioResumen[]> => {
+    const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
+      "/usuarios/comerciales-trager"
+    );
+    return unwrapApiResponse(response.data);
+  },
+
   listarComercialesFiremat: async (): Promise<UsuarioResumen[]> => {
     const response = await api.get<ApiResponseEnvelope<UsuarioResumen[]>>(
       "/usuarios/comerciales-firemat"
@@ -5373,6 +5380,71 @@ export interface InventarioBeckImportResultado {
   hojasIgnoradas: string[];
 }
 
+export type TipoInventarioBeckItem = "epp" | "implemento" | "herramienta";
+
+export interface AsignacionInventarioBeckLinea {
+  tipoItem: TipoInventarioBeckItem;
+  itemId: string;
+  cantidad: number;
+}
+
+export interface AsignacionInventarioBeckPayload {
+  obraId: string;
+  jefeObraId: string;
+  observacion?: string;
+  lineas: AsignacionInventarioBeckLinea[];
+}
+
+export type ObraAsignable = { id: string; nombre: string; codigo?: string | null };
+
+export type SupervisorAsignable = { id: string; nombre: string; email: string; vinculadoAObra: boolean };
+
+export type SupervisoresAsignablesResponse = {
+  supervisores: SupervisorAsignable[];
+  esFallback: boolean;
+};
+
+export type TrabajadoresAsignablesResponse = {
+  trabajadores: SupervisorAsignable[];
+  esFallback: boolean;
+};
+
+export type InventarioDisponibleSupervisorItem = {
+  tipoItem: TipoInventarioBeckItem;
+  itemId: string;
+  nombre: string;
+  disponible: number;
+};
+
+export type EstadoAsignacionInventario = "asignado" | "devuelto";
+
+export interface AsignacionInventarioBeck {
+  id: string;
+  obraId: string;
+  jefeObraId: string;
+  asignadoPorId: string;
+  tipoItem: TipoInventarioBeckItem;
+  eppId?: string | null;
+  implementoId?: string | null;
+  herramientaId?: string | null;
+  cantidad: number;
+  observacion?: string | null;
+  estado: EstadoAsignacionInventario;
+  devueltoAt?: string | null;
+  devueltoPorId?: string | null;
+  trabajadorId?: string | null;
+  reasignadoAt?: string | null;
+  createdAt: string;
+  obra?: { id: string; nombre: string; codigo?: string | null } | null;
+  jefeObra?: { id: string; nombre: string; email: string; rol?: string } | null;
+  asignadoPor?: { id: string; nombre: string; email: string } | null;
+  devueltoPor?: { id: string; nombre: string; email: string } | null;
+  trabajador?: { id: string; nombre: string; email: string } | null;
+  epp?: { id: string; item: string; sku?: string | null } | null;
+  implemento?: { id: string; item: string; sku?: string | null } | null;
+  herramienta?: { id: string; nombre: string; sku?: string | null } | null;
+}
+
 export const inventarioBeckAPI = {
   epp: {
     listar: async (params?: { q?: string; activo?: boolean }): Promise<InventarioBeckEpp[]> => {
@@ -5448,6 +5520,39 @@ export const inventarioBeckAPI = {
       return response.data;
     },
   },
+  obras: {
+    listar: async (): Promise<ObraAsignable[]> => {
+      const response = await api.get<ApiResponseEnvelope<ObraAsignable[]>>("/inventario-beck/obras");
+      return unwrapApiResponse(response.data);
+    },
+  },
+  supervisores: {
+    listar: async (obraId: string): Promise<SupervisoresAsignablesResponse> => {
+      const response = await api.get<ApiResponseEnvelope<SupervisoresAsignablesResponse>>(
+        "/inventario-beck/supervisores",
+        { params: { obraId } }
+      );
+      return unwrapApiResponse(response.data);
+    },
+  },
+  trabajadores: {
+    listar: async (obraId: string): Promise<TrabajadoresAsignablesResponse> => {
+      const response = await api.get<ApiResponseEnvelope<TrabajadoresAsignablesResponse>>(
+        "/inventario-beck/trabajadores",
+        { params: { obraId } }
+      );
+      return unwrapApiResponse(response.data);
+    },
+  },
+  miInventario: {
+    listar: async (obraId: string): Promise<InventarioDisponibleSupervisorItem[]> => {
+      const response = await api.get<ApiResponseEnvelope<InventarioDisponibleSupervisorItem[]>>(
+        "/inventario-beck/mi-inventario",
+        { params: { obraId } }
+      );
+      return unwrapApiResponse(response.data);
+    },
+  },
   importarExcel: async (file: File): Promise<InventarioBeckImportResultado> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -5460,6 +5565,29 @@ export const inventarioBeckAPI = {
       }
     );
     return unwrapApiResponse(response.data);
+  },
+  asignaciones: {
+    listar: async (params?: { obraId?: string; jefeObraId?: string }): Promise<AsignacionInventarioBeck[]> => {
+      const response = await api.get<ApiResponseEnvelope<AsignacionInventarioBeck[]>>(
+        "/inventario-beck/asignaciones",
+        { params }
+      );
+      return unwrapApiResponse(response.data);
+    },
+    crear: async (payload: AsignacionInventarioBeckPayload): Promise<AsignacionInventarioBeck[]> => {
+      const response = await api.post<ApiResponseEnvelope<AsignacionInventarioBeck[]>>(
+        "/inventario-beck/asignaciones",
+        payload
+      );
+      return unwrapApiResponse(response.data);
+    },
+    devolver: async (id: string): Promise<AsignacionInventarioBeck> => {
+      const response = await api.patch<ApiResponseEnvelope<AsignacionInventarioBeck>>(
+        `/inventario-beck/asignaciones/${id}/devolver`,
+        {}
+      );
+      return unwrapApiResponse(response.data);
+    },
   },
 };
 

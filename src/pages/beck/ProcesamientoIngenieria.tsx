@@ -155,8 +155,13 @@ type RegistroUpdatePayload = {
   nombre_sellador: string;
   holgura: number;
   accesibilidad: number;
+  aislacion?: number | string | null;
+  reparacion_tabique?: number | string | null;
   observaciones: string;
   fecha?: string;
+  itemizadoMandanteId?: string;
+  codigoBeck?: string;
+  estado?: string;
 };
 
 const normalizeEstado = (estado?: string | null): RegistroEstado => {
@@ -842,9 +847,16 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       nombre_sellador: values.nombreSellador,
       holgura: Number(values.holguraCm || 0),
       accesibilidad: Number(values.accesibilidad || 0),
+      aislacion: values.aislacion ?? null,
+      reparacion_tabique: values.reparacionTabique ?? null,
       observaciones: values.observaciones,
       fecha: values.fecha ? values.fecha.format("YYYY-MM-DD") : undefined,
+      itemizadoMandanteId: values.itemizadoMandanteId,
+      codigoBeck: values.codigoBeck,
     };
+    if (normalizeEstado(registroDetalle.estado) === "validado") {
+      payload.estado = "en_revision";
+    }
     setSavingDetalle(true);
     try {
       await api.put<RegistroUpdateResponse>(`/registros/${id}`, payload);
@@ -1224,7 +1236,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Aislación",
       key: "aislacion",
       width: 110,
-      render: (_, r) => formatDecimal(r.aislacion, 2),
+      render: (_, r) => {
+        const v = Number(r.aislacion);
+        if (v === 1.3) return "APLICA";
+        if (v === 1) return "NO APLICA";
+        return formatDecimal(r.aislacion, 2);
+      },
     },
     {
       title: "Cantidad de Sellos Aislación",
@@ -1236,7 +1253,12 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       title: "Reparación de tabique",
       key: "reparacion_tabique",
       width: 160,
-      render: (_, r) => formatDecimal(r.reparacionTabique, 2),
+      render: (_, r) => {
+        const v = Number(r.reparacionTabique);
+        if (v === 1) return "APLICA";
+        if (v === 0) return "NO APLICA";
+        return formatDecimal(r.reparacionTabique, 2);
+      },
     },
     {
       title: "Cantidad final",

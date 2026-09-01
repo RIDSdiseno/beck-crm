@@ -176,6 +176,7 @@ type RegistroUpdatePayload = {
   fecha?: string;
   itemizadoMandanteId?: string;
   codigoBeck?: string;
+  estado?: string;
 };
 
 type RegistroEstado = "pendiente" | "en_revision" | "validado" | "rechazado";
@@ -334,6 +335,20 @@ const formatDecimal = (value?: number | string | null, decimals = 2): string => 
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   });
+};
+
+const getAislacionLabel = (value?: number | string | null): string => {
+  const num = Number(value);
+  if (num === 1.3) return "APLICA";
+  if (num === 1) return "NO APLICA";
+  return formatDecimal(value, 2);
+};
+
+const getReparacionTabiqueLabel = (value?: number | string | null): string => {
+  const num = Number(value);
+  if (num === 1) return "APLICA";
+  if (num === 0) return "NO APLICA";
+  return formatDecimal(value, 2);
 };
 
 const normalizeSearchText = (value?: string | null): string =>
@@ -991,6 +1006,9 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         itemizadoMandanteId: values.itemizadoMandanteId,
         codigoBeck: values.codigoBeck,
       };
+    if (normalizeEstado(registroDetalle.estado) === "validado") {
+      payload.estado = "en_revision";
+    }
 
     setSavingDetalle(true);
     try {
@@ -1309,8 +1327,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Aislación",
       key: "aislacion",
       width: 110,
-      excel: (record) => toExcelCellValue(formatDecimal(record.aislacion, 2)),
-      render: (_: unknown, record: RegistroSello) => formatDecimal(record.aislacion, 2),
+      excel: (record) => toExcelCellValue(getAislacionLabel(record.aislacion)),
+      render: (_: unknown, record: RegistroSello) => getAislacionLabel(record.aislacion),
     },
     {
       title: "Cantidad de Sellos Aislación",
@@ -1324,8 +1342,8 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       title: "Reparación de tabique",
       key: "reparacion_tabique",
       width: 160,
-      excel: (record) => toExcelCellValue(formatDecimal(record.reparacionTabique, 2)),
-      render: (_: unknown, record: RegistroSello) => formatDecimal(record.reparacionTabique, 2),
+      excel: (record) => toExcelCellValue(getReparacionTabiqueLabel(record.reparacionTabique)),
+      render: (_: unknown, record: RegistroSello) => getReparacionTabiqueLabel(record.reparacionTabique),
     },
     {
       title: "Cantidad final",

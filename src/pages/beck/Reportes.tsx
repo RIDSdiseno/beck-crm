@@ -828,7 +828,11 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       title: "Aislación",
       key: "aislacion",
       width: 110,
-      render: (_: unknown, r: RegistroNorm) => r.aislacion?.toFixed?.(2) ?? "-",
+      render: (_: unknown, r: RegistroNorm) => {
+        if (r.aislacion === 1.3) return "APLICA";
+        if (r.aislacion === 1) return "NO APLICA";
+        return r.aislacion?.toFixed?.(2) ?? "-";
+      },
     },
     {
       title: "Cantidad de Sellos Aislación",
@@ -840,7 +844,11 @@ const Reportes: React.FC<ReportesProps> = ({ themeMode }) => {
       title: "Reparación de tabique",
       key: "reparacionTabique",
       width: 160,
-      render: (_: unknown, r: RegistroNorm) => r.reparacionTabique?.toFixed?.(2) ?? "-",
+      render: (_: unknown, r: RegistroNorm) => {
+        if (r.reparacionTabique === 1) return "APLICA";
+        if (r.reparacionTabique === 0) return "NO APLICA";
+        return r.reparacionTabique?.toFixed?.(2) ?? "-";
+      },
     },
     {
       title: "Cantidad final",
