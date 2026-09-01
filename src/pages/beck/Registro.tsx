@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, DatePicker, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
+import { Button, Card, DatePicker, Input, Modal, Segmented, Select, Table, Tag, Switch, Tooltip, message } from "antd";
 import {
   FireOutlined,
   TableOutlined,
@@ -10,6 +10,7 @@ import {
   TeamOutlined,
   UploadOutlined,
   FileExcelOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { ThemeMode } from "../../hooks/useSystemTheme";
@@ -711,6 +712,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   }, [cargarRegistros]);
 
   const [obraSeleccionada, setObraSeleccionada] = useState<string>("");
+  const [textoBusqueda, setTextoBusqueda] = useState<string>("");
   const [rangoFechas, setRangoFechas] = useState<[Dayjs, Dayjs] | null>(null);
   const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState<
     "pendientes_revision" | "validados" | "validados_cliente" | "rechazados" | "todos"
@@ -813,8 +815,13 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const filteredData = useMemo(
     () =>
       data.filter((r) => {
+        const textoQuery = normalizeSearchText(textoBusqueda);
         if (tipoSeleccionado !== "todos" && getTipoRegistro(r) !== tipoSeleccionado) return false;
         if (obraSeleccionada && normalizeSearchText(r.obraNombre) !== normalizeSearchText(obraSeleccionada)) return false;
+        if (
+          textoQuery &&
+          !normalizeSearchText([r.codigo, r.numeroSello].filter(Boolean).join(" ")).includes(textoQuery)
+        ) return false;
         if (rangoFechas) {
           const d = dayjs(dayjs.utc(r.fechaEjecucion).format("YYYY-MM-DD"));
           const [start, end] = rangoFechas;
@@ -831,7 +838,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         }
         return true;
       }),
-    [data, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroEstadoRegistro]
+    [data, textoBusqueda, tipoSeleccionado, obraSeleccionada, rangoFechas, filtroEstadoRegistro]
   );
 
   const registrosExportables = useMemo(
@@ -2636,6 +2643,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
               size="small"
               onClick={() => {
                 setObraSeleccionada("");
+                setTextoBusqueda("");
                 setRangoFechas(null);
                 setTipoSeleccionado("todos");
                 setFiltroEstadoRegistro("todos");
@@ -2660,6 +2668,16 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
             <FilterOutlined className="text-amber-600 text-[11px]" />
             <span className="text-slate-800">Filtros rápidos</span>
           </div>
+
+          <Input
+            allowClear
+            size="small"
+            className="w-full sm:w-[260px] sm:min-w-[220px] sm:shrink-0"
+            placeholder="Buscar número de registro o sello"
+            prefix={<SearchOutlined className="text-slate-400" />}
+            value={textoBusqueda}
+            onChange={(event) => setTextoBusqueda(event.target.value)}
+          />
 
           <Select
             size="small"

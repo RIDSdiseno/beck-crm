@@ -315,7 +315,9 @@ const getRegistroObraNombre = (r: RegistroApiRecord): string =>
 
 const getRegistroTextoSearchText = (r: RegistroIngenieria): string =>
   normalizeSearchText(
-    [r.codigoBeck, r.itemizadoBeck, r.nombreSellador].filter(Boolean).join(" ")
+    [r.codigo, r.numeroSello, r.codigoBeck, r.itemizadoBeck, r.nombreSellador]
+      .filter(Boolean)
+      .join(" ")
   );
 
 const getRegistroObraEmpresaSearchText = (r: RegistroIngenieria): string =>
@@ -1003,16 +1005,6 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
             )}
           </>
         )}
-        {estado === "rechazado" && canEditIngenieria && (
-          <Button
-            size="small"
-            className="px-2"
-            loading={loadingEstado}
-            onClick={() => void handleCambiarEstado(record, "pendiente")}
-          >
-            Reenviar a revisión
-          </Button>
-        )}
         {estadoInspeccion === "no_enviado" && canEditIngenieria && (
           <Button
             size="small"
@@ -1495,7 +1487,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end">
           <Input
             allowClear
-            placeholder="Buscar código BECK, itemizado BECK o sellador"
+            placeholder="Buscar registro, sello, código BECK, itemizado o sellador"
             prefix={<SearchOutlined className="text-slate-400" />}
             value={textoBusqueda}
             onChange={(e) => setTextoBusqueda(e.target.value)}
