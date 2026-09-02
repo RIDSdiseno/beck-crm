@@ -63,6 +63,7 @@ import DevolverInventarioModal from "../../components/DevolverInventarioModal";
 const { Text, Title } = Typography;
 
 type FiltroActivo = "activos" | "inactivos" | "todos";
+type FiltroEstadoAsignacion = EstadoAsignacionInventario | "todos";
 type TabKey = "epp" | "implementos" | "herramientas" | "asignaciones";
 
 const dash = (value?: string | null) => value?.trim() || "-";
@@ -303,6 +304,7 @@ const Inventario: React.FC = () => {
   const [jefesObraFiltro, setJefesObraFiltro] = useState<UsuarioResumen[]>([]);
   const [filtroObraId, setFiltroObraId] = useState<string | null>(null);
   const [filtroJefeObraId, setFiltroJefeObraId] = useState<string | null>(null);
+  const [filtroEstadoAsignacion, setFiltroEstadoAsignacion] = useState<FiltroEstadoAsignacion>("asignado");
 
   useEffect(() => {
     obrasAPI.listar({ activa: true }).then(setObrasFiltro).catch(() => {});
@@ -334,6 +336,7 @@ const Inventario: React.FC = () => {
           await inventarioBeckAPI.asignaciones.listar({
             obraId: filtroObraId ?? undefined,
             jefeObraId: filtroJefeObraId ?? undefined,
+            estado: filtroEstadoAsignacion === "todos" ? undefined : filtroEstadoAsignacion,
           })
         );
       }
@@ -342,7 +345,7 @@ const Inventario: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filtroActivo, q, tab, filtroObraId, filtroJefeObraId]);
+  }, [filtroActivo, q, tab, filtroObraId, filtroJefeObraId, filtroEstadoAsignacion]);
 
   useEffect(() => {
     void cargar();
@@ -978,6 +981,17 @@ const Inventario: React.FC = () => {
                 <Space direction="vertical" size="middle" className="w-full">
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                     <Space wrap>
+                      <Select<FiltroEstadoAsignacion>
+                        aria-label="Filtrar asignaciones por estado"
+                        className="!w-full sm:!w-[180px]"
+                        value={filtroEstadoAsignacion}
+                        onChange={setFiltroEstadoAsignacion}
+                        options={[
+                          { value: "asignado", label: "Activas" },
+                          { value: "devuelto", label: "Devueltas" },
+                          { value: "todos", label: "Todas" },
+                        ]}
+                      />
                       <Select
                         allowClear
                         showSearch
@@ -1017,6 +1031,13 @@ const Inventario: React.FC = () => {
                     loading={loading}
                     size="small"
                     scroll={{ x: 1300 }}
+                    locale={{
+                      emptyText: filtroEstadoAsignacion === "asignado"
+                        ? "No hay asignaciones activas"
+                        : filtroEstadoAsignacion === "devuelto"
+                          ? "No hay asignaciones devueltas"
+                          : "No hay asignaciones",
+                    }}
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} asignaciones` }}
                   />
                 </Space>

@@ -5575,7 +5575,7 @@ export const inventarioBeckAPI = {
     return unwrapApiResponse(response.data);
   },
   asignaciones: {
-    listar: async (params?: { obraId?: string; jefeObraId?: string }): Promise<AsignacionInventarioBeck[]> => {
+    listar: async (params?: { obraId?: string; jefeObraId?: string; estado?: EstadoAsignacionInventario }): Promise<AsignacionInventarioBeck[]> => {
       const response = await api.get<ApiResponseEnvelope<AsignacionInventarioBeck[]>>(
         "/inventario-beck/asignaciones",
         { params }
