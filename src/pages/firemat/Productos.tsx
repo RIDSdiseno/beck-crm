@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -17,6 +18,8 @@ import type { ColumnsType } from "antd/es/table";
 import {
   AppstoreOutlined,
   ClearOutlined,
+  DownOutlined,
+  EyeInvisibleOutlined,
   EyeOutlined,
   FilePdfOutlined,
   PictureOutlined,
@@ -96,6 +99,7 @@ type FormValues = {
   precioUsd?: number;
   precio: number;
   precioSugerido?: number;
+  precioInstalador?: number;
   stockMinimo: number;
   stockInicial?: number;
   ubicacion?: string;
@@ -153,6 +157,7 @@ const ModalProducto: React.FC<{
         precioUsd: producto.precioUsd ?? undefined,
         precio: producto.precioClp ?? producto.precio,
         precioSugerido: producto.precioSugerido ?? undefined,
+        precioInstalador: producto.precioInstalador ?? undefined,
         stockMinimo: producto.stockMinimo ?? producto.minStock,
         stockInicial: producto.stockInicial ?? 0,
         ubicacion: producto.ubicacion ?? undefined,
@@ -219,6 +224,7 @@ const ModalProducto: React.FC<{
         precio: values.precio,
         precioUsd: values.precioUsd ?? null,
         precioSugerido: values.precioSugerido ?? null,
+        precioInstalador: values.precioInstalador ?? null,
         disponibilidad: values.disponibilidad,
         formato: values.formato || null,
         cantidadCaja: values.cantidadCaja?.trim() || null,
@@ -368,6 +374,20 @@ const ModalProducto: React.FC<{
           </Form.Item>
 
           <Form.Item
+            name="precioInstalador"
+            label="Precio instalador"
+            rules={[{ type: "number", min: 0, message: "Precio instalador debe ser >= 0" }]}
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              formatter={(v) => `$ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+              parser={(v) => (Number(v?.replace(/\$\s?|\./g, "") ?? 0) as 0)}
+            />
+          </Form.Item>
+
+          <Form.Item
             name="stockMinimo"
             label="Stock mínimo"
             tooltip="Cantidad mínima de stock disponible que debe mantenerse. Cuando el stock disponible cae a este nivel o menos, el producto se marca como bajo stock (se resalta en rojo) para avisar que hay que reponerlo."
@@ -471,6 +491,9 @@ const ResultadoImportProductos: React.FC<{ result: ImportarPdfProductosResult }>
       {[
         { label: "Creados", value: result.creados, color: "text-green-600" },
         { label: "Actualizados", value: result.actualizados, color: "text-blue-600" },
+        ...(result.noEncontrados !== undefined
+          ? [{ label: "No encontrados", value: result.noEncontrados, color: "text-orange-500" }]
+          : []),
         { label: "Omitidos", value: result.omitidos, color: "text-gray-500" },
         { label: "Errores", value: result.errores.length, color: result.errores.length > 0 ? "text-red-500" : "text-gray-500" },
       ].map(({ label, value, color }) => (
@@ -703,6 +726,8 @@ const FirematProductos: React.FC = () => {
   const [q, setQ] = useState("");
   const [activo, setActivo] = useState<"" | "true" | "false">("");
   const [categoriaFiltroId, setCategoriaFiltroId] = useState<number | undefined>();
+  const [verPrecioInstalador, setVerPrecioInstalador] = useState(false);
+  const [pdfImportModo, setPdfImportModo] = useState<"general" | "instalador">("general");
   const [categorias, setCategorias] = useState<CategoriaFiremat[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
 
@@ -775,11 +800,12 @@ const FirematProductos: React.FC = () => {
     setSeleccionado(null);
   };
 
-  const abrirImportarPdf = () => {
+  const abrirImportarPdf = (modo: "general" | "instalador") => {
     if (!canEditProductos) {
       void message.error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
       return;
     }
+    setPdfImportModo(modo);
     setPdfModalOpen(true);
   };
 
@@ -810,7 +836,7 @@ const FirematProductos: React.FC = () => {
       throw new Error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
     }
     try {
-      return await firematProductosAPI.importarListaPreciosPdf(file);
+      return await firematProductosAPI.importarListaPreciosPdf(file, pdfImportModo);
     } catch (err: unknown) {
       if ((err as { response?: { status?: number } })?.response?.status === 403) {
         throw new Error(EDIT_PRODUCTOS_FIREMAT_PERMISSION_MESSAGE);
@@ -932,6 +958,20 @@ const FirematProductos: React.FC = () => {
         <span className="tabular-nums">{formatCLP(v)}</span>
       ),
     },
+    ...(verPrecioInstalador
+      ? [
+          {
+            title: "Precio instalador",
+            dataIndex: "precioInstalador",
+            key: "precioInstalador",
+            width: 130,
+            align: "right" as const,
+            render: (v: number | null | undefined) => (
+              <span className="tabular-nums">{formatCLP(v)}</span>
+            ),
+          },
+        ]
+      : []),
     {
       title: "Stock",
       key: "stockActual",
@@ -1037,12 +1077,20 @@ const FirematProductos: React.FC = () => {
             >
               Nuevo producto
             </Button>
-            <Button
-              icon={<FilePdfOutlined />}
-              onClick={abrirImportarPdf}
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: [
+                  { key: "general", label: "Lista general" },
+                  { key: "instalador", label: "Lista instaladores" },
+                ],
+                onClick: ({ key }) => abrirImportarPdf(key as "general" | "instalador"),
+              }}
             >
-              Importar lista de precios PDF
-            </Button>
+              <Button icon={<FilePdfOutlined />}>
+                Importar lista de precios PDF <DownOutlined />
+              </Button>
+            </Dropdown>
             <Button
               className="firemat-action-button"
               icon={<TagsOutlined />}
@@ -1101,6 +1149,14 @@ const FirematProductos: React.FC = () => {
               Limpiar filtros
             </Button>
           )}
+          <Button
+            type={verPrecioInstalador ? "primary" : "default"}
+            icon={verPrecioInstalador ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+            onClick={() => setVerPrecioInstalador((v) => !v)}
+            className="sm:ml-auto"
+          >
+            {verPrecioInstalador ? "Ocultar precio instalador" : "Ver precio instalador"}
+          </Button>
         </div>
       </section>
 
@@ -1142,7 +1198,7 @@ const FirematProductos: React.FC = () => {
 
       <ImportarPdfModal<ImportarPdfProductosResult>
         open={pdfModalOpen && canEditProductos}
-        titulo="Importar lista de precios PDF"
+        titulo={pdfImportModo === "instalador" ? "Importar lista de precios — Instaladores" : "Importar lista de precios PDF"}
         onClose={() => setPdfModalOpen(false)}
         onImportado={() => void cargar()}
         importar={importarListaPreciosPdf}

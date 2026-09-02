@@ -2050,6 +2050,7 @@ export type ProductoFiremat = {
   precioClp?: number | null;
   precioUsd?: number | null;
   precioSugerido?: number | null;
+  precioInstalador?: number | null;
   disponibilidad?: string | null;
   formato?: string | null;
   cantidadCaja?: string | null;
@@ -2081,6 +2082,7 @@ export type ProductoFirematPayload = {
   precio: number;
   precioUsd?: number | null;
   precioSugerido?: number | null;
+  precioInstalador?: number | null;
   disponibilidad?: string | null;
   formato?: string | null;
   cantidadCaja?: string | null;
@@ -2128,8 +2130,10 @@ export const firematCategoriasAPI = {
 };
 
 export type ImportarPdfProductosResult = {
+  modo?: "general" | "instalador";
   creados: number;
   actualizados: number;
+  noEncontrados?: number;
   omitidos: number;
   errores: string[];
   advertencias?: string[];
@@ -2211,9 +2215,13 @@ export const firematProductosAPI = {
     return unwrapApiResponse(response.data);
   },
 
-  importarListaPreciosPdf: async (file: File): Promise<ImportarPdfProductosResult> => {
+  importarListaPreciosPdf: async (
+    file: File,
+    modo?: "general" | "instalador"
+  ): Promise<ImportarPdfProductosResult> => {
     const formData = new FormData();
     formData.append("file", file, file.name);
+    if (modo) formData.append("modo", modo);
     const response = await api.post<ApiResponseEnvelope<ImportarPdfProductosResult>>(
       "/firemat/productos/importar-lista-precios-pdf",
       formData,
