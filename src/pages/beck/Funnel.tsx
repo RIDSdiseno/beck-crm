@@ -4405,7 +4405,9 @@
 
         const payload: CotizacionUpsertPayload = {
           numero: values.numero || undefined,
-          clienteNombre: values.cliente,
+          clienteNombre: values.cliente || "",
+          clienteBeckId: values.clienteBeckId || null,
+          contactoBeckId: values.contactoBeckId || null,
           funnelBeckId: values.funnelBeckId || null,
           responsableId: values.responsableId || null,
           subtotal,
