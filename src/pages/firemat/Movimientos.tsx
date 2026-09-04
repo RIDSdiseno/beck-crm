@@ -271,3 +271,8 @@ const FirematMovimientos: React.FC = () => {
 };
 
 export default FirematMovimientos;
+
+
+
+// YO ESTUVE AQUI: MAXIMILIANO GONZALEZ
+// TERMINEN TRAGGER, GITHUB: MAXI1004

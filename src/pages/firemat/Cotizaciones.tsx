@@ -1549,3 +1549,8 @@ const FirematCotizaciones: React.FC = () => {
 };
 
 export default FirematCotizaciones;
+
+
+
+// YO ESTUVE AQUI: MAXIMILIANO GONZALEZ
+// TERMINEN TRAGGER, GITHUB: MAXI1004

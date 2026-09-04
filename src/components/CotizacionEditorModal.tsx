@@ -1714,3 +1714,9 @@ const CotizacionEditorModal: React.FC<CotizacionEditorModalProps> = ({
 };
 
 export default CotizacionEditorModal;
+
+
+
+
+// YO ESTUVE AQUI: MAXIMILIANO GONZALEZ
+// TERMINEN TRAGGER, GITHUB: MAXI1004
