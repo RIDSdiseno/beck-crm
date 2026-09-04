@@ -23,9 +23,6 @@ import type { RegistroSello } from "../../types/registroSello";
 import RegistroDetalleModal, {
   type RegistroDetalleUpdateValues,
 } from "../../components/RegistroDetalleModal";
-import NuevoRegistroDrawer, {
-  type NuevoRegistroValues,
-} from "../../components/NuevoRegistroDrawer";
 import {
   api,
   configuracionCamposRegistroAPI,
@@ -195,13 +192,6 @@ type ImportarResponse = {
   duplicadosOmitidos?: number;
   advertencias?: string[];
   resultados?: ImportarResultadoHoja[];
-  message?: string;
-};
-
-type CreateRegistroResponse = {
-  success?: boolean;
-  data?: RegistroApiRecord;
-  warningTipoRegistro?: boolean;
   message?: string;
 };
 
@@ -636,7 +626,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const { user } = useAuth();
   const { canEdit, canView } = usePermisos();
-  const canCreateRegistro = canEdit("beck_registro");
   const canImportarExcel = canEdit("beck_registro");
   const canEditRegistro = canEdit("beck_registro");
   const canDownloadPdf = canView("beck_registro");
@@ -644,7 +633,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState<string>("todos");
 
-  const [openDrawer, setOpenDrawer] = useState(false);
   const [importando, setImportando] = useState(false);
   const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
   const [importResult, setImportResult] = useState<ImportarResponse | null>(null);
@@ -656,7 +644,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   const [camposConfigurados, setCamposConfigurados] = useState<CampoConfiguracionRegistro[]>([]);
   const [obrasLoading, setObrasLoading] = useState(false);
   const [savingDetalle, setSavingDetalle] = useState(false);
-  const [savingNuevoRegistro, setSavingNuevoRegistro] = useState(false);
   const [detalleMode, setDetalleMode] = useState<"view" | "edit">("view");
   const [reenviarRevisionId, setReenviarRevisionId] = useState<string | null>(null);
 
@@ -1825,60 +1812,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
   );
 
 
-  const handleSubmit = async (values: NuevoRegistroValues) => {
-    setSavingNuevoRegistro(true);
-    try {
-      const formData = new FormData();
-      formData.append("obra_id", values.obraId);
-      formData.append("tipo_registro", values.tipoRegistro);
-      formData.append("descripcion_material", values.itemizadoBeck);
-      formData.append("fecha", values.fechaEjecucion.format("YYYY-MM-DD"));
-      formData.append("piso", values.piso);
-      if (values.ejeAlfabetico) formData.append("eje_alfabetico", values.ejeAlfabetico);
-      if (values.ejeNumerico) formData.append("eje_numerico", values.ejeNumerico);
-      formData.append("nombre_sellador", values.nombreSellador);
-      formData.append("modulo", values.modulo || "");
-      if (values.recinto) formData.append("recinto", values.recinto);
-      if (values.numeroSello) formData.append("numero_sello", values.numeroSello);
-      if (values.cantidadSellos != null) formData.append("cantidad_sellos", String(values.cantidadSellos));
-      if (values.metrosLineales != null) formData.append("metros_lineales", String(values.metrosLineales));
-      formData.append("holgura", String(values.holguraCm ?? 0));
-      formData.append("accesibilidad", String(values.cieloModular ?? 1));
-      if (values.aislacion != null) formData.append("aislacion", String(values.aislacion));
-      if (values.reparacionTabique != null) formData.append("reparacion_tabique", String(values.reparacionTabique));
-      if (values.observaciones) formData.append("observaciones", values.observaciones);
-      if (values.fotoUrl) formData.append("foto_url", values.fotoUrl);
-      if (values.itemizadoMandanteId) formData.append("itemizado_mandante_id", values.itemizadoMandanteId);
-      if (values.codigoBeck) formData.append("codigo_beck", values.codigoBeck);
-      if (values.itemizadoSacyr) formData.append("itemizado_sacyr", values.itemizadoSacyr);
-      if (values.fotoArchivo) formData.append("foto", values.fotoArchivo);
-
-      const res = await api.post<CreateRegistroResponse>("/registros", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (res.data.warningTipoRegistro) {
-        message.warning("Registro guardado con advertencia: el tipo de registro no está configurado en la obra.");
-      } else {
-        message.success("Registro guardado correctamente");
-      }
-
-      await cargarRegistros();
-      setOpenDrawer(false);
-    } catch (error) {
-      console.error(error);
-      const status = (error as { response?: { status?: number; data?: { message?: string } } }).response?.status;
-      const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (status === 400 && msg) {
-        message.error(msg);
-      } else {
-        message.error("No se pudo guardar el registro");
-      }
-    } finally {
-      setSavingNuevoRegistro(false);
-    }
-  };
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (importando) return;
 
@@ -2446,16 +2379,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         </div>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {canCreateRegistro && (
-            <Button
-              type="primary"
-              icon={<FireOutlined />}
-              className="bg-orange-500 hover:bg-orange-600 border-none text-xs"
-              onClick={() => setOpenDrawer(true)}
-            >
-              Nuevo registro
-            </Button>
-          )}
           {canImportarExcel && (
             <>
               <input
@@ -3153,18 +3076,6 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
         rendimientoSellosEsperadoDiario={registroDetalle?.rendimientoSellosEsperadoDiario}
         rendimientoReparacionEsperadoDiario={registroDetalle?.rendimientoReparacionEsperadoDiario}
       />
-      {/* Drawer nuevo registro (desde la derecha) */}
-      {canCreateRegistro && (
-        <NuevoRegistroDrawer
-          open={openDrawer}
-          onClose={() => setOpenDrawer(false)}
-          onSubmit={handleSubmit}
-          itemizadosMandante={itemizadosMandante}
-          camposConfigurados={camposConfigurados}
-          obrasApi={obras}
-          submitting={savingNuevoRegistro}
-        />
-      )}
     </div>
   );
 };

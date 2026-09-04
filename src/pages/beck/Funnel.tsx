@@ -15,10 +15,12 @@
   } from "antd";
   import {
     DeleteOutlined,
+    DisconnectOutlined,
     DownloadOutlined,
     EditOutlined,
     EyeOutlined,
     FileTextOutlined,
+    LinkOutlined,
     SwapOutlined,
     UploadOutlined,
   } from "@ant-design/icons";
@@ -2931,6 +2933,7 @@
                 <div className="grid gap-4 md:grid-cols-2">
                   {renderSimpleSelect("estadoDesarrolloPropuesta", "Estado desarrollo propuesta", estadoDesarrolloPropuestaOptions)}
                   {renderTextarea("informacionPendiente", "Información pendiente")}
+                  {renderTextarea("documentosRequeridos", "Documentos requeridos")}
                   {renderArchivoUploaders(desarrolloArchivoConfigs)}
                   {renderSimpleSelect("riesgoTecnico", "Riesgo técnico", riesgoTecnicoOptions)}
                   {renderTextarea("condicionesEspeciales", "Condiciones especiales")}
@@ -3359,6 +3362,19 @@
     >([]);
     const [relatedCotizacionesLoading, setRelatedCotizacionesLoading] =
       useState(false);
+    const [vincularCotizacionOpen, setVincularCotizacionOpen] = useState(false);
+    const [cotizacionesDisponibles, setCotizacionesDisponibles] = useState<
+      CotizacionApiRecord[]
+    >([]);
+    const [cotizacionesDisponiblesLoading, setCotizacionesDisponiblesLoading] =
+      useState(false);
+    const [cotizacionAVincularId, setCotizacionAVincularId] = useState<
+      string | null
+    >(null);
+    const [vinculandoCotizacion, setVinculandoCotizacion] = useState(false);
+    const [desvinculandoCotizacionId, setDesvinculandoCotizacionId] = useState<
+      string | null
+    >(null);
     const [selectedCotizacion, setSelectedCotizacion] =
       useState<FunnelCotizacionItem | null>(null);
     const [selectedCotizacionLoading, setSelectedCotizacionLoading] =
@@ -4137,6 +4153,70 @@
       } finally {
         setRelatedCotizacionesLoading(false);
       }
+    };
+
+    const openVincularCotizacion = async () => {
+      if (!selectedDeal) return;
+      setVincularCotizacionOpen(true);
+      setCotizacionAVincularId(null);
+      setCotizacionesDisponiblesLoading(true);
+      try {
+        const todas = await cotizacionesAPI.getAll();
+        const disponibles = todas.filter((item) => {
+          const funnelId = (item as { funnelBeckId?: string | null }).funnelBeckId;
+          const esActual = (item as { esActual?: boolean }).esActual;
+          return !funnelId && esActual !== false;
+        });
+        setCotizacionesDisponibles(disponibles);
+      } catch (error) {
+        message.error(
+          getErrorMessage(error, "No se pudieron cargar las cotizaciones disponibles")
+        );
+        setCotizacionesDisponibles([]);
+      } finally {
+        setCotizacionesDisponiblesLoading(false);
+      }
+    };
+
+    const handleVincularCotizacion = async () => {
+      if (!selectedDeal || !cotizacionAVincularId) return;
+      try {
+        setVinculandoCotizacion(true);
+        await cotizacionesAPI.update(cotizacionAVincularId, {
+          funnelBeckId: selectedDeal.id,
+        });
+        message.success("Cotización vinculada");
+        setVincularCotizacionOpen(false);
+        setCotizacionAVincularId(null);
+        await loadRelatedCotizaciones(selectedDeal.id);
+      } catch (error) {
+        message.error(getErrorMessage(error, "No se pudo vincular la cotización"));
+      } finally {
+        setVinculandoCotizacion(false);
+      }
+    };
+
+    const handleDesvincularCotizacion = (cotizacion: FunnelCotizacionItem) => {
+      if (!selectedDeal) return;
+      AntdModal.confirm({
+        title: "Quitar cotización vinculada",
+        content: `¿Quitar la cotización #${cotizacion.numero} de esta oportunidad? La cotización no se elimina, solo se desvincula.`,
+        okText: "Quitar",
+        okButtonProps: { danger: true },
+        cancelText: "Cancelar",
+        onOk: async () => {
+          try {
+            setDesvinculandoCotizacionId(cotizacion.id);
+            await cotizacionesAPI.update(cotizacion.id, { funnelBeckId: null });
+            message.success("Cotización desvinculada");
+            await loadRelatedCotizaciones(selectedDeal.id);
+          } catch (error) {
+            message.error(getErrorMessage(error, "No se pudo quitar la cotización"));
+          } finally {
+            setDesvinculandoCotizacionId(null);
+          }
+        },
+      });
     };
 
     const loadArchivosFunnel = async (deal: FunnelDeal) => {
@@ -6821,6 +6901,12 @@
                         </Button>
                       )}
                       <Button
+                        icon={<LinkOutlined />}
+                        onClick={() => void openVincularCotizacion()}
+                      >
+                        Vincular cotizacion
+                      </Button>
+                      <Button
                         type="primary"
                         icon={<FileTextOutlined />}
                         className="border-none"
@@ -6942,6 +7028,17 @@
                                       }}
                                     >
                                       Editar
+                                    </Button>
+                                  )}
+                                  {canEditFunnel && (
+                                    <Button
+                                      size="small"
+                                      danger
+                                      icon={<DisconnectOutlined />}
+                                      loading={desvinculandoCotizacionId === cotizacion.id}
+                                      onClick={() => handleDesvincularCotizacion(cotizacion)}
+                                    >
+                                      Quitar
                                     </Button>
                                   )}
                                 </div>
@@ -7267,6 +7364,48 @@
             }}
           />
         )}
+
+        <AntdModal
+          title="Vincular cotizacion existente"
+          open={vincularCotizacionOpen}
+          onCancel={() => {
+            if (vinculandoCotizacion) return;
+            setVincularCotizacionOpen(false);
+            setCotizacionAVincularId(null);
+          }}
+          onOk={() => void handleVincularCotizacion()}
+          okText="Vincular"
+          okButtonProps={{ disabled: !cotizacionAVincularId }}
+          confirmLoading={vinculandoCotizacion}
+          destroyOnClose
+        >
+          <p className="mb-2 text-sm text-slate-500">
+            Selecciona una cotizacion Beck que aun no este vinculada a ninguna oportunidad.
+          </p>
+          <Select
+            className="w-full"
+            showSearch
+            allowClear
+            loading={cotizacionesDisponiblesLoading}
+            placeholder="Buscar por numero o cliente"
+            value={cotizacionAVincularId ?? undefined}
+            onChange={(value) => setCotizacionAVincularId(value ?? null)}
+            notFoundContent={
+              cotizacionesDisponiblesLoading ? "Cargando..." : "Sin cotizaciones disponibles"
+            }
+            optionFilterProp="label"
+            options={cotizacionesDisponibles.map((item) => {
+              const numero = (item as { numero?: string | number }).numero ?? item.id;
+              const clienteNombre = (item as { clienteNombre?: string }).clienteNombre ?? "Sin cliente";
+              const total = (item as { total?: number }).total ?? 0;
+              const moneda = (item as { moneda?: string }).moneda ?? "CLP";
+              return {
+                value: item.id,
+                label: `#${numero} — ${clienteNombre} — ${formatCotizacionMoney(total, moneda)}`,
+              };
+            })}
+          />
+        </AntdModal>
 
         {/* Modal bloqueante: No se puede avanzar (nuevo formato 409) */}
         <AntdModal

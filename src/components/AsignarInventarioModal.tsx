@@ -34,6 +34,7 @@ type AsignarInventarioModalProps = {
   onClose: () => void;
   onAsignado: () => void;
   itemInicial?: ItemPrecargado | null;
+  obraIdInicial?: string | null;
 };
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -47,7 +48,7 @@ function capitalizar(value?: string | null): string {
   return v.charAt(0).toLocaleUpperCase("es-CL") + v.slice(1);
 }
 
-const AsignarInventarioModal: React.FC<AsignarInventarioModalProps> = ({ open, onClose, onAsignado, itemInicial }) => {
+const AsignarInventarioModal: React.FC<AsignarInventarioModalProps> = ({ open, onClose, onAsignado, itemInicial, obraIdInicial }) => {
   const [obras, setObras] = useState<ObraAsignable[]>([]);
   const [obraId, setObraId] = useState<string | null>(null);
   const [cargandoObras, setCargandoObras] = useState(false);
@@ -69,7 +70,7 @@ const AsignarInventarioModal: React.FC<AsignarInventarioModalProps> = ({ open, o
 
   useEffect(() => {
     if (!open) return;
-    setObraId(null);
+    setObraId(obraIdInicial ?? null);
     setJefeObraId(null);
     setJefesObra([]);
     setJefesObraEsFallback(false);

@@ -176,9 +176,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const isAdmin = user?.rol === "Administrador";
   const hasViewPermission = (modulo: ModuloBeck): boolean =>
-    permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeVer);
+    isAdmin || (permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeVer));
   const hasEditPermission = (modulo: ModuloBeck): boolean =>
-    permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeEditar);
+    isAdmin || (permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeEditar));
   const canCambiarEmpresaBeck =
     !isCliente && (isAdmin || hasViewPermission("beck_cambiar_empresa") || hasEditPermission("beck_cambiar_empresa"));
   const canCambiarEmpresaFiremat =

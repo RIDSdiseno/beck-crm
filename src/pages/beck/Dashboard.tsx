@@ -188,12 +188,6 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
         icon: <LineChartOutlined />,
       },
       {
-        key: "pendientes",
-        label: "Pendientes ingeniería",
-        value: kpis.pendientesIngenieria ?? kpis.pendientes,
-        icon: <ClockCircleOutlined />,
-      },
-      {
         key: "validados",
         label: "Validados",
         value: kpis.validados,

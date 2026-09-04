@@ -894,7 +894,7 @@ export const cotizacionesAPI = {
 
   update: async (
     id: string,
-    payload: CotizacionUpsertPayload
+    payload: Partial<CotizacionUpsertPayload>
   ): Promise<CotizacionApiRecord> => {
     const response = await api.put<ApiResponseEnvelope<CotizacionApiRecord>>(
       `/cotizaciones/${id}`,
@@ -1813,8 +1813,6 @@ export interface DashboardBeckKpis {
   sellos?: number;
   metrosLineales?: number;
   metros?: number;
-  pendientesIngenieria?: number;
-  pendientes?: number;
   validados?: number;
   enRevision?: number;
   rechazados?: number;
@@ -5443,6 +5441,7 @@ export interface AsignacionInventarioBeck {
   trabajadorId?: string | null;
   reasignadoAt?: string | null;
   createdAt: string;
+  subSkus: string[];
   obra?: { id: string; nombre: string; codigo?: string | null } | null;
   jefeObra?: { id: string; nombre: string; email: string; rol?: string } | null;
   asignadoPor?: { id: string; nombre: string; email: string } | null;
@@ -5503,6 +5502,14 @@ export const inventarioBeckAPI = {
     },
     cambiarEstado: async (id: string, activo: boolean): Promise<InventarioBeckImplemento> => {
       const response = await api.patch<InventarioBeckImplemento>(`/inventario-beck/implementos/${id}/estado`, { activo });
+      return response.data;
+    },
+    generarSku: async (id: string): Promise<InventarioBeckImplemento> => {
+      const response = await api.post<InventarioBeckImplemento>(`/inventario-beck/implementos/${id}/generar-sku`, {});
+      return response.data;
+    },
+    generarSkuMasivo: async (): Promise<{ actualizados: number }> => {
+      const response = await api.post<{ actualizados: number }>("/inventario-beck/implementos/generar-sku-masivo", {});
       return response.data;
     },
   },

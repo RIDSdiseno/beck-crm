@@ -298,6 +298,7 @@ const Inventario: React.FC = () => {
     nombre: string;
     stockDisponible: number;
   } | null>(null);
+  const [asignarObraInicial, setAsignarObraInicial] = useState<string | null>(null);
 
   const [asignaciones, setAsignaciones] = useState<AsignacionInventarioBeck[]>([]);
   const [obrasFiltro, setObrasFiltro] = useState<Obra[]>([]);
@@ -321,6 +322,21 @@ const Inventario: React.FC = () => {
         ? { tipoItem: tabATipoItem(tab), itemId: row.id, nombre: getNombreItem(row, tab), stockDisponible: getStockDisponible(row, tab) }
         : null
     );
+    setAsignarObraInicial(null);
+    setAsignarModalOpen(true);
+  };
+
+  const abrirAsignarDesdeAsignacion = (row: AsignacionInventarioBeck) => {
+    const itemId = row.eppId ?? row.implementoId ?? row.herramientaId ?? "";
+    const nombre = capitalizar(row.epp?.item ?? row.implemento?.item ?? row.herramienta?.nombre);
+    const stockDisponible =
+      row.tipoItem === "herramienta"
+        ? 1
+        : row.tipoItem === "implemento"
+          ? implementos.find((i) => i.id === itemId)?.saldo ?? 0
+          : epp.find((i) => i.id === itemId)?.saldo ?? 0;
+    setAsignarItemInicial({ tipoItem: row.tipoItem, itemId, nombre, stockDisponible });
+    setAsignarObraInicial(row.obraId);
     setAsignarModalOpen(true);
   };
 
@@ -461,10 +477,11 @@ const Inventario: React.FC = () => {
     }
   };
 
-  const generarSkuUno = async (row: InventarioBeckEpp) => {
+  const generarSkuUno = async (row: InventarioBeckEpp | InventarioBeckImplemento, tabKey: "epp" | "implementos") => {
     setGenerandoSkuId(row.id);
     try {
-      await inventarioBeckAPI.epp.generarSku(row.id);
+      if (tabKey === "implementos") await inventarioBeckAPI.implementos.generarSku(row.id);
+      else await inventarioBeckAPI.epp.generarSku(row.id);
       message.success("SKU generado");
       await cargar();
     } catch (err: unknown) {
@@ -474,13 +491,18 @@ const Inventario: React.FC = () => {
     }
   };
 
-  const generarSkuTodos = async () => {
+  const generarSkuTodos = async (tabKey: "epp" | "implementos") => {
     setGenerandoSkuMasivo(true);
     try {
-      const { actualizados } = await inventarioBeckAPI.epp.generarSkuMasivo();
+      const { actualizados } =
+        tabKey === "implementos"
+          ? await inventarioBeckAPI.implementos.generarSkuMasivo()
+          : await inventarioBeckAPI.epp.generarSkuMasivo();
       message.success(
         actualizados > 0
           ? `Se generaron ${actualizados} SKU nuevo(s)`
+          : tabKey === "implementos"
+          ? "No hay implementos sin SKU"
           : "No hay EPP sin SKU"
       );
       await cargar();
@@ -517,6 +539,18 @@ const Inventario: React.FC = () => {
     if (sinSku > 0) {
       message.warning(`${sinSku} registro(s) sin SKU no se incluyeron`);
     }
+  };
+
+  const descargarSubSkusAsignacion = (row: AsignacionInventarioBeck) => {
+    if (!row.subSkus || row.subSkus.length === 0) {
+      message.warning("Esta asignación no tiene sub-SKU por unidad (el ítem no tenía SKU al momento de asignar)");
+      return;
+    }
+    const nombreItem = capitalizar(row.epp?.item ?? row.implemento?.item ?? row.herramienta?.nombre);
+    const persona = row.trabajador?.nombre ?? row.jefeObra?.nombre ?? "";
+    const nombreEtiqueta = persona ? `${nombreItem} - ${persona}` : nombreItem;
+    const items = row.subSkus.map((sku) => ({ sku, nombre: nombreEtiqueta }));
+    descargarEtiquetasPdf(items, `sub-sku-${row.id}.pdf`);
   };
 
   const refrescarHojasImportadas = async (resultado: InventarioBeckImportResultado) => {
@@ -625,7 +659,67 @@ const Inventario: React.FC = () => {
               icon={<BarcodeOutlined />}
               title="Generar SKU"
               loading={generandoSkuId === row.id}
-              onClick={() => void generarSkuUno(row)}
+              onClick={() => void generarSkuUno(row, "epp")}
+            />
+          )}
+          {canEditInventario && row.activo && !esSupervisor && (
+            <Button type="text" size="small" icon={<UserSwitchOutlined />} title="Asignar a supervisor" onClick={() => abrirAsignar(row)} />
+          )}
+          {canEditInventario && (
+            row.activo ? (
+              <Popconfirm
+                title="¿Eliminar registro?"
+                description="Esta acción quitará este elemento del inventario. ¿Deseas continuar?"
+                okText="Eliminar"
+                cancelText="Cancelar"
+                onConfirm={() => cambiarEstado(row)}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  title="Eliminar"
+                />
+              </Popconfirm>
+            ) : (
+              <Button
+                type="text"
+                size="small"
+                icon={<CheckOutlined />}
+                title="Activar"
+                onClick={() => cambiarEstado(row)}
+              />
+            )
+          )}
+        </Space>
+      ),
+    }),
+    [canEditInventario, selected, tab, cargar, generandoSkuId]
+  );
+
+  const implementoActionColumn = useMemo(
+    () => ({
+      title: "Acciones",
+      key: "acciones",
+      width: 150,
+      render: (_: unknown, row: InventarioBeckImplemento) => (
+        <Space size="small" wrap>
+          <Button type="text" size="small" icon={<EyeOutlined />} title="Ver" onClick={() => abrirDetalle(row)} />
+          {row.sku?.trim() && (
+            <Button type="text" size="small" icon={<DownloadOutlined />} title="Descargar etiqueta" onClick={() => descargarEtiquetaUna(row, "implementos")} />
+          )}
+          {canEditInventario && (
+            <Button type="text" size="small" icon={<EditOutlined />} title="Editar" onClick={() => abrirEditar(row)} />
+          )}
+          {canEditInventario && !row.sku?.trim() && (
+            <Button
+              type="text"
+              size="small"
+              icon={<BarcodeOutlined />}
+              title="Generar SKU"
+              loading={generandoSkuId === row.id}
+              onClick={() => void generarSkuUno(row, "implementos")}
             />
           )}
           {canEditInventario && row.activo && !esSupervisor && (
@@ -687,7 +781,7 @@ const Inventario: React.FC = () => {
     { title: "Ubicación", dataIndex: "ubicacion", width: 120, render: dash },
     { title: "Saldo", dataIndex: "saldo", width: 80, align: "right", render: (v: number) => v ?? 0 },
     { title: "Estado", dataIndex: "activo", width: 95, render: (v: boolean) => <EstadoBadge activo={v} /> },
-    actionColumn as ColumnsType<InventarioBeckImplemento>[number],
+    implementoActionColumn as ColumnsType<InventarioBeckImplemento>[number],
   ];
 
   const herramientaColumns: ColumnsType<InventarioBeckHerramienta> = [
@@ -730,6 +824,40 @@ const Inventario: React.FC = () => {
       width: 110,
       render: (v: EstadoAsignacionInventario) =>
         v === "devuelto" ? <Badge status="default" text="Devuelto" /> : <Badge status="processing" text="Asignado" />,
+    },
+    {
+      title: "Sub-SKU",
+      width: 180,
+      ellipsis: true,
+      render: (_: unknown, row: AsignacionInventarioBeck) =>
+        row.subSkus && row.subSkus.length > 0 ? row.subSkus.join(", ") : "-",
+    },
+    {
+      title: "Acciones",
+      key: "acciones",
+      width: 110,
+      render: (_: unknown, row: AsignacionInventarioBeck) => (
+        <Space size="small" wrap>
+          {row.subSkus && row.subSkus.length > 0 && (
+            <Button
+              type="text"
+              size="small"
+              icon={<DownloadOutlined />}
+              title="Descargar etiquetas por unidad"
+              onClick={() => descargarSubSkusAsignacion(row)}
+            />
+          )}
+          {canEditInventario && !esSupervisor && (
+            <Button
+              type="text"
+              size="small"
+              icon={<UserSwitchOutlined />}
+              title="Asignar este item en esta obra"
+              onClick={() => abrirAsignarDesdeAsignacion(row)}
+            />
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -921,6 +1049,15 @@ const Inventario: React.FC = () => {
                     >
                       {implementosModoSeleccion ? "Cancelar selección" : "Seleccionar"}
                     </Button>
+                    {canEditInventario && (
+                      <Button
+                        icon={<BarcodeOutlined />}
+                        loading={generandoSkuMasivo}
+                        onClick={() => void generarSkuTodos("implementos")}
+                      >
+                        Generar SKU faltantes
+                      </Button>
+                    )}
                   </div>
                   <Table
                     dataSource={implementos}
@@ -1030,7 +1167,7 @@ const Inventario: React.FC = () => {
                     rowKey="id"
                     loading={loading}
                     size="small"
-                    scroll={{ x: 1300 }}
+                    scroll={{ x: 1560 }}
                     locale={{
                       emptyText: filtroEstadoAsignacion === "asignado"
                         ? "No hay asignaciones activas"
@@ -1182,6 +1319,7 @@ const Inventario: React.FC = () => {
         onClose={() => setAsignarModalOpen(false)}
         onAsignado={() => void cargar()}
         itemInicial={asignarItemInicial}
+        obraIdInicial={asignarObraInicial}
       />
 
       <AsignarATrabajadorModal
