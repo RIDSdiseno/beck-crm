@@ -547,9 +547,7 @@ const Inventario: React.FC = () => {
       return;
     }
     const nombreItem = capitalizar(row.epp?.item ?? row.implemento?.item ?? row.herramienta?.nombre);
-    const persona = row.trabajador?.nombre ?? row.jefeObra?.nombre ?? "";
-    const nombreEtiqueta = persona ? `${nombreItem} - ${persona}` : nombreItem;
-    const items = row.subSkus.map((sku) => ({ sku, nombre: nombreEtiqueta }));
+    const items = row.subSkus.map((sku) => ({ sku, nombre: nombreItem }));
     descargarEtiquetasPdf(items, `sub-sku-${row.id}.pdf`);
   };
 
@@ -1005,7 +1003,7 @@ const Inventario: React.FC = () => {
                       <Button
                         icon={<BarcodeOutlined />}
                         loading={generandoSkuMasivo}
-                        onClick={() => void generarSkuTodos()}
+                        onClick={() => void generarSkuTodos("epp")}
                       >
                         Generar SKU faltantes
                       </Button>
