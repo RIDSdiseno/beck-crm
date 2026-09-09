@@ -2159,6 +2159,18 @@ export const firematProductosAPI = {
     return { data: productos, total };
   },
 
+  exportar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+  }): Promise<Blob> => {
+    const response = await api.get<Blob>("/firemat/productos/exportar", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
   crear: async (payload: ProductoFirematPayload, imagen?: File | null): Promise<ProductoFiremat> => {
     if (imagen) {
       const formData = new FormData();
@@ -3204,6 +3216,20 @@ export const firematInventarioAPI = {
         stockDisponibleTotal: 0,
       },
     };
+  },
+
+  exportar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+    bajoStock?: boolean;
+    criticidad?: string;
+  }): Promise<Blob> => {
+    const response = await api.get<Blob>("/firemat/inventario/exportar", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
   },
 
   movimientos: async (params?: {

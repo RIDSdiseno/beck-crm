@@ -22,6 +22,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { saveAs } from "file-saver";
 import {
   firematInventarioAPI,
   type InventarioFirematItem,
@@ -471,7 +472,8 @@ const ModalEditarInventario: React.FC<{
 };
 
 const FirematInventario: React.FC = () => {
-  const { canEdit } = usePermisos();
+  const { canView, canEdit } = usePermisos();
+  const canViewInventario = canView("firemat_inventario");
   const canEditInventario = canEdit("firemat_inventario");
 
   const [items, setItems] = useState<InventarioFirematItem[]>([]);
@@ -483,6 +485,7 @@ const FirematInventario: React.FC = () => {
   const [criticidad, setCriticidad] = useState("");
   const [itemEditando, setItemEditando] = useState<InventarioFirematItem | null>(null);
   const [importarExcelOpen, setImportarExcelOpen] = useState(false);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -517,6 +520,24 @@ const FirematInventario: React.FC = () => {
   };
 
   const hayFiltros = q !== "" || activo !== "" || bajoStock !== "" || criticidad !== "";
+
+  const exportarExcel = async () => {
+    try {
+      setExportandoExcel(true);
+      const params: Parameters<typeof firematInventarioAPI.exportar>[0] = {};
+      if (q.trim()) params.q = q.trim();
+      if (activo !== "") params.activo = activo === "true";
+      if (bajoStock === "true") params.bajoStock = true;
+      if (criticidad) params.criticidad = criticidad;
+      const blob = await firematInventarioAPI.exportar(params);
+      saveAs(blob, `inventario_firemat_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`);
+      void message.success("Inventario exportado correctamente");
+    } catch (err: unknown) {
+      void message.error(getInventarioErrorMessage(err, "No se pudo exportar el inventario"));
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
 
   const abrirEditarInventario = (row: InventarioFirematItem) => {
     if (!canEditInventario) {
@@ -558,6 +579,15 @@ const FirematInventario: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canViewInventario && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => void exportarExcel()}
+                loading={exportandoExcel}
+              >
+                Exportar Excel
+              </Button>
+            )}
             {canEditInventario && (
               <Button
                 icon={<FileExcelOutlined />}

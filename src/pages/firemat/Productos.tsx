@@ -21,6 +21,7 @@ import {
   DownOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
+  FileExcelOutlined,
   FilePdfOutlined,
   PictureOutlined,
   PlusOutlined,
@@ -28,6 +29,8 @@ import {
   SearchOutlined,
   TagsOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { saveAs } from "file-saver";
 import {
   firematCategoriasAPI,
   firematProductosAPI,
@@ -717,7 +720,8 @@ const ModalAsignarCategorias: React.FC<{
 
 /* ────────────── Componente principal ────────────── */
 const FirematProductos: React.FC = () => {
-  const { canEdit } = usePermisos();
+  const { canView, canEdit } = usePermisos();
+  const canViewProductos = canView("firemat_productos");
   const canEditProductos = canEdit("firemat_productos");
 
   const [productos, setProductos] = useState<ProductoFiremat[]>([]);
@@ -735,6 +739,7 @@ const FirematProductos: React.FC = () => {
   const [seleccionado, setSeleccionado] = useState<ProductoFiremat | null>(null);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [modalAsignarOpen, setModalAsignarOpen] = useState(false);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -846,6 +851,23 @@ const FirematProductos: React.FC = () => {
   };
 
   const hayFiltros = q !== "" || activo !== "" || categoriaFiltroId !== undefined;
+
+  const exportarExcel = async () => {
+    try {
+      setExportandoExcel(true);
+      const params: Parameters<typeof firematProductosAPI.exportar>[0] = {};
+      if (q.trim()) params.q = q.trim();
+      if (activo !== "") params.activo = activo === "true";
+      if (categoriaFiltroId !== undefined) params.categoriaId = categoriaFiltroId;
+      const blob = await firematProductosAPI.exportar(params);
+      saveAs(blob, `productos_firemat_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`);
+      void message.success("Productos exportados correctamente");
+    } catch (err: unknown) {
+      void message.error(getProductosErrorMessage(err, "No se pudieron exportar los productos"));
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
 
   const columns: ColumnsType<ProductoFiremat> = [
     {
@@ -1068,6 +1090,15 @@ const FirematProductos: React.FC = () => {
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canViewProductos && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => void exportarExcel()}
+                loading={exportandoExcel}
+              >
+                Exportar Excel
+              </Button>
+            )}
             {canEditProductos && (
               <>
             <Button
