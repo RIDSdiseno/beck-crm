@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Button, DatePicker, Divider, Form, Image, Input, InputNumber, Modal, Select, Tag, Tooltip } from "antd";
 import {
   CameraOutlined,
@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import type { RegistroSello } from "../types/registroSello";
-import type { CampoConfiguracionRegistro, ItemizadoMandante } from "../services/api";
+import { itemizadoOpcionesAPI, type CampoConfiguracionRegistro, type ItemizadoMandante, type ItemizadoOpcion } from "../services/api";
 import {
   getTipoRegistroLabel,
   getTipoRegistroColor,
@@ -20,6 +20,8 @@ import {
 } from "../constants/roles";
 
 export type RegistroDetalleUpdateValues = {
+  itemizadoOpcionId?: string;
+  itemizadoMandanteTexto?: string;
   descripcionMaterial: string;
   modulo: string;
   recinto?: string;
@@ -59,6 +61,7 @@ type RegistroDetalleModalProps = {
   reenviarRevisionLoading?: boolean;
   showEnRevisionAlert?: boolean;
   itemizadosMandante?: ItemizadoMandante[];
+  seleccionarItemizadoPorObra?: boolean;
   camposConfigurados?: CampoConfiguracionRegistro[];
   rendimientoSellosEsperadoDiario?: number | null;
   rendimientoReparacionEsperadoDiario?: number | null;
@@ -351,6 +354,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   reenviarRevisionLoading = false,
   showEnRevisionAlert = false,
   itemizadosMandante = [],
+  seleccionarItemizadoPorObra = false,
   camposConfigurados = [],
   rendimientoSellosEsperadoDiario,
   rendimientoReparacionEsperadoDiario,
@@ -360,6 +364,31 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
   const [form] = Form.useForm<RegistroDetalleUpdateValues>();
   const visible = open && !!registro;
   const canEditRegistro = canEdit && mode === "edit";
+  const usarSelectorItemizado = seleccionarItemizadoPorObra &&
+    (registro?.estado === "en_revision" || registro?.estado === "validado");
+  const [opcionesItemizado, setOpcionesItemizado] = useState<ItemizadoOpcion[]>([]);
+  const [cargandoItemizados, setCargandoItemizados] = useState(false);
+  const [errorItemizados, setErrorItemizados] = useState("");
+  const [recargaItemizados, setRecargaItemizados] = useState(0);
+  const obraItemizadoId = registro?.obraId;
+
+  useEffect(() => {
+    if (!visible || !canEditRegistro || !usarSelectorItemizado) return;
+    let activo = true;
+    setOpcionesItemizado([]);
+    setErrorItemizados("");
+    if (!obraItemizadoId) {
+      setErrorItemizados("El registro no tiene una obra identificada. No se puede cargar su itemizado.");
+      setCargandoItemizados(false);
+      return;
+    }
+    setCargandoItemizados(true);
+    itemizadoOpcionesAPI.listar({ obraId: obraItemizadoId, visible: true })
+      .then((opciones) => { if (activo) setOpcionesItemizado(opciones); })
+      .catch(() => { if (activo) setErrorItemizados("No se pudieron cargar los itemizados de esta obra."); })
+      .finally(() => { if (activo) setCargandoItemizados(false); });
+    return () => { activo = false; };
+  }, [visible, canEditRegistro, usarSelectorItemizado, obraItemizadoId, recargaItemizados]);
 
   const esEspuma = registro?.tipoRegistro === "junta_lineal_espuma";
   const showCampo = (key: string) => isCampoVisible(camposConfigurados, key);
@@ -370,6 +399,8 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
     if (!registro) return;
 
     form.setFieldsValue({
+      itemizadoOpcionId: "",
+      itemizadoMandanteTexto: registro.itemizadoMandanteNombre || registro.itemizadoSacyr || "",
       descripcionMaterial: registro.descripcionMaterial ?? registro.itemizadoBeck,
       modulo: registro.modulo,
       recinto: registro.recinto,
@@ -396,7 +427,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
       itemizadoMandanteId: registro.itemizadoMandanteId,
       codigoBeck: registro.codigoBeck,
     });
-  }, [form, registro]);
+  }, [form, registro, open, mode]);
 
   if (!registro) {
     return (
@@ -717,39 +748,77 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             }}
             className="grid grid-cols-1 gap-x-3 md:grid-cols-2"
           >
-            <Form.Item
-              name="itemizadoMandanteId"
-              label="Itemizado Mandante"
-              className="mb-3"
-            >
-              <Select
-                allowClear
-                showSearch
-                placeholder="Selecciona itemizado mandante"
-                optionFilterProp="label"
-                options={itemizadosMandante.map((item) => ({
-                  value: item.id,
-                  label: item.codigoBeck ? `${item.codigoBeck} · ${item.nombre}` : item.nombre,
-                }))}
-                onChange={(value) => {
-                  const item = itemizadosMandante.find((i) => i.id === value);
-                  form.setFieldsValue({
-                    codigoBeck: item?.codigoBeck ?? "",
-                    descripcionMaterial: item?.nombre ?? form.getFieldValue("descripcionMaterial"),
-                  });
-                }}
-              />
-            </Form.Item>
-            <Form.Item name="codigoBeck" label="Código BECK" className="mb-3">
-              <Input disabled />
-            </Form.Item>
-            <Form.Item
-              name="descripcionMaterial"
-              label="Descripción material"
-              className="mb-3"
-            >
-              <Input />
-            </Form.Item>
+            {usarSelectorItemizado ? (
+              <>
+                {registro.estado === "validado" && (
+                  <Alert className="mb-3 md:col-span-2" type="info" showIcon
+                    title="Al guardar, este registro volverá a revisión de Ingeniería." />
+                )}
+                {errorItemizados && (
+                  <Alert className="mb-3 md:col-span-2" type="warning" showIcon
+                    title={errorItemizados}
+                    action={<Button size="small" onClick={() => setRecargaItemizados((n) => n + 1)}>Reintentar</Button>} />
+                )}
+                <Form.Item name="itemizadoOpcionId" label="Itemizado Beck"
+                  className="mb-3 md:col-span-2"
+                  extra="Busca por descripción, Código BECK o Itemizado Mandante. La selección completa los campos asociados.">
+                  <Select showSearch optionFilterProp="label" loading={cargandoItemizados}
+                    disabled={saving || cargandoItemizados || !!errorItemizados}
+                    placeholder="Selecciona el Itemizado BECK"
+                    notFoundContent="No hay itemizados visibles para esta búsqueda"
+                    options={[
+                      { value: "", label: `${registro.descripcionMaterial || registro.itemizadoBeck || "Sin descripción"} (valor guardado)` },
+                      ...opcionesItemizado.map((opcion) => ({
+                        value: opcion.id,
+                        label: [opcion.codigoBeck, opcion.elementoPasante, opcion.nombrePersonalizado].filter(Boolean).join(" · "),
+                      })),
+                    ]}
+                    onChange={(id: string) => {
+                      const opcion = opcionesItemizado.find((item) => item.id === id);
+                      form.setFieldsValue(opcion ? {
+                        descripcionMaterial: opcion.elementoPasante || "",
+                        codigoBeck: opcion.codigoBeck || "",
+                        itemizadoMandanteTexto: opcion.nombrePersonalizado || opcion.elementoPasante || "",
+                      } : {
+                        descripcionMaterial: registro.descripcionMaterial ?? registro.itemizadoBeck,
+                        codigoBeck: registro.codigoBeck,
+                        itemizadoMandanteTexto: registro.itemizadoMandanteNombre || registro.itemizadoSacyr || "",
+                      });
+                    }} />
+                </Form.Item>
+                <Form.Item name="descripcionMaterial" hidden><Input /></Form.Item>
+                <Form.Item name="codigoBeck" label="Código BECK" className="mb-3"><Input readOnly /></Form.Item>
+                <Form.Item name="itemizadoMandanteTexto" label="Itemizado Mandante" className="mb-3"><Input readOnly /></Form.Item>
+              </>
+            ) : (
+              <>
+                <Form.Item name="itemizadoMandanteId" label="Itemizado Mandante" className="mb-3">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Selecciona itemizado mandante"
+                    optionFilterProp="label"
+                    options={itemizadosMandante.map((item) => ({
+                      value: item.id,
+                      label: item.codigoBeck ? `${item.codigoBeck} · ${item.nombre}` : item.nombre,
+                    }))}
+                    onChange={(value) => {
+                      const item = itemizadosMandante.find((i) => i.id === value);
+                      form.setFieldsValue({
+                        codigoBeck: item?.codigoBeck ?? "",
+                        descripcionMaterial: item?.nombre ?? form.getFieldValue("descripcionMaterial"),
+                      });
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item name="codigoBeck" label="Código BECK" className="mb-3">
+                  <Input disabled />
+                </Form.Item>
+                <Form.Item name="descripcionMaterial" label="Descripción material" className="mb-3">
+                  <Input />
+                </Form.Item>
+              </>
+            )}
             {showCampo("recinto") && (
             <Form.Item name="recinto" label="Recinto" className="mb-3">
               <Input />

@@ -74,6 +74,7 @@ type RegistroApiRecord = {
   itemizadoMandanteId?: string | null;
   itemizado_mandante_id?: string | null;
   itemizadoMandanteNombre?: string | null;
+  itemizadoMandanteTexto?: string | null;
   itemizado_mandante?: string | null;
   itemizadoMandante?:
     | { id?: string | null; nombre?: string | null; codigoBeck?: string | null }
@@ -144,6 +145,7 @@ type RegistroUpdateResponse = {
 };
 
 type RegistroUpdatePayload = {
+  itemizadoOpcionId?: string;
   descripcion_material: string;
   modulo: string;
   recinto?: string;
@@ -401,9 +403,10 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     itemizadoMandanteNombre:
       r.itemizadoMandanteNombre ??
       (typeof r.itemizadoMandante === "string" ? r.itemizadoMandante : r.itemizadoMandante?.nombre) ??
+      r.itemizadoMandanteTexto ??
       r.itemizado_mandante ??
       undefined,
-    itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? "",
+    itemizadoSacyr: r.itemizadoSacyr ?? r.itemizado_sacyr ?? r.itemizadoMandanteTexto ?? r.itemizado_mandante ?? "",
     fechaEjecucion: fecha,
     dia: diaSemana,
     piso: r.piso ?? "",
@@ -838,6 +841,7 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     if (!registroDetalle) return;
     const id = String(registroDetalle.id);
     const payload: RegistroUpdatePayload = {
+      itemizadoOpcionId: values.itemizadoOpcionId || undefined,
       descripcion_material: values.descripcionMaterial,
       modulo: values.modulo,
       recinto: values.recinto,
@@ -890,7 +894,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       message.success("Registro actualizado correctamente");
     } catch (error) {
       console.error(error);
-      message.error("No se pudo actualizar el registro");
+      const respuesta = error as { response?: { data?: { error?: string } } };
+      message.error(respuesta.response?.data?.error || "No se pudo actualizar el registro");
     } finally {
       setSavingDetalle(false);
     }
@@ -1571,7 +1576,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
         registro={registroDetalle}
         open={!!registroDetalle}
         mode={detalleMode}
-        canEdit={!!registroDetalle && canEditIngenieria}
+        canEdit={!!registroDetalle && canEditIngenieria && ["en_revision", "validado"].includes(registroDetalle.estado || "")}
+        seleccionarItemizadoPorObra
         saving={savingDetalle}
         onClose={() => {
           if (savingDetalle) return;
