@@ -5451,6 +5451,8 @@ export type InventarioDisponibleSupervisorItem = {
 export type EstadoAsignacionInventario = "asignado" | "devuelto";
 
 export interface AsignacionInventarioBeck {
+  devolucion_solicitada_at?: string | null;
+  devolucion_recibida_at?: string | null;
   id: string;
   obraId: string;
   jefeObraId: string;

@@ -820,8 +820,10 @@ const Inventario: React.FC = () => {
       title: "Estado",
       dataIndex: "estado",
       width: 110,
-      render: (v: EstadoAsignacionInventario) =>
-        v === "devuelto" ? <Badge status="default" text="Devuelto" /> : <Badge status="processing" text="Asignado" />,
+      render: (v: EstadoAsignacionInventario, row: AsignacionInventarioBeck) =>
+        v === "devuelto" ? <Badge status="default" text="Devuelto" />
+          : !row.trabajadorId && row.devolucion_solicitada_at && !row.devolucion_recibida_at
+            ? <Badge status="warning" text="Por recibir en bodega" /> : <Badge status="processing" text="Asignado" />,
     },
     {
       title: "Sub-SKU",
