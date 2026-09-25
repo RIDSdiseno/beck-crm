@@ -59,6 +59,7 @@ import {
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
+import PdfsFirmados from "./pages/beck/PdfsFirmados";
 import type { ThemeMode } from "./hooks/useSystemTheme";
 import { useAuth } from "./context/useAuth";
 import { usePermisos } from "./hooks/usePermisos";
@@ -712,6 +713,10 @@ const AppShell: React.FC = () => {
                 <Route path="/configuracion" element={<Navigate to="/beck/usuarios-parametros" replace />} />
 
                 {/* ── Beck routes ─────────────────────────────── */}
+                <Route path="/beck/pdfs-firmados" element={
+                  user.rol === "Administrador" || user.rol === "Ingenieria"
+                    ? <PdfsFirmados /> : <Navigate to={homeRoute} replace />
+                } />
                 {/* Beck routes: PermisosGate is the sole authority via canView.
                     Removing the outer access.xxx guard allows individual permission
                     exceptions to override role defaults (e.g. Ingeniería + cotizaciones). */}

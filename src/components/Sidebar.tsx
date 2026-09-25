@@ -264,6 +264,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "ingenieria", to: "/beck/procesamiento-ingenieria", icon: <FireOutlined />, label: "Procesamiento Ingeniería", access: access.ingenieria },
     { key: "oficinaTecnica", to: "/beck/oficina-tecnica", icon: <ToolOutlined />, label: "Oficina Técnica", access: access.oficinaTecnica },
     { key: "registro", to: "/beck/registro", icon: <ProfileOutlined />, label: "Registro", access: access.registro },
+    { key: "pdfsFirmados", to: "/beck/pdfs-firmados", icon: <FileTextOutlined />, label: "PDF firmados", access: user?.rol === "Administrador" || user?.rol === "Ingenieria" },
     { key: "reportes", to: "/beck/reportes", icon: <BarChartOutlined />, label: "Reportes", access: access.reportes },
     { key: "cotizaciones", to: "/beck/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.cotizaciones },
     { key: "movimientos", to: "/beck/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: access.movimientos },

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import Barcode from "react-barcode";
+import { ConsumosInventarioPanel, PoliticaConsumoButton } from "../../components/ConsumosInventarioPanel";
 import JsBarcode from "jsbarcode";
 import { jsPDF } from "jspdf";
 import {
@@ -64,7 +65,7 @@ const { Text, Title } = Typography;
 
 type FiltroActivo = "activos" | "inactivos" | "todos";
 type FiltroEstadoAsignacion = EstadoAsignacionInventario | "todos";
-type TabKey = "epp" | "implementos" | "herramientas" | "asignaciones";
+type TabKey = "epp" | "implementos" | "herramientas" | "asignaciones" | "consumos";
 
 const dash = (value?: string | null) => value?.trim() || "-";
 const capitalizar = (value?: string | null) => {
@@ -821,7 +822,7 @@ const Inventario: React.FC = () => {
       dataIndex: "estado",
       width: 110,
       render: (v: EstadoAsignacionInventario, row: AsignacionInventarioBeck) =>
-        v === "devuelto" ? <Badge status="default" text="Devuelto" />
+        v === "consumido" ? <Badge color="purple" text="Consumido · No se devuelve" /> : v === "devuelto" ? <Badge status="default" text="Devuelto" />
           : !row.trabajadorId && row.devolucion_solicitada_at && !row.devolucion_recibida_at
             ? <Badge status="warning" text="Por recibir en bodega" /> : <Badge status="processing" text="Asignado" />,
     },
@@ -847,7 +848,7 @@ const Inventario: React.FC = () => {
               onClick={() => descargarSubSkusAsignacion(row)}
             />
           )}
-          {canEditInventario && !esSupervisor && (
+          {canEditInventario && !esSupervisor && row.estado !== "consumido" && (
             <Button
               type="text"
               size="small"
@@ -976,6 +977,7 @@ const Inventario: React.FC = () => {
             setFiltroActivo("activos");
           }}
           items={[
+            { key: "consumos", label: "Consumos", children: <ConsumosInventarioPanel obras={obrasFiltro} /> },
             {
               key: "epp",
               label: "EPP",
@@ -1196,6 +1198,7 @@ const Inventario: React.FC = () => {
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         destroyOnClose
       >
+        {editing && canEditInventario && tab !== "asignaciones" && tab !== "consumos" && <PoliticaConsumoButton tipo={tab === "epp" ? "epp" : tab === "implementos" ? "implemento" : "herramienta"} id={editing.id} />}
         {renderForm()}
       </Modal>
 

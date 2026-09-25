@@ -5448,7 +5448,7 @@ export type InventarioDisponibleSupervisorItem = {
   disponible: number;
 };
 
-export type EstadoAsignacionInventario = "asignado" | "devuelto";
+export type EstadoAsignacionInventario = "asignado" | "devuelto" | "consumido";
 
 export interface AsignacionInventarioBeck {
   devolucion_solicitada_at?: string | null;
