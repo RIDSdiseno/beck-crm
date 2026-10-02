@@ -45,6 +45,7 @@ type RegistroApiRecord = {
   ejeAlfabetico?: string | null;
   eje_alfabetico?: string | null;
   numeroSello?: string | null;
+  folio?: string | null;
   numero_sello?: string | null;
   cantidadSellos?: number | string | null;
   cantidad_sellos?: number | string | null;
@@ -154,6 +155,7 @@ type RegistroUpdatePayload = {
   eje_alfabetico: string;
   numero_sello: string;
   cantidad_sellos: number;
+  metros_lineales?: number;
   nombre_sellador: string;
   holgura: number;
   accesibilidad: number;
@@ -213,10 +215,8 @@ const getInspeccionEstadoColor = (estado: "no_enviado" | "en_inspeccion" | "insp
   return "default";
 };
 
-const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
-  if (value === 1.2 || value === 1.4 || value === 1.8) return value;
-  return 1;
-};
+const normalizeFactorHolgura = (value: number): number =>
+  Number.isFinite(value) && value >= 0 ? value : 1;
 
 const normalizeCieloModular = (value: number): 1 | 2 | 3 => {
   if (value === 2 || value === 3) return value;
@@ -368,7 +368,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
   const empresa = r.empresa ?? "";
   const nombreEmpresa = r.nombreEmpresa ?? r.nombre_empresa ?? "";
   const usuarioNombre = r.usuario?.nombre ?? r.usuario_nombre ?? "Sin usuario";
-  const factorHolgura = normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm));
+  const factorHolgura = normalizeFactorHolgura(Number(factorPorHolguras ?? 1));
   const fotosUrls = getFotosRegistro(r);
   const fotoUrl = fotosUrls[0];
 
@@ -418,6 +418,7 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroIngenieria => {
     recinto: r.recinto ?? "",
     modulo: r.modulo ?? "",
     numeroSello,
+    folio: r.folio,
     cantidadSellos,
     metrosLineales,
     tipoRegistro,
@@ -849,7 +850,8 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
       eje_numerico: values.ejeNumerico,
       eje_alfabetico: values.ejeAlfabetico,
       numero_sello: values.numeroSello,
-      cantidad_sellos: Number(values.cantidadSellos || 0),
+      cantidad_sellos: registroDetalle.tipoRegistro === "junta_lineal_espuma" ? 0 : values.cantidadSellos,
+      metros_lineales: registroDetalle.tipoRegistro === "junta_lineal_espuma" ? values.metrosLineales : undefined,
       nombre_sellador: values.nombreSellador,
       holgura: Number(values.holguraCm || 0),
       accesibilidad: Number(values.accesibilidad || 0),

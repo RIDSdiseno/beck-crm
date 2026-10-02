@@ -28,9 +28,10 @@ export type RegistroSello = {
   recinto: string;
   modulo?: string;
   numeroSello: string;
+  folio?: string | null;
   cantidadSellos: number;
   holguraCm: number;
-  factorHolgura: 1 | 1.2 | 1.4 | 1.8;
+  factorHolgura: number;
   cieloModular: 1 | 2 | 3;
   cantidadSellosConFactor: number;
   factorPorHolguras?: number | string | null;

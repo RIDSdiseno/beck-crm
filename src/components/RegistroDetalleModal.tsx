@@ -189,36 +189,6 @@ const isCampoVisible = (
   return field ? Boolean(field.visible) : true;
 };
 
-const renderDetalleJuntaLineal = (
-  r: RegistroSello,
-  showCampo: (key: string) => boolean = () => true
-): React.ReactNode => (
-  <div className="grid grid-cols-1 gap-x-3 gap-y-0 md:grid-cols-2">
-    <FieldView label="Descripción" value={r.descripcionMaterial || r.itemizadoBeck} />
-    <FieldView
-      label="Fecha ejecucion sello"
-      value={r.fechaEjecucion ? dayjs.utc(r.fechaEjecucion).format("DD-MM-YYYY") : "-"}
-    />
-    <FieldView label="Día" value={r.dia} />
-    <FieldView label="Piso" value={r.piso} />
-    {showCampo("eje_alfabetico") && <FieldView label="Eje Alfabético" value={r.ejeAlfabetico} />}
-    {showCampo("eje_numerico") && <FieldView label="Eje Numérico" value={r.ejeNumerico} />}
-    <FieldView label="Nombre sellador" value={r.nombreSellador} />
-    {showCampo("recinto") && <FieldView label="Recinto" value={r.recinto} />}
-    {showCampo("modulo") && <FieldView label="Módulo o edificio" value={r.modulo} />}
-    <FieldView
-      label="Longitud (m)"
-      value={r.metrosLineales != null ? `${Number(r.metrosLineales).toFixed(2)} m` : "-"}
-    />
-    <FieldView label="Observaciones" value={r.observaciones} span={2} />
-    {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
-    <div className="mb-3">
-      <p className="mb-1 text-[11px] text-slate-500">Estado</p>
-      <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
-    </div>
-  </div>
-);
-
 const renderDetalleSelloCortafuego = (
   r: RegistroSello,
   showCampo: (key: string) => boolean = () => true
@@ -243,10 +213,10 @@ const renderDetalleSelloCortafuego = (
       <FieldView label="N° DEL SELLO" value={r.numeroSello} />
       <FieldView
         label={getCantidadLabelPorTipo(r.tipoRegistro)}
-        value={r.cantidadSellos != null ? String(r.cantidadSellos) : "-"}
+        value={r.tipoRegistro === "junta_lineal_espuma" ? r.metrosLineales : r.cantidadSellos}
       />
       {showCampo("holgura") && (
-        <FieldView label="Holgura (cm)" value={r.holguraCm != null ? String(r.holguraCm) : "-"} />
+        <FieldView label={r.tipoRegistro === "junta_lineal_espuma" ? "Separación (cm)" : "Holgura (cm)"} value={r.holguraCm != null ? String(r.holguraCm) : "-"} />
       )}
       {showCampo("accesibilidad") && (
         <FieldView label="Accesibilidad" value={r.accesibilidad ?? r.cieloModular ?? "-"} />
@@ -270,7 +240,7 @@ const renderDetalleSelloCortafuego = (
           label="Reparación tabique"
           value={
             Number(r.reparacionTabique) === 1
-              ? "APLICA (+1 sello)"
+              ? "APLICA (+1)"
               : Number(r.reparacionTabique) === 0
               ? "NO APLICA"
               : r.reparacionTabique != null
@@ -280,7 +250,7 @@ const renderDetalleSelloCortafuego = (
         />
       )}
       <FieldView label="Observaciones" value={r.observaciones} span={2} />
-      {showCampo("folio") && <FieldView label="FOLIO" value={r.numeroSello} />}
+      {showCampo("folio") && <FieldView label="FOLIO" value={r.folio} />}
       <div className="mb-3">
         <p className="mb-1 text-[11px] text-slate-500">Estado</p>
         <Tag color={getEstadoColor(r.estado)}>{getEstadoLabel(r.estado)}</Tag>
@@ -842,7 +812,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               <Input />
             </Form.Item>
             )}
-            {!esEspuma && (
+            {(
               <Form.Item name="numeroSello" label="N° sello" className="mb-3">
                 <Input />
               </Form.Item>
@@ -853,18 +823,18 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               </Form.Item>
             ) : (
               <Form.Item name="cantidadSellos" label={getCantidadLabelPorTipo(registro.tipoRegistro)} className="mb-3">
-                <InputNumber min={0} className="w-full" />
+                <InputNumber min={1} precision={0} className="w-full" />
               </Form.Item>
             )}
             <Form.Item
               name="nombreSellador"
-              label={esEspuma ? "Cuadrilla" : "Nombre sellador"}
+              label="Nombre sellador"
               className="mb-3"
             >
               <Input />
             </Form.Item>
             {showCampo("holgura") && (
-            <Form.Item name="holguraCm" label="Holgura (cm)" className="mb-3">
+            <Form.Item name="holguraCm" label={esEspuma ? "Separación (cm)" : "Holgura (cm)"} className="mb-3">
               <InputNumber min={0} className="w-full" />
             </Form.Item>
             )}
@@ -874,7 +844,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
             </Form.Item>
             )}
             {showCampo("aislacion") && (
-              <Form.Item name="aislacion" label="Aislación" className="mb-3">
+              <Form.Item name="aislacion" label={esEspuma || registro.tipoRegistro === "tabiqueria" ? "Aislación (informativa)" : "Aislación"} className="mb-3">
                 <Select
                   placeholder="Seleccione aislación"
                   options={[
@@ -890,7 +860,7 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                   placeholder="Seleccione"
                   options={[
                     { value: 0, label: "NO APLICA" },
-                    { value: 1, label: "APLICA (+1 sello)" },
+                    { value: 1, label: "APLICA (+1)" },
                   ]}
                 />
               </Form.Item>
@@ -961,8 +931,6 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
               <Input.TextArea rows={3} />
             </Form.Item>
           </Form>
-        ) : registro.tipoRegistro === "junta_lineal_espuma" ? (
-          renderDetalleJuntaLineal(registro, showCampo)
         ) : (
           renderDetalleSelloCortafuego(registro, showCampo)
         )}

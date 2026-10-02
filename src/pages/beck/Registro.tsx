@@ -79,6 +79,7 @@ type RegistroApiRecord = {
   ejeAlfabetico?: string | null;
   eje_alfabetico?: string | null;
   numeroSello?: string | null;
+  folio?: string | null;
   numero_sello?: string | null;
   cantidadSellos?: number | string | null;
   cantidad_sellos?: number | string | null;
@@ -166,7 +167,7 @@ type RegistroUpdatePayload = {
   cielo_modular?: number | string | null;
   aislacion?: number | string | null;
   reparacion_tabique?: number | string | null;
-  metros_lineales: number;
+  metros_lineales?: number;
   nombre_sellador: string;
   holgura: number;
   accesibilidad: number;
@@ -500,10 +501,8 @@ const getFotosRegistroNormalizado = (record: Pick<RegistroSello, "fotosUrls" | "
 const getFotoRegistroText = (fotos: string[]): string =>
   fotos.length === 0 ? "Sin foto" : fotos.length > 1 ? `Ver fotos (${fotos.length})` : "Ver";
 
-const normalizeFactorHolgura = (value: number): 1 | 1.2 | 1.4 | 1.8 => {
-  if (value === 1.2 || value === 1.4 || value === 1.8) return value;
-  return 1;
-};
+const normalizeFactorHolgura = (value: number): number =>
+  Number.isFinite(value) && value >= 0 ? value : 1;
 
 const normalizeCieloModular = (value: number): 1 | 2 | 3 => {
   if (value === 2 || value === 3) return value;
@@ -586,14 +585,15 @@ const normalizeRegistro = (r: RegistroApiRecord): RegistroSello => {
     recinto: r.recinto ?? "",
     modulo: r.modulo ?? "",
     numeroSello,
+    folio: r.folio,
     cantidadSellos,
     metrosLineales,
     tipoRegistro,
     holguraCm,
-    factorHolgura: normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm)),
+    factorHolgura: normalizeFactorHolgura(Number(factorPorHolguras ?? 1)),
     cieloModular: normalizeCieloModular(Number(cieloModularRaw)),
     cantidadSellosConFactor:
-      Number(cantidadSellosConFactores ?? cantidadSellos * normalizeFactorHolgura(Number(factorPorHolguras ?? holguraCm))),
+      Number(cantidadSellosConFactores ?? cantidadSellos * normalizeFactorHolgura(Number(factorPorHolguras ?? 1))),
     factorPorHolguras,
     cantidadSellosConFactores,
     aislacion,
@@ -992,7 +992,7 @@ const RegistroSellos: React.FC<RegistroSellosProps> = ({ themeMode }) => {
       accesibilidad: values.accesibilidad ?? values.cieloModular ?? null,
       aislacion: values.aislacion ?? null,
       reparacion_tabique: values.reparacionTabique ?? null,
-      metros_lineales: values.metrosLineales ?? 0,
+      metros_lineales: registroDetalle.tipoRegistro === "junta_lineal_espuma" ? values.metrosLineales : undefined,
       nombre_sellador: values.nombreSellador,
       holgura: values.holguraCm,
         observaciones: values.observaciones,
