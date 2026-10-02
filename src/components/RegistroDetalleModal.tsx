@@ -740,14 +740,15 @@ const RegistroDetalleModal: React.FC<RegistroDetalleModalProps> = ({
                       { value: "", label: `${registro.descripcionMaterial || registro.itemizadoBeck || "Sin descripción"} (valor guardado)` },
                       ...opcionesItemizado.map((opcion) => ({
                         value: opcion.id,
-                        label: [opcion.codigoBeck, opcion.elementoPasante, opcion.nombrePersonalizado].filter(Boolean).join(" · "),
+                        // En obras con itemizado antiguo se muestra el código propio: es el que queda guardado.
+                        label: [opcion.codigoObra ?? opcion.codigoBeck, opcion.elementoPasante, opcion.nombrePersonalizado].filter(Boolean).join(" · "),
                       })),
                     ]}
                     onChange={(id: string) => {
                       const opcion = opcionesItemizado.find((item) => item.id === id);
                       form.setFieldsValue(opcion ? {
                         descripcionMaterial: opcion.elementoPasante || "",
-                        codigoBeck: opcion.codigoBeck || "",
+                        codigoBeck: opcion.codigoObra ?? opcion.codigoBeck ?? "",
                         itemizadoMandanteTexto: opcion.nombrePersonalizado || opcion.elementoPasante || "",
                       } : {
                         descripcionMaterial: registro.descripcionMaterial ?? registro.itemizadoBeck,

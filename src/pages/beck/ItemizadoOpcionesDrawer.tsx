@@ -275,8 +275,15 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
       dataIndex: "codigoBeck",
       key: "codigoBeck",
       width: 130,
-      render: (v: string | null) => (
-        <span className="font-mono text-xs">{v || <span className="text-slate-400">—</span>}</span>
+      render: (v: string | null, record: ItemizadoOpcion) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-xs">{v || <span className="text-slate-400">—</span>}</span>
+          {record.codigoPersonalizado && (
+            <Tag color="gold" className="w-fit font-mono text-[11px]" title="Código propio de esta obra (itemizado antiguo)">
+              Obra: {record.codigoPersonalizado}
+            </Tag>
+          )}
+        </div>
       ),
     },
     {

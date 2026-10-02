@@ -4848,6 +4848,10 @@ export type ItemizadoOpcion = {
   propuestoAlCliente?: boolean;
   seleccionadoPorCliente?: boolean;
   nombrePersonalizado?: string | null;
+  /** Código propio de la obra (itemizado antiguo). null = usa el código BECK. */
+  codigoPersonalizado?: string | null;
+  /** Código que ve y registra la obra: el propio si existe, si no el código BECK. */
+  codigoObra?: string | null;
   orden?: number | null;
   rendimientoSellosEsperadoDiario?: number | null;
   rendimientoReparacionEsperadoDiario?: number | null;
@@ -4882,6 +4886,8 @@ export type ItemizadoOpcionConfigItem = {
   itemizadoOpcionId: string;
   orden?: number | null;
   nombrePersonalizado?: string | null;
+  codigoPersonalizado?: string | null;
+  codigoObra?: string | null;
   nombreMostrar?: string | null;
   precioUnitario?: number | string | null;
   moneda?: MonedaItemizado | null;
@@ -4901,6 +4907,7 @@ export type ItemizadoConfiguracionObraPayload = {
     itemizadoOpcionId: string;
     orden?: number | null;
     nombrePersonalizado?: string | null;
+    codigoPersonalizado?: string | null;
     visible?: boolean;
     rendimientoSellosEsperadoDiario?: number | null;
     rendimientoReparacionEsperadoDiario?: number | null;

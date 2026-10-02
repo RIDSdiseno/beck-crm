@@ -43,6 +43,7 @@ type Props = {
 type ConfigRow = ItemizadoOpcionConfigItem & {
   _orden: number | null;
   _nombrePersonalizado: string;
+  _codigoPersonalizado: string;
   _rendimientoSellos: number | null;
   _rendimientoReparacion: number | null;
   _precioUnitario: number | null;
@@ -188,6 +189,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
           ...item,
           _orden: item.orden ?? null,
           _nombrePersonalizado: item.nombrePersonalizado ?? "",
+          _codigoPersonalizado: item.codigoPersonalizado ?? "",
           _rendimientoSellos: item.itemizadoOpcion?.rendimientoSellosEsperadoDiario ?? null,
           _rendimientoReparacion: item.itemizadoOpcion?.rendimientoReparacionEsperadoDiario ?? null,
           _precioUnitario:
@@ -372,6 +374,16 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     );
   };
 
+  const updateCodigo = (id: string, value: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.itemizadoOpcionId === id
+          ? { ...row, _codigoPersonalizado: value }
+          : row
+      )
+    );
+  };
+
   const updateRendimientoSellos = (id: string, value: number | null) => {
     setRows((prev) =>
       prev.map((row) =>
@@ -452,6 +464,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             itemizadoOpcionId: string;
             orden: number | null;
             nombrePersonalizado: string | null;
+            codigoPersonalizado: string | null;
             rendimientoSellosEsperadoDiario?: number | null;
             rendimientoReparacionEsperadoDiario?: number | null;
             precioUnitario?: number | null;
@@ -460,6 +473,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             itemizadoOpcionId: row.itemizadoOpcionId,
             orden: row._orden,
             nombrePersonalizado: row._nombrePersonalizado.trim() || null,
+            codigoPersonalizado: row._codigoPersonalizado.trim() || null,
           };
 
           if (dirty?.sellos) {
@@ -498,6 +512,23 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
         const v = record.itemizadoOpcion?.codigoBeck;
         return v || <span className="text-slate-400">—</span>;
       },
+    },
+    {
+      title: "Código en esta obra",
+      key: "codigoPersonalizado",
+      width: 150,
+      render: (_: unknown, record: ConfigRow) => (
+        <Input
+          size="small"
+          maxLength={100}
+          value={record._codigoPersonalizado}
+          placeholder={record.itemizadoOpcion?.codigoBeck || "Código BECK"}
+          title="Solo para obras con un itemizado antiguo. Vacío = usa el código BECK."
+          onChange={(e) =>
+            updateCodigo(record.itemizadoOpcionId, e.target.value)
+          }
+        />
+      ),
     },
     {
       title: "Itemizado BECK",
