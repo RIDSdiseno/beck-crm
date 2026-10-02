@@ -27,6 +27,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { MenuProps } from "antd";
 import {
   DeleteOutlined,
+  DownloadOutlined,
   DownOutlined,
   EditOutlined,
   FileExcelOutlined,
@@ -55,6 +56,8 @@ import {
 import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 import { regionesComunasChile } from "../../data/regionesComunasChile";
 import ItemizadoOpcionesDrawer from "./ItemizadoOpcionesDrawer";
+import { saveAs } from "file-saver";
+import { construirPlantillaItemizado } from "../../utils/plantillaItemizado";
 import ConfigurarItemizadosObraDrawer from "./ConfigurarItemizadosObraDrawer";
 import EstadosAvanceObraDrawer from "./EstadosAvanceObraDrawer";
 
@@ -557,6 +560,7 @@ const Obras: React.FC = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importReemplazar, setImportReemplazar] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const normalizedRegistroConfig = useMemo(
@@ -1095,6 +1099,33 @@ const Obras: React.FC = () => {
     });
   };
 
+  const handleDescargarPlantilla = async () => {
+    setDescargandoPlantilla(true);
+    try {
+      // Sugerencias tomadas del catálogo actual, para que se escriban igual y no
+      // se generen duplicados por tildes o mayúsculas. Si falla, la plantilla sale sin listas.
+      const sugerencias = await itemizadoOpcionesAPI
+        .listar()
+        .then((opciones) => ({
+          tipo: opciones.map((o) => o.tipo ?? ""),
+          elementoPenetra: opciones.map((o) => o.elementoPenetra ?? ""),
+          materialidad: opciones.map((o) => o.materialidad ?? ""),
+        }))
+        .catch(() => undefined);
+      const buffer = await construirPlantillaItemizado(sugerencias);
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        "plantilla_itemizado_beck.xlsx",
+      );
+    } catch (err) {
+      message.error(getErrorMessage(err, "No se pudo generar la plantilla"));
+    } finally {
+      setDescargandoPlantilla(false);
+    }
+  };
+
   const openImportModal = () => {
     setImportFile(null);
     setImportReemplazar(false);
@@ -1324,6 +1355,15 @@ const Obras: React.FC = () => {
           </p>
         </div>
         <Space wrap>
+          {canManageItemizado && (
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => void handleDescargarPlantilla()}
+              loading={descargandoPlantilla}
+            >
+              Descargar formato itemizado
+            </Button>
+          )}
           {canManageItemizado && (
             <Button icon={<FileExcelOutlined />} onClick={openImportModal}>
               Importar itemizado Excel
