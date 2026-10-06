@@ -5032,8 +5032,12 @@ export const itemizadoOpcionesAPI = {
   guardarConfiguracionObra: async (
     obraId: string,
     payload: ItemizadoConfiguracionObraPayload
-  ): Promise<void> => {
-    await api.put(`/itemizado-opciones/obra/${obraId}/configuracion`, payload);
+  ): Promise<{ advertencia?: string; codigosRepetidos?: string[] }> => {
+    const response = await api.put<{ advertencia?: string; codigosRepetidos?: string[] }>(
+      `/itemizado-opciones/obra/${obraId}/configuracion`,
+      payload
+    );
+    return { advertencia: response.data?.advertencia, codigosRepetidos: response.data?.codigosRepetidos };
   },
 
   obtenerPropuestaObra: async (

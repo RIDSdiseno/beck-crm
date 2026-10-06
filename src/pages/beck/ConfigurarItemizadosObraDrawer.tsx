@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   Alert,
@@ -71,6 +71,15 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+// Código con que la obra ve el ítem: el propio si lo tiene, si no el del catálogo.
+const codigoEnObra = (row: ConfigRow): string =>
+  row._codigoPersonalizado.trim() || row.itemizadoOpcion?.codigoBeck?.trim() || "";
+
+const describirFila = (row: ConfigRow): string =>
+  [row.itemizadoOpcion?.codigoBeck, row.itemizadoOpcion?.elementoPasante]
+    .filter(Boolean)
+    .join(" · ");
+
 type TramoRow = { holguraMax: number | null; factor: number | null };
 
 const tramosToRows = (tramos: TramoHolgura[]): TramoRow[] =>
@@ -88,6 +97,19 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [dirtyRendimientos, setDirtyRendimientos] = useState<RendimientoDirtyMap>({});
   const [monedaInvalidaIds, setMonedaInvalidaIds] = useState<Set<string>>(new Set());
+
+  // Todas las filas son ítems visibles de la obra: dos con el mismo código serían ambiguos
+  // al registrar. Se permite guardar (al renumerar se va de a uno), pero se marcan en rojo.
+  const filasPorCodigoRepetido = useMemo(() => {
+    const porCodigo = new Map<string, ConfigRow[]>();
+    for (const row of rows) {
+      const codigo = codigoEnObra(row);
+      if (!codigo) continue;
+      const clave = codigo.toUpperCase();
+      porCodigo.set(clave, [...(porCodigo.get(clave) ?? []), row]);
+    }
+    return new Map([...porCodigo].filter(([, filas]) => filas.length > 1));
+  }, [rows]);
 
   const limpiarMonedaInvalida = (id: string) => {
     setMonedaInvalidaIds((prev) => {
@@ -456,7 +478,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
 
     setSaving(true);
     try {
-      await itemizadoOpcionesAPI.guardarConfiguracionObra(obraId, {
+      const { advertencia } = await itemizadoOpcionesAPI.guardarConfiguracionObra(obraId, {
         items: rows.map((row) => {
           const dirty = dirtyRendimientos[row.itemizadoOpcionId];
 
@@ -492,7 +514,13 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
           return item;
         }),
       });
-      void message.success("Configuración guardada correctamente");
+      if (advertencia) {
+        void message.warning(
+          "Configuración guardada, pero quedan códigos repetidos en la obra. Corrígelos antes de que se registre en terreno."
+        );
+      } else {
+        void message.success("Configuración guardada correctamente");
+      }
       await cargar();
     } catch (err) {
       void message.error(
@@ -517,18 +545,31 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       title: "Código en esta obra",
       key: "codigoPersonalizado",
       width: 150,
-      render: (_: unknown, record: ConfigRow) => (
-        <Input
-          size="small"
-          maxLength={100}
-          value={record._codigoPersonalizado}
-          placeholder={record.itemizadoOpcion?.codigoBeck || "Código BECK"}
-          title="Solo para obras con un itemizado antiguo. Vacío = usa el código BECK."
-          onChange={(e) =>
-            updateCodigo(record.itemizadoOpcionId, e.target.value)
-          }
-        />
-      ),
+      render: (_: unknown, record: ConfigRow) => {
+        const otras = (filasPorCodigoRepetido.get(codigoEnObra(record).toUpperCase()) ?? []).filter(
+          (row) => row.itemizadoOpcionId !== record.itemizadoOpcionId
+        );
+        return (
+          <>
+            <Input
+              size="small"
+              maxLength={100}
+              status={otras.length > 0 ? "error" : undefined}
+              value={record._codigoPersonalizado}
+              placeholder={record.itemizadoOpcion?.codigoBeck || "Código BECK"}
+              title="Solo para obras con un itemizado antiguo. Vacío = usa el código BECK."
+              onChange={(e) =>
+                updateCodigo(record.itemizadoOpcionId, e.target.value)
+              }
+            />
+            {otras.length > 0 && (
+              <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                También lo usa: {otras.map(describirFila).join("; ")}
+              </Typography.Text>
+            )}
+          </>
+        );
+      },
     },
     {
       title: "Itemizado BECK",
@@ -976,6 +1017,17 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             showIcon
             message="No se pudo cargar la configuración"
             description={error}
+          />
+        )}
+
+        {!loading && filasPorCodigoRepetido.size > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message={`Hay códigos repetidos en esta obra: ${[...filasPorCodigoRepetido.values()]
+              .map((filas) => codigoEnObra(filas[0]))
+              .join(", ")}`}
+            description="Se puede guardar mientras renumeras, pero cada ítem visible debe terminar con un código distinto antes de registrar en terreno: un registro con un código repetido no permite saber a qué ítem corresponde."
           />
         )}
 
