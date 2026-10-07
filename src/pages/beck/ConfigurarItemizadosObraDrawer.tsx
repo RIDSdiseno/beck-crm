@@ -20,6 +20,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { ReloadOutlined, SaveOutlined, SearchOutlined, UndoOutlined } from "@ant-design/icons";
 import {
+  obrasAPI,
   itemizadoOpcionesAPI,
   factoresHolguraAPI,
   factoresAccesibilidadAPI,
@@ -31,7 +32,7 @@ import {
   type FactorAislacionConfig,
   type MonedaItemizado,
 } from "../../services/api";
-import { TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
+import { TIPOS_ESTADO_AVANCE, TIPOS_REGISTRO_TERRENO } from "../../constants/roles";
 
 type Props = {
   open: boolean;
@@ -48,11 +49,13 @@ type ConfigRow = ItemizadoOpcionConfigItem & {
   _rendimientoReparacion: number | null;
   _precioUnitario: number | null;
   _moneda: MonedaItemizado | null;
+  // Contrato total por tipo de registro (cantidad contratada), para el estado de avance.
+  _contratos: Record<string, number | null>;
 };
 
 type RendimientoDirtyMap = Record<
   string,
-  { sellos?: boolean; reparacion?: boolean; precio?: boolean; moneda?: boolean }
+  { sellos?: boolean; reparacion?: boolean; precio?: boolean; moneda?: boolean; contratos?: boolean }
 >;
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -97,6 +100,18 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [dirtyRendimientos, setDirtyRendimientos] = useState<RendimientoDirtyMap>({});
   const [monedaInvalidaIds, setMonedaInvalidaIds] = useState<Set<string>>(new Set());
+  const [tiposObra, setTiposObra] = useState<string[]>([]);
+
+  // Columnas de contrato: los tipos habilitados en la obra y los que ya tienen contrato.
+  const tiposContrato = useMemo(() => {
+    const conContrato = new Set(
+      rows.flatMap((r) => Object.keys(r._contratos).filter((t) => r._contratos[t] !== null))
+    );
+    const visibles = TIPOS_ESTADO_AVANCE.filter(
+      (t) => tiposObra.includes(t.value) || conContrato.has(t.value)
+    );
+    return visibles.length > 0 ? visibles : TIPOS_ESTADO_AVANCE.slice(0, 1);
+  }, [rows, tiposObra]);
 
   // Todas las filas son ítems visibles de la obra: dos con el mismo código serían ambiguos
   // al registrar. Se permite guardar (al renumerar se va de a uno), pero se marcan en rojo.
@@ -260,6 +275,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
               ? Number(item.precioUnitario)
               : null,
           _moneda: item.moneda ?? null,
+          _contratos: { ...(item.contratos ?? {}) },
         }))
       );
     } catch (err) {
@@ -275,6 +291,10 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     if (open && obraId) {
       limpiarFiltros();
       void cargar();
+      obrasAPI
+        .getTiposRegistro(obraId)
+        .then(setTiposObra)
+        .catch(() => setTiposObra([]));
       void cargarFactores();
       void cargarAccesibilidad();
       void cargarAislacion();
@@ -491,6 +511,20 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     limpiarMonedaInvalida(id);
   };
 
+  const updateContrato = (id: string, tipo: string, value: number | null) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.itemizadoOpcionId === id
+          ? { ...row, _contratos: { ...row._contratos, [tipo]: value } }
+          : row
+      )
+    );
+    setDirtyRendimientos((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], contratos: true },
+    }));
+  };
+
   const updateMoneda = (id: string, value: MonedaItemizado | null) => {
     setRows((prev) =>
       prev.map((row) => (row.itemizadoOpcionId === id ? { ...row, _moneda: value } : row))
@@ -533,6 +567,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             rendimientoReparacionEsperadoDiario?: number | null;
             precioUnitario?: number | null;
             moneda?: MonedaItemizado | null;
+            contratos?: Record<string, number | null>;
           } = {
             itemizadoOpcionId: row.itemizadoOpcionId,
             orden: row._orden,
@@ -551,6 +586,11 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
           }
           if (dirty?.moneda) {
             item.moneda = row._moneda;
+          }
+          if (dirty?.contratos) {
+            item.contratos = Object.fromEntries(
+              Object.entries(row._contratos).map(([tipo, cantidad]) => [tipo, cantidad ?? null])
+            );
           }
 
           return item;
@@ -747,6 +787,31 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
           />
         );
       },
+    },
+    {
+      title: (
+        <span title="Cantidad contratada de cada ítem por tipo. El estado de avance acumula lo ejecutado y lo descuenta de aquí.">
+          Contrato total (cantidad)
+        </span>
+      ),
+      key: "contratos",
+      children: tiposContrato.map((tipo) => ({
+        title: tipo.label,
+        key: `contrato-${tipo.value}`,
+        width: 105,
+        render: (_: unknown, record: ConfigRow) => (
+          <InputNumber
+            size="small"
+            min={0}
+            step={1}
+            precision={2}
+            value={record._contratos[tipo.value] ?? null}
+            placeholder="—"
+            style={{ width: 90 }}
+            onChange={(v) => updateContrato(record.itemizadoOpcionId, tipo.value, v ?? null)}
+          />
+        ),
+      })),
     },
   ];
 
@@ -1157,7 +1222,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
               dataSource={filasFiltradas}
               size="small"
               pagination={{ pageSize: 25, showSizeChanger: false }}
-              scroll={{ x: 1600 }}
+              scroll={{ x: 1600 + 105 * tiposContrato.length }}
               locale={{
                 emptyText: hayFiltros
                   ? "Ningún itemizado coincide con la búsqueda o los filtros"

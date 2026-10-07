@@ -4,16 +4,19 @@ import dayjs, { Dayjs } from "dayjs";
 import {
   Alert,
   Button,
+  Checkbox,
   Collapse,
   DatePicker,
   Drawer,
   Empty,
   Input,
+  Modal,
   Popconfirm,
   Segmented,
   Skeleton,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   message,
@@ -27,6 +30,7 @@ import {
   DeleteOutlined,
   DollarOutlined,
   EditOutlined,
+  FileExcelOutlined,
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -36,7 +40,10 @@ import {
   indicadoresAPI,
   type HitoObra,
   type HitoObraItemizadoItem,
+  type HitosObraResponse,
+  type LineaEstadoAvance,
 } from "../../services/api";
+import { TIPOS_ESTADO_AVANCE, getTipoRegistroLabel } from "../../constants/roles";
 import {
   aNumeroOrNull,
   convertirTotalesAMoneda,
@@ -45,7 +52,10 @@ import {
   sumarTotales,
   type MonedaSoportada,
 } from "../../utils/conversionMoneda";
-import { obtenerValorFila } from "../../utils/valorizacionHito";
+import { lineasConPeriodo, obtenerValorLinea } from "../../utils/valorizacionHito";
+import { saveAs } from "file-saver";
+import { construirExcelEstadoAvance } from "../../utils/exportarEstadoAvance";
+import { construirExcelAvanceSemanal } from "../../utils/exportarAvanceSemanal";
 import ResumenEconomicoDrawer from "./ResumenEconomicoDrawer";
 
 const MONEDAS_RESUMEN: MonedaSoportada[] = ["CLP", "USD", "UF"];
@@ -85,38 +95,45 @@ const formatFechaCorta = (value: string | null | undefined): string => {
   return d.isValid() ? d.format("DD-MM-YYYY") : "—";
 };
 
-// Sugerencia de "Fecha desde" para el próximo hito: el día siguiente al
-// "Fecha hasta" del hito más reciente (el de fechaHasta mayor). El usuario
-// puede modificarla libremente; el backend valida orden y superposición de
-// todas formas, así que esto es puramente una comodidad de UX.
-const sugerirFechaDesde = (todosHitos: HitoObra[]): Dayjs | null => {
+// Los estados de avance son semanales: se propone la semana siguiente al último
+// (7 días desde el día después de su "Fecha hasta"). Si todavía no hay ninguno, la
+// semana (lunes a domingo) del primer registro validado sin estado de avance. El
+// usuario puede cambiar las fechas; el backend valida la superposición igual.
+const sugerirPeriodo = (
+  todosHitos: HitoObra[],
+  primeraFechaSinEstado: string | null
+): { desde: Dayjs | null; hasta: Dayjs | null } => {
   const conFecha = todosHitos.filter((h) => h.fechaHasta);
-  if (conFecha.length === 0) return null;
-  const ultimo = conFecha.reduce((max, h) =>
-    dayjs(h.fechaHasta).isAfter(dayjs(max.fechaHasta)) ? h : max
-  );
-  return dayjs(ultimo.fechaHasta).add(1, "day");
+  let desde: Dayjs | null = null;
+  if (conFecha.length > 0) {
+    const ultimo = conFecha.reduce((max, h) =>
+      dayjs(h.fechaHasta).isAfter(dayjs(max.fechaHasta)) ? h : max
+    );
+    desde = dayjs(ultimo.fechaHasta).add(1, "day");
+  } else if (primeraFechaSinEstado) {
+    const primera = dayjs(primeraFechaSinEstado.slice(0, 10));
+    desde = primera.subtract((primera.day() + 6) % 7, "day");
+  }
+  return { desde, hasta: desde ? desde.add(6, "day") : null };
 };
 
-// Resumen del hito: reutiliza EXACTAMENTE los subtotales ya calculados por
-// el backend (hito.subtotales, columna "Subtotal ejecutado del período") —
-// no recalcula la ejecución ni el subtotal. "Ejecutado" = suma de esos
-// subtotales por moneda.
-const calcularTotalesHito = (
-  hito: HitoObra,
-  items: HitoObraItemizadoItem[]
-): {
-  ejecutadoPorMoneda: Record<MonedaSoportada, number>;
-} => {
-  const ejecutado = items.map((item) => ({
-    valor: aNumeroOrNull(hito.subtotales[item.itemizadoOpcionId]),
-    moneda: item.moneda,
-  }));
+// Total del período por moneda: suma de los subtotales que calculó el backend.
+const calcularTotalesHito = (hito: HitoObra): Record<MonedaSoportada, number> =>
+  sumarTotales(lineasConPeriodo(hito).map(obtenerValorLinea));
 
-  return {
-    ejecutadoPorMoneda: sumarTotales(ejecutado),
-  };
+// Pestañas del estado de avance: Sellos, Juntas y Tabiquería, solo las que tienen
+// contrato o ejecución; un tipo fuera de esa lista va en su propia pestaña.
+const tiposConLineas = (hito: HitoObra): Array<{ value: string; label: string }> => {
+  const presentes = new Set(hito.lineas.map((l) => l.tipoRegistro));
+  const conocidos = TIPOS_ESTADO_AVANCE.filter((t) => presentes.has(t.value));
+  const otros = [...presentes]
+    .filter((t) => !TIPOS_ESTADO_AVANCE.some((c) => c.value === t))
+    .map((t) => ({ value: t, label: getTipoRegistroLabel(t) }));
+  return [...conocidos, ...otros];
 };
+
+const formatCantidadONada = (value: number | null): React.ReactNode =>
+  value === null ? <span className="text-slate-400">—</span> : formatCantidadEjecutada(value);
 
 const EstadosAvanceObraDrawer: React.FC<Props> = ({
   open,
@@ -124,8 +141,16 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
   obraId,
   obraNombre,
 }) => {
-  const [items, setItems] = useState<HitoObraItemizadoItem[]>([]);
   const [hitos, setHitos] = useState<HitoObra[]>([]);
+  const [items, setItems] = useState<HitoObraItemizadoItem[]>([]);
+  // Exportación del avance semanal: estados de avance elegidos (por defecto, todos).
+  const [avanceSemanalOpen, setAvanceSemanalOpen] = useState(false);
+  const [hitosParaAvance, setHitosParaAvance] = useState<string[]>([]);
+  const [exportandoAvance, setExportandoAvance] = useState(false);
+  const [incluirSinEjecucion, setIncluirSinEjecucion] = useState(false);
+  const [registrosSinEstado, setRegistrosSinEstado] = useState<
+    HitosObraResponse["registrosSinEstado"]
+  >({ cantidad: 0, primeraFecha: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,13 +185,13 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     setEditandoHitoId(null);
     try {
       const data = await hitosObraAPI.listar(obraId);
-      setItems(data.items);
       setHitos(data.hitos);
-      // Sugerencia de período para el próximo hito: día siguiente al fin
-      // del hito más reciente. Se recalcula cada vez que se recarga (por
-      // ejemplo, justo después de crear un hito).
-      setNuevoFechaDesde(sugerirFechaDesde(data.hitos));
-      setNuevoFechaHasta(null);
+      setItems(data.items);
+      setRegistrosSinEstado(data.registrosSinEstado);
+      // Se recalcula cada vez que se recarga (por ejemplo, justo después de crear uno).
+      const sugerido = sugerirPeriodo(data.hitos, data.registrosSinEstado.primeraFecha);
+      setNuevoFechaDesde(sugerido.desde);
+      setNuevoFechaHasta(sugerido.hasta);
     } catch (err) {
       setError(getErrorMessage(err, "No se pudieron cargar los estados de avance"));
     } finally {
@@ -219,7 +244,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       void message.error("La fecha hasta no puede ser menor que la fecha desde.");
       return;
     }
-    const nombre = nuevoNombre.trim() || `Hito ${hitos.length + 1}`;
+    const nombre = nuevoNombre.trim() || `Estado de avance N°${hitos.length + 1}`;
     setCreando(true);
     try {
       await hitosObraAPI.crear(obraId, {
@@ -228,10 +253,10 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
         fechaHasta: nuevoFechaHasta.format("YYYY-MM-DD"),
       });
       setNuevoNombre("");
-      void message.success("Hito creado");
+      void message.success("Estado de avance creado");
       await cargar();
     } catch (err) {
-      void message.error(getErrorMessage(err, "No se pudo crear el hito"));
+      void message.error(getErrorMessage(err, "No se pudo crear el estado de avance"));
     } finally {
       setCreando(false);
     }
@@ -278,7 +303,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     try {
       await hitosObraAPI.actualizar(obraId, hito.id, payload);
       setEditandoHitoId(null);
-      void message.success("Hito actualizado");
+      void message.success("Estado de avance actualizado");
       // El período recién guardado cambia la ejecución/subtotal por hito
       // (calculados en el backend): se recarga para traer esos valores
       // recalculados, no solo el nombre/fechas.
@@ -286,7 +311,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     } catch (err) {
       // El backend sigue validando superposición de períodos: ese error
       // (400) llega tal cual al usuario, sin capturarlo como éxito.
-      void message.error(getErrorMessage(err, "No se pudo actualizar el hito"));
+      void message.error(getErrorMessage(err, "No se pudo actualizar el estado de avance"));
     } finally {
       setAccionHitoId(null);
     }
@@ -299,7 +324,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       await hitosObraAPI.actualizar(obraId, hito.id, { orden: hito.orden + direccion });
       await cargar();
     } catch (err) {
-      void message.error(getErrorMessage(err, "No se pudo reordenar el hito"));
+      void message.error(getErrorMessage(err, "No se pudo reordenar el estado de avance"));
     } finally {
       setAccionHitoId(null);
     }
@@ -310,10 +335,10 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
     setAccionHitoId(hito.id);
     try {
       await hitosObraAPI.eliminar(obraId, hito.id);
-      void message.success("Hito eliminado");
+      void message.success("Estado de avance eliminado");
       await cargar();
     } catch (err) {
-      void message.error(getErrorMessage(err, "No se pudo eliminar el hito"));
+      void message.error(getErrorMessage(err, "No se pudo eliminar el estado de avance"));
     } finally {
       setAccionHitoId(null);
     }
@@ -322,51 +347,150 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
   // Bloqueo real: además de ocultar/deshabilitar botones, el backend rechaza
   // con 409 cualquier modificación sobre un hito terminado. Esta validación
   // de frontend evita el viaje de red inútil, no reemplaza a la del backend.
+  const [exportandoHitoId, setExportandoHitoId] = useState<string | null>(null);
+
+  const handleExportarExcel = async (hito: HitoObra) => {
+    setExportandoHitoId(hito.id);
+    try {
+      const { buffer, nombre } = await construirExcelEstadoAvance(obraNombre ?? "", hito);
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        nombre
+      );
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo generar el Excel"));
+    } finally {
+      setExportandoHitoId(null);
+    }
+  };
+
+  const hitosCronologicos = useMemo(
+    () => [...hitos].sort((a, b) => (a.fechaDesde ?? "").localeCompare(b.fechaDesde ?? "")),
+    [hitos]
+  );
+
+  const abrirAvanceSemanal = () => {
+    setHitosParaAvance(hitosCronologicos.map((h) => h.id));
+    setAvanceSemanalOpen(true);
+  };
+
+  const handleExportarAvanceSemanal = async () => {
+    const elegidos = hitosCronologicos.filter((h) => hitosParaAvance.includes(h.id));
+    if (elegidos.length === 0) {
+      void message.error("Selecciona al menos un estado de avance.");
+      return;
+    }
+    setExportandoAvance(true);
+    try {
+      const { buffer, nombre } = await construirExcelAvanceSemanal(obraNombre ?? "", items, elegidos, {
+        incluirSinEjecucion,
+      });
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        nombre
+      );
+      setAvanceSemanalOpen(false);
+    } catch (err) {
+      void message.error(getErrorMessage(err, "No se pudo generar el Excel"));
+    } finally {
+      setExportandoAvance(false);
+    }
+  };
+
   const handleTerminarHito = async (hito: HitoObra) => {
     if (!obraId || hito.terminado) return;
     setAccionHitoId(hito.id);
     try {
       await hitosObraAPI.terminar(obraId, hito.id);
-      void message.success("Hito terminado");
+      void message.success("Estado de avance terminado");
       await cargar();
     } catch (err) {
-      void message.error(getErrorMessage(err, "No se pudo terminar el hito"));
+      void message.error(getErrorMessage(err, "No se pudo terminar el estado de avance"));
     } finally {
       setAccionHitoId(null);
     }
   };
 
-  const buildColumns = (hito: HitoObra): ColumnsType<HitoObraItemizadoItem> => [
+  const columns: ColumnsType<LineaEstadoAvance> = [
     {
       title: "Código BECK",
       key: "codigoBeck",
-      width: 110,
+      width: 100,
+      fixed: "left",
       render: (_: unknown, r) => r.codigoBeck || <span className="text-slate-400">—</span>,
     },
     {
       title: "Itemizado BECK",
       key: "itemizadoBeck",
-      render: (_: unknown, r) => r.itemizadoBeck || <span className="text-slate-400">—</span>,
+      width: 220,
+      render: (_: unknown, r) =>
+        r.itemizadoBeck ||
+        (r.itemizadoOpcionId ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <Tooltip title="Hay registros con este código, pero no está entre los ítems visibles de la obra.">
+            <Tag color="orange">Sin ítem en la obra</Tag>
+          </Tooltip>
+        )),
     },
     {
       title: "Itemizado Mandante",
       key: "itemizadoMandante",
-      render: (_: unknown, r) =>
-        r.itemizadoMandante || <span className="text-slate-400">—</span>,
+      width: 200,
+      render: (_: unknown, r) => r.itemizadoMandante || <span className="text-slate-400">—</span>,
     },
     {
-      title: "Cantidad Ejecutada del período",
-      key: "cantidadEjecutada",
-      width: 160,
-      align: "center",
-      // Ejecución de ESTE hito (registros de terreno dentro de su
-      // fechaDesde/fechaHasta), no la ejecución global de la obra.
-      render: (_: unknown, r) => formatCantidadEjecutada(hito.cantidadesEjecutadas[r.itemizadoOpcionId]),
+      title: "Contratado",
+      key: "cantidadContratada",
+      width: 105,
+      align: "right",
+      render: (_: unknown, r) => formatCantidadONada(r.cantidadContratada),
+    },
+    {
+      title: "Anterior",
+      key: "cantidadAnterior",
+      width: 95,
+      align: "right",
+      render: (_: unknown, r) => formatCantidadEjecutada(r.cantidadAnterior),
+    },
+    {
+      title: "Cantidad final del período",
+      key: "cantidadPeriodo",
+      width: 120,
+      align: "right",
+      render: (_: unknown, r) => (
+        <span className="font-medium">{formatCantidadEjecutada(r.cantidadPeriodo)}</span>
+      ),
+    },
+    {
+      title: "Acumulado",
+      key: "cantidadAcumulada",
+      width: 100,
+      align: "right",
+      render: (_: unknown, r) => formatCantidadEjecutada(r.cantidadAcumulada),
+    },
+    {
+      title: "Saldo",
+      key: "saldo",
+      width: 95,
+      align: "right",
+      render: (_: unknown, r) =>
+        r.saldo !== null && r.saldo < 0 ? (
+          <Tooltip title="Lo ejecutado supera la cantidad contratada">
+            <span className="font-medium text-red-600">{formatCantidadEjecutada(r.saldo)}</span>
+          </Tooltip>
+        ) : (
+          formatCantidadONada(r.saldo)
+        ),
     },
     {
       title: "PU",
       key: "precioUnitario",
-      width: 130,
+      width: 120,
       align: "right",
       render: (_: unknown, r) => (
         <span className={aNumeroOrNull(r.precioUnitario) === null ? "text-slate-400" : ""}>
@@ -375,12 +499,12 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       ),
     },
     {
-      title: "Subtotal ejecutado del período",
+      title: "Subtotal del período",
       key: "subtotal",
-      width: 160,
+      width: 140,
       align: "right",
       render: (_: unknown, r) => {
-        const { valor, moneda } = obtenerValorFila(r, hito);
+        const { valor, moneda } = obtenerValorLinea(r);
         return (
           <span className={valor === null ? "text-slate-400" : ""}>
             {formatearMonto(valor, moneda)}
@@ -389,6 +513,17 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       },
     },
   ];
+
+  const renderTablaTipo = (lineas: LineaEstadoAvance[]) => (
+    <Table<LineaEstadoAvance>
+      columns={columns}
+      dataSource={lineas}
+      rowKey="clave"
+      size="small"
+      pagination={false}
+      scroll={{ x: 1300 }}
+    />
+  );
 
   const collapseItems = useMemo(
     () =>
@@ -400,6 +535,12 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
               <Space>
                 <span className="font-medium">{hito.nombre}</span>
                 {hito.terminado && <Tag color="default">Terminado</Tag>}
+                <Tag>{hito.cantidadRegistros} registros</Tag>
+                {hito.registrosAtrasados > 0 && (
+                  <Tooltip title="Ejecutados antes de este período y validados después de cerrar el estado de avance anterior.">
+                    <Tag color="orange">{hito.registrosAtrasados} de períodos anteriores</Tag>
+                  </Tooltip>
+                )}
               </Space>
               {(hito.fechaDesde || hito.fechaHasta) && (
                 <span className="text-xs text-slate-400">
@@ -434,16 +575,24 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
                   onClick={() => handleEditarHito(hito)}
                 />
               </Tooltip>
-              <Tooltip title="Resumen económico de este hito">
+              <Tooltip title="Resumen económico de este estado de avance">
                 <Button
                   size="small"
                   icon={<DollarOutlined />}
                   onClick={() => setHitoResumen(hito)}
                 />
               </Tooltip>
+              <Tooltip title="Exportar a Excel">
+                <Button
+                  size="small"
+                  icon={<FileExcelOutlined />}
+                  loading={exportandoHitoId === hito.id}
+                  onClick={() => void handleExportarExcel(hito)}
+                />
+              </Tooltip>
               <Popconfirm
-                title="Eliminar hito"
-                description={`¿Eliminar "${hito.nombre}" y sus cantidades?`}
+                title="Eliminar estado de avance"
+                description={`¿Eliminar "${hito.nombre}"? Sus registros pasan al siguiente estado de avance.`}
                 okText="Eliminar"
                 okButtonProps={{ danger: true }}
                 cancelText="Cancelar"
@@ -512,33 +661,38 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              <Table<HitoObraItemizadoItem>
-                columns={buildColumns(hito)}
-                dataSource={items}
-                rowKey="itemizadoOpcionId"
-                size="small"
-                pagination={false}
-                scroll={{ x: 900 }}
-                locale={{
-                  emptyText: (
+              {(() => {
+                const tipos = tiposConLineas(hito);
+                if (tipos.length === 0) {
+                  return (
                     <Empty
-                      description="Esta obra no tiene itemizados configurados"
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Sin registros validados en este período ni contrato cargado en Configurar itemizados."
                     />
-                  ),
-                }}
-              />
+                  );
+                }
+                return (
+                  <Tabs
+                    size="small"
+                    items={tipos.map((tipo) => ({
+                      key: tipo.value,
+                      label: tipo.label,
+                      children: renderTablaTipo(hito.lineas.filter((l) => l.tipoRegistro === tipo.value)),
+                    }))}
+                  />
+                );
+              })()}
               <div className="flex justify-end gap-2">
                 {hito.terminado ? (
                   <span className="text-slate-400 text-xs">
-                    Hito terminado: sin más modificaciones.
+                    Terminado: sus registros, cantidades y precios quedaron congelados.
                   </span>
                 ) : null}
                 {!hito.terminado && (
                   <Popconfirm
-                    title="¿Terminar este hito?"
-                    description="Después de terminarlo no se podrán modificar el nombre, las cantidades, el orden ni eliminarlo."
-                    okText="Terminar hito"
+                    title="¿Terminar este estado de avance?"
+                    description="Se congelan sus registros, cantidades y precios. Lo que se valide después pasa al siguiente estado de avance."
+                    okText="Terminar"
                     cancelText="Cancelar"
                     onConfirm={() => void handleTerminarHito(hito)}
                   >
@@ -547,7 +701,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
                       icon={<LockOutlined />}
                       loading={accionHitoId === hito.id}
                     >
-                      Terminar hito
+                      Terminar estado de avance
                     </Button>
                   </Popconfirm>
                 )}
@@ -556,7 +710,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
               {(() => {
                 const monedaResumen = monedaPorHito[hito.id] ?? "CLP";
                 const indicadores = { uf: ufIndicador, dolar: dolarIndicador };
-                const { ejecutadoPorMoneda } = calcularTotalesHito(hito, items);
+                const ejecutadoPorMoneda = calcularTotalesHito(hito);
 
                 const { totalConvertido: ejecutadoEnMonedaSeleccionada, monedasExcluidas } =
                   convertirTotalesAMoneda(ejecutadoPorMoneda, monedaResumen, indicadores);
@@ -564,7 +718,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
                 return (
                   <div className="border-t border-slate-200 pt-3 mt-1 flex justify-end">
                     <div className="w-full max-w-xs space-y-2 text-right">
-                      <div className="text-xs font-medium text-slate-500">Resumen del Hito</div>
+                      <div className="text-xs font-medium text-slate-500">Resumen del período</div>
 
                       <div>
                         <div className="text-xs text-slate-400 mb-1">Moneda</div>
@@ -599,13 +753,13 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
       }),
     [
       hitos,
-      items,
       editandoHitoId,
       nombreDraft,
       fechaDesdeDraft,
       fechaHastaDraft,
       accionHitoId,
       monedaPorHito,
+      exportandoHitoId,
       ufIndicador,
       dolarIndicador,
     ]
@@ -622,14 +776,24 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
           : "Estados de Avance"
       }
       extra={
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          disabled={loading}
-          onClick={() => void cargar()}
-        >
-          Recargar
-        </Button>
+        <Space>
+          <Button
+            size="small"
+            icon={<FileExcelOutlined />}
+            disabled={loading || hitos.length === 0}
+            onClick={abrirAvanceSemanal}
+          >
+            Exportar avance semanal
+          </Button>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            disabled={loading}
+            onClick={() => void cargar()}
+          >
+            Recargar
+          </Button>
+        </Space>
       }
     >
       {error && (
@@ -641,7 +805,7 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
           <div className="text-xs text-slate-500 mb-1">Nombre (opcional)</div>
           <Input
             size="small"
-            placeholder={`Ej: Estado de Pago N°${hitos.length + 1}`}
+            placeholder={`Ej: Estado de avance N°${hitos.length + 1}`}
             value={nuevoNombre}
             className="w-full"
             onChange={(e) => setNuevoNombre(e.target.value)}
@@ -676,24 +840,83 @@ const EstadosAvanceObraDrawer: React.FC<Props> = ({
           onClick={() => void handleCrearHito()}
           className="w-full sm:w-auto"
         >
-          Agregar hito
+          Agregar estado de avance
         </Button>
       </div>
+
+      {registrosSinEstado.cantidad > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          className="mb-3"
+          message={`${registrosSinEstado.cantidad} registro(s) validado(s) todavía no están en ningún estado de avance`}
+          description={`Fueron ejecutados desde el ${formatFechaCorta(registrosSinEstado.primeraFecha)}, después del último período. Agrega el estado de avance de esa semana para incluirlos.`}
+        />
+      )}
 
       {loading ? (
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : hitos.length === 0 ? (
-        <Empty description="Esta obra aún no tiene hitos. Agrega el primero." />
+        <Empty description="Esta obra aún no tiene estados de avance. Agrega el primero." />
       ) : (
         <Collapse items={collapseItems} defaultActiveKey={hitos[0] ? [hitos[0].id] : []} />
       )}
+
+      <Modal
+        open={avanceSemanalOpen}
+        title="Exportar avance semanal"
+        okText="Exportar Excel"
+        cancelText="Cancelar"
+        okButtonProps={{ icon: <FileExcelOutlined />, disabled: hitosParaAvance.length === 0 }}
+        confirmLoading={exportandoAvance}
+        onOk={() => void handleExportarAvanceSemanal()}
+        onCancel={() => setAvanceSemanalOpen(false)}
+      >
+        <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+          <span>
+            Cada estado de avance elegido es una columna con sus totales sin factores (S/F) y con
+            factores (C/F).
+          </span>
+        </div>
+        <Checkbox
+          className="mb-2"
+          checked={hitosParaAvance.length === hitosCronologicos.length}
+          indeterminate={hitosParaAvance.length > 0 && hitosParaAvance.length < hitosCronologicos.length}
+          onChange={(e) =>
+            setHitosParaAvance(e.target.checked ? hitosCronologicos.map((h) => h.id) : [])
+          }
+        >
+          Todos
+        </Checkbox>
+        <Checkbox.Group
+          className="flex flex-col gap-1"
+          value={hitosParaAvance}
+          onChange={(valores) => setHitosParaAvance(valores as string[])}
+          options={hitosCronologicos.map((h) => ({
+            value: h.id,
+            label: `${h.nombre} (${formatFechaCorta(h.fechaDesde)} al ${formatFechaCorta(h.fechaHasta)})${h.terminado ? " · terminado" : ""}`,
+          }))}
+        />
+        <div className="mt-4 border-t border-slate-200 pt-3">
+          <Checkbox
+            checked={incluirSinEjecucion}
+            onChange={(e) => setIncluirSinEjecucion(e.target.checked)}
+          >
+            Incluir todos los itemizados configurados en la obra
+          </Checkbox>
+          <div className="ml-6 text-xs text-slate-500">
+            {incluirSinEjecucion
+              ? "Se listan todos los ítems de la obra, también los que no tuvieron ejecución (en cero)."
+              : "Solo se listan los ítems con ejecución en las semanas seleccionadas."}
+          </div>
+        </div>
+      </Modal>
 
       <ResumenEconomicoDrawer
         open={hitoResumen !== null}
         onClose={() => setHitoResumen(null)}
         obraNombre={obraNombre ?? ""}
         hito={hitoResumen}
-        items={items}
       />
     </Drawer>
   );

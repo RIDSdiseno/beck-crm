@@ -1213,6 +1213,8 @@ export type HitoObraItemizadoItem = {
   codigoBeck: string | null;
   itemizadoBeck: string | null;
   itemizadoMandante: string | null;
+  elementoPenetra?: string | null;
+  materialidad?: string | null;
   precioUnitario: number | string | null;
   moneda: "CLP" | "UF" | "USD" | null;
   orden: number | null;
@@ -1230,18 +1232,43 @@ export type HitoObra = {
   // creados antes de este cambio pueden no tenerlo todavía.
   fechaDesde: string | null;
   fechaHasta: string | null;
-  // Ejecución real y subtotal DE ESTE HITO (registros de terreno validados
-  // cuya fecha cae dentro de fechaDesde/fechaHasta), por itemizadoOpcionId.
-  // 0/null explícito si el hito no tiene período completo — nunca cae de
-  // vuelta al total global.
-  cantidadesEjecutadas: Record<string, number>;
-  subtotales: Record<string, number | null>;
+  // Líneas del estado de avance por tipo de registro e ítem, calculadas en el
+  // backend con la cantidad final de los registros validados. Si está terminado,
+  // son las que quedaron congeladas al cerrarlo.
+  lineas: LineaEstadoAvance[];
+  cantidadRegistros: number;
+  // Registros ejecutados antes del período que entraron aquí porque se validaron
+  // después de cerrar el estado de avance anterior.
+  registrosAtrasados: number;
+};
+
+export type LineaEstadoAvance = {
+  clave: string;
+  tipoRegistro: string;
+  itemizadoOpcionId: string | null;
+  codigoBeck: string | null;
+  itemizadoBeck: string | null;
+  itemizadoMandante: string | null;
+  precioUnitario: number | null;
+  moneda: "CLP" | "UF" | "USD" | null;
+  cantidadContratada: number | null;
+  cantidadAnterior: number;
+  cantidadPeriodo: number;
+  // Lo mismo sin factores (S/F): sellos, o metros lineales en juntas.
+  cantidadFisicaPeriodo: number;
+  cantidadAcumulada: number;
+  saldo: number | null;
+  subtotalPeriodo: number | null;
+  montoAcumulado: number | null;
+  montoContratado: number | null;
 };
 
 export type HitosObraResponse = {
   obra: { id: string; nombre: string };
   items: HitoObraItemizadoItem[];
   hitos: HitoObra[];
+  // Validados ejecutados después del último período: todavía sin estado de avance.
+  registrosSinEstado: { cantidad: number; primeraFecha: string | null };
 };
 
 export const hitosObraAPI = {
@@ -1252,7 +1279,14 @@ export const hitosObraAPI = {
     return {
       obra: response.data.obra,
       items: response.data.items ?? [],
-      hitos: response.data.hitos ?? [],
+      // Un backend sin las líneas (versión anterior) no debe romper la pantalla.
+      hitos: (response.data.hitos ?? []).map((h) => ({
+        ...h,
+        lineas: h.lineas ?? [],
+        cantidadRegistros: h.cantidadRegistros ?? 0,
+        registrosAtrasados: h.registrosAtrasados ?? 0,
+      })),
+      registrosSinEstado: response.data.registrosSinEstado ?? { cantidad: 0, primeraFecha: null },
     };
   },
 
@@ -4891,6 +4925,8 @@ export type ItemizadoOpcionConfigItem = {
   nombreMostrar?: string | null;
   precioUnitario?: number | string | null;
   moneda?: MonedaItemizado | null;
+  // Cantidad contratada por tipo de registro (contrato total del estado de avance).
+  contratos?: Record<string, number>;
   itemizadoOpcion?: {
     codigoBeck?: string | null;
     tipo?: string | null;
@@ -4913,6 +4949,7 @@ export type ItemizadoConfiguracionObraPayload = {
     rendimientoReparacionEsperadoDiario?: number | null;
     precioUnitario?: number | null;
     moneda?: MonedaItemizado | null;
+    contratos?: Record<string, number | null>;
   }>;
 };
 

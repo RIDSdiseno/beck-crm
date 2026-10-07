@@ -11,11 +11,7 @@ import {
   Statistic,
   Typography,
 } from "antd";
-import {
-  indicadoresAPI,
-  type HitoObra,
-  type HitoObraItemizadoItem,
-} from "../../services/api";
+import { indicadoresAPI, type HitoObra } from "../../services/api";
 import {
   aNumeroOrNull,
   convertirMonto,
@@ -24,18 +20,17 @@ import {
   sumarTotales,
   type MonedaSoportada,
 } from "../../utils/conversionMoneda";
-import { filaSinValorizar, obtenerValorFila } from "../../utils/valorizacionHito";
+import { lineaSinValorizar, lineasConPeriodo, obtenerValorLinea } from "../../utils/valorizacionHito";
 
 type ResumenEconomicoDrawerProps = {
   open: boolean;
   onClose: () => void;
   obraNombre: string;
   hito: HitoObra | null;
-  items: HitoObraItemizadoItem[];
 };
 
 type ItemizadoSinValorizar = {
-  itemizadoOpcionId: string;
+  clave: string;
   codigoBeck: string | null;
   itemizadoBeck: string | null;
 };
@@ -53,7 +48,6 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
   onClose,
   obraNombre,
   hito,
-  items,
 }) => {
   const [monedaDestino, setMonedaDestino] = useState<MonedaSoportada>("CLP");
   const [uf, setUf] = useState<number | null>(null);
@@ -112,33 +106,18 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
       };
     }
 
-    const montos = items.map((item) => obtenerValorFila(item, hito));
-    const faltantes: ItemizadoSinValorizar[] = items
-      .filter((item) => filaSinValorizar(item, hito))
-      .map((item) => ({
-        itemizadoOpcionId: item.itemizadoOpcionId,
-        codigoBeck: item.codigoBeck,
-        itemizadoBeck: item.itemizadoBeck,
+    const lineas = lineasConPeriodo(hito);
+    const montos = lineas.map(obtenerValorLinea);
+    const faltantes: ItemizadoSinValorizar[] = lineas
+      .filter(lineaSinValorizar)
+      .map((linea) => ({
+        clave: linea.clave,
+        codigoBeck: linea.codigoBeck,
+        itemizadoBeck: linea.itemizadoBeck,
       }));
 
-    if (import.meta.env.DEV) {
-      console.table(
-        items.map((item) => {
-          const { valor, moneda } = obtenerValorFila(item, hito);
-          return {
-            itemizadoOpcionId: item.itemizadoOpcionId,
-            codigoBeck: item.codigoBeck,
-            moneda,
-            precioUnitario: aNumeroOrNull(item.precioUnitario),
-            cantidadEjecutadaDelPeriodo: hito.cantidadesEjecutadas[item.itemizadoOpcionId] ?? 0,
-            subtotalUsado: valor,
-          };
-        })
-      );
-    }
-
     return { totalesOriginales: sumarTotales(montos), sinValorizar: faltantes };
-  }, [hito, items]);
+  }, [hito]);
 
   const { totalConvertido, monedasExcluidas } = useMemo(() => {
     const indicadores = { uf, dolar };
@@ -170,7 +149,7 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
     >
       {!hito ? (
         <Typography.Text type="secondary">
-          Selecciona un hito para ver su resumen económico.
+          Selecciona un estado de avance para ver su resumen económico.
         </Typography.Text>
       ) : (
         <div className="space-y-4">
@@ -183,7 +162,7 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
           <Alert
             type="info"
             showIcon
-            message="Conversión referencial. No modifica los precios originales de los hitos."
+            message="Conversión referencial. No modifica los precios originales del estado de avance."
           />
 
           {errorIndicadores && (
@@ -211,11 +190,11 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
             <Alert
               type="warning"
               showIcon
-              message={`Hay ${sinValorizar.length} itemizado(s) con cantidad en este hito que no pudieron valorizarse porque no tienen precio unitario o moneda configurada.`}
+              message={`Hay ${sinValorizar.length} ítem(s) con cantidad en este estado de avance que no pudieron valorizarse porque no tienen precio unitario o moneda configurada.`}
               description={
                 <ul className="m-0 list-disc pl-4">
                   {sinValorizar.map((f) => (
-                    <li key={f.itemizadoOpcionId}>
+                    <li key={f.clave}>
                       {f.codigoBeck || "—"} {f.itemizadoBeck ? `— ${f.itemizadoBeck}` : ""}
                     </li>
                   ))}
@@ -232,7 +211,7 @@ const ResumenEconomicoDrawer: React.FC<ResumenEconomicoDrawerProps> = ({
             </Typography.Title>
             {sinDatos ? (
               <Typography.Text type="secondary">
-                Este hito no tiene cantidades valorizables todavía.
+                Este estado de avance no tiene cantidades valorizables todavía.
               </Typography.Text>
             ) : (
               <Row gutter={[12, 12]}>

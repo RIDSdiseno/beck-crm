@@ -61,3 +61,10 @@ export const ROLES_FIREMAT: Array<{ value: UsuarioApiRol; label: string }> = [
 ];
 
 export const ROLES_ALL = [...ROLES_BECK, ...ROLES_FIREMAT];
+
+// Pestañas del estado de avance: cada tipo lleva su propio contrato y acumulado por ítem.
+export const TIPOS_ESTADO_AVANCE: Array<{ value: string; label: string }> = [
+  { value: "sello_cortafuego", label: "Sellos" },
+  { value: "junta_lineal_espuma", label: "Juntas" },
+  { value: "tabiqueria", label: "Tabiquería" },
+];

@@ -1,5 +1,4 @@
-
-import type { HitoObra, HitoObraItemizadoItem } from "../services/api";
+import type { HitoObra, LineaEstadoAvance } from "../services/api";
 import { aNumeroOrNull, type MonedaSoportada } from "./conversionMoneda";
 
 export interface ValorFila {
@@ -7,16 +6,15 @@ export interface ValorFila {
   moneda: MonedaSoportada | null;
 }
 
-// El subtotal es POR HITO (ejecución del período), no un campo global del
-// item: se lee de hito.subtotales, calculado en el backend a partir de los
-// registros de terreno cuya fecha cae dentro de fechaDesde/fechaHasta.
-export const obtenerValorFila = (item: HitoObraItemizadoItem, hito: HitoObra): ValorFila => ({
-  valor: aNumeroOrNull(hito.subtotales[item.itemizadoOpcionId]),
-  moneda: item.moneda,
+// El subtotal es POR ESTADO DE AVANCE (ejecución del período): viene en cada línea,
+// calculado en el backend con la cantidad final de los registros validados.
+export const obtenerValorLinea = (linea: LineaEstadoAvance): ValorFila => ({
+  valor: aNumeroOrNull(linea.subtotalPeriodo),
+  moneda: linea.moneda,
 });
 
-export const filaSinValorizar = (item: HitoObraItemizadoItem, hito: HitoObra): boolean => {
-  const cantidadEjecutada = aNumeroOrNull(hito.cantidadesEjecutadas[item.itemizadoOpcionId]) ?? 0;
-  if (cantidadEjecutada <= 0) return false;
-  return obtenerValorFila(item, hito).valor === null;
-};
+export const lineaSinValorizar = (linea: LineaEstadoAvance): boolean =>
+  linea.cantidadPeriodo > 0 && obtenerValorLinea(linea).valor === null;
+
+export const lineasConPeriodo = (hito: HitoObra): LineaEstadoAvance[] =>
+  hito.lineas.filter((l) => l.cantidadPeriodo !== 0);
