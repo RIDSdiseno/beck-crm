@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ReloadOutlined, SaveOutlined, UndoOutlined } from "@ant-design/icons";
+import { ReloadOutlined, SaveOutlined, SearchOutlined, UndoOutlined } from "@ant-design/icons";
 import {
   itemizadoOpcionesAPI,
   factoresHolguraAPI,
@@ -110,6 +110,47 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
     }
     return new Map([...porCodigo].filter(([, filas]) => filas.length > 1));
   }, [rows]);
+
+  // Filtros de la tabla: solo cambian lo que se ve; al guardar se envían todas las filas.
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroPenetra, setFiltroPenetra] = useState("");
+  const [filtroMaterialidad, setFiltroMaterialidad] = useState("");
+
+  const opcionesFiltro = useMemo(() => {
+    const unicos = (valores: (string | null | undefined)[]) =>
+      [...new Set(valores.filter((v): v is string => Boolean(v?.trim())))]
+        .sort((a, b) => a.localeCompare(b, "es"))
+        .map((v) => ({ label: v, value: v }));
+    return {
+      elementoPenetra: unicos(rows.map((r) => r.itemizadoOpcion?.elementoPenetra)),
+      materialidad: unicos(rows.map((r) => r.itemizadoOpcion?.materialidad)),
+    };
+  }, [rows]);
+
+  const filasFiltradas = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (filtroPenetra && row.itemizadoOpcion?.elementoPenetra !== filtroPenetra) return false;
+      if (filtroMaterialidad && row.itemizadoOpcion?.materialidad !== filtroMaterialidad) return false;
+      if (!texto) return true;
+      return [
+        row.itemizadoOpcion?.codigoBeck,
+        row._codigoPersonalizado,
+        row.itemizadoOpcion?.elementoPasante,
+        row.itemizadoOpcion?.elementoPenetra,
+        row.itemizadoOpcion?.materialidad,
+        row._nombrePersonalizado,
+      ].some((v) => v?.toLowerCase().includes(texto));
+    });
+  }, [rows, busqueda, filtroPenetra, filtroMaterialidad]);
+
+  const hayFiltros = Boolean(busqueda.trim() || filtroPenetra || filtroMaterialidad);
+
+  const limpiarFiltros = () => {
+    setBusqueda("");
+    setFiltroPenetra("");
+    setFiltroMaterialidad("");
+  };
 
   const limpiarMonedaInvalida = (id: string) => {
     setMonedaInvalidaIds((prev) => {
@@ -232,6 +273,7 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
 
   useEffect(() => {
     if (open && obraId) {
+      limpiarFiltros();
       void cargar();
       void cargarFactores();
       void cargarAccesibilidad();
@@ -576,6 +618,24 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
       key: "elementoPasante",
       render: (_: unknown, record: ConfigRow) => {
         const v = record.itemizadoOpcion?.elementoPasante;
+        return v || <span className="text-slate-400">—</span>;
+      },
+    },
+    {
+      title: "Elemento atravesado",
+      key: "elementoPenetra",
+      width: 140,
+      render: (_: unknown, record: ConfigRow) => {
+        const v = record.itemizadoOpcion?.elementoPenetra;
+        return v || <span className="text-slate-400">—</span>;
+      },
+    },
+    {
+      title: "Materialidad",
+      key: "materialidad",
+      width: 140,
+      render: (_: unknown, record: ConfigRow) => {
+        const v = record.itemizadoOpcion?.materialidad;
         return v || <span className="text-slate-400">—</span>;
       },
     },
@@ -1046,15 +1106,65 @@ const ConfigurarItemizadosObraDrawer: React.FC<Props> = ({
             }
           />
         ) : (
-          <Table<ConfigRow>
-            rowKey="itemizadoOpcionId"
-            columns={columns}
-            dataSource={rows}
-            size="small"
-            pagination={{ pageSize: 25, showSizeChanger: false }}
-            scroll={{ x: 700 }}
-            locale={{ emptyText: "No hay itemizados visibles para esta obra" }}
-          />
+          <>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <Typography.Text className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Buscar y filtrar
+                </Typography.Text>
+                <Button size="small" type="link" onClick={limpiarFiltros} className="!px-0 text-xs">
+                  Limpiar
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <Input
+                  size="small"
+                  allowClear
+                  prefix={<SearchOutlined className="text-slate-400" />}
+                  placeholder="Buscar por código, itemizado o mandante"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+                <Select
+                  size="small"
+                  placeholder="Elem. atravesado"
+                  value={filtroPenetra || undefined}
+                  onChange={(v: string | undefined) => setFiltroPenetra(v ?? "")}
+                  options={opcionesFiltro.elementoPenetra}
+                  showSearch
+                  allowClear
+                  style={{ width: "100%" }}
+                />
+                <Select
+                  size="small"
+                  placeholder="Materialidad"
+                  value={filtroMaterialidad || undefined}
+                  onChange={(v: string | undefined) => setFiltroMaterialidad(v ?? "")}
+                  options={opcionesFiltro.materialidad}
+                  showSearch
+                  allowClear
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
+            <div className="text-xs text-slate-500">
+              {filasFiltradas.length} de {rows.length} itemizados
+              {hayFiltros && " · al guardar se guardan todos, también los que no se ven con el filtro"}
+            </div>
+            <Table<ConfigRow>
+              rowKey="itemizadoOpcionId"
+              columns={columns}
+              dataSource={filasFiltradas}
+              size="small"
+              pagination={{ pageSize: 25, showSizeChanger: false }}
+              scroll={{ x: 1600 }}
+              locale={{
+                emptyText: hayFiltros
+                  ? "Ningún itemizado coincide con la búsqueda o los filtros"
+                  : "No hay itemizados visibles para esta obra",
+              }}
+            />
+          </>
         )}
       </div>
     </Drawer>
