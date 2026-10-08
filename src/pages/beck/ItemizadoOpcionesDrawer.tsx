@@ -254,7 +254,7 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
         await itemizadoOpcionesAPI.actualizar(editingOpcion.id, payload, obraId);
         message.success("Opción actualizada");
       } else {
-        await itemizadoOpcionesAPI.crear(payload);
+        await itemizadoOpcionesAPI.crear(payload, obraId);
         message.success("Opción creada");
       }
 
@@ -602,7 +602,11 @@ const ItemizadoOpcionesDrawer: React.FC<Props> = ({ open, onClose, obraId, obraN
               </Form.Item>
             </>
           )}
-          <Form.Item name="visible" label="Visible" valuePropName="checked">
+          <Form.Item
+            name="visible"
+            label={obraId ? "Visible en esta obra" : "Visible en todas las obras"}
+            valuePropName="checked"
+          >
             <Switch checkedChildren="Visible" unCheckedChildren="Oculto" />
           </Form.Item>
         </Form>

@@ -5008,8 +5008,12 @@ export const itemizadoOpcionesAPI = {
     return response.data;
   },
 
-  crear: async (payload: ItemizadoOpcionPayload): Promise<ItemizadoOpcion> => {
-    const response = await api.post<ItemizadoOpcion>("/itemizado-opciones", payload);
+  // Con obraId, la opción se crea oculta en el catálogo global y visible (o no) solo en esa obra.
+  crear: async (payload: ItemizadoOpcionPayload, obraId?: string): Promise<ItemizadoOpcion> => {
+    const response = await api.post<ItemizadoOpcion>(
+      "/itemizado-opciones",
+      obraId ? { ...payload, obraId } : payload
+    );
     return response.data;
   },
 
