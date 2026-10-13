@@ -1,3 +1,4 @@
+import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
@@ -944,6 +945,9 @@ const FirematCotizaciones: React.FC = () => {
 
   const hayFiltros = q !== "" || estado !== "" || rango[0] !== null || rango[1] !== null;
   const modalReadOnly = modalMode === "ver";
+  const canSeleccionarCliente = puedeSeleccionarClienteComercial(
+    modalMode, canEdit, canCambiarEmpresaFiremat,
+  );
 
   return (
     <div className="space-y-5">
@@ -1121,11 +1125,11 @@ const FirematCotizaciones: React.FC = () => {
                   options={clienteOptions}
                   optionFilterProp="label"
                   placeholder={
-                    canCambiarEmpresaFiremat
+                    canSeleccionarCliente
                       ? "Seleccionar cliente por RUT, nombre o razón social"
                       : "No tienes permiso para cambiar empresa"
                   }
-                  disabled={!canCambiarEmpresaFiremat}
+                  disabled={!canSeleccionarCliente}
                   onClear={() => {
                     limpiarClienteFirematSeleccionado();
                     form.setFieldValue("cliente", "");
@@ -1147,6 +1151,7 @@ const FirematCotizaciones: React.FC = () => {
                     type="text"
                     className="text-[11px]"
                     onClick={limpiarClienteFirematSeleccionado}
+                    disabled={!canSeleccionarCliente}
                   >
                     Quitar cliente asociado
                   </Button>
@@ -1170,11 +1175,11 @@ const FirematCotizaciones: React.FC = () => {
                 <Input
                   prefix={<UserOutlined className="mr-1 text-slate-400" />}
                   placeholder={
-                    !canCambiarEmpresaFiremat
+                    !canSeleccionarCliente
                       ? "No tienes permiso para cambiar empresa"
                       : "Nombre cliente no registrado"
                   }
-                  disabled={Boolean(selectedClienteId) || !canCambiarEmpresaFiremat}
+                  disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
                 />
               </Form.Item>
 

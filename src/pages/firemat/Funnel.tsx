@@ -1,3 +1,4 @@
+import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
@@ -2275,6 +2276,9 @@ const FirematFunnel: React.FC<{
   const modalReadOnly = modalMode === "ver";
   const isFocusedStageEdit = modalMode === "editar" && Boolean(initialEditSection);
   const isCreateMode = modalMode === "crear";
+  const canSeleccionarCliente = puedeSeleccionarClienteComercial(
+    modalMode, canEditFirematFunnel, isAdminGlobal || canCambiarEmpresaFiremat,
+  );
   const isFullEditMode = modalMode === "editar" && !initialEditSection;
   const modalWidth =
     modalReadOnly
@@ -2478,8 +2482,8 @@ const FirematFunnel: React.FC<{
               size="small"
               type="link"
               onClick={() => setShowClienteSelector(true)}
-              disabled={!canCambiarEmpresaFiremat}
-              title={!canCambiarEmpresaFiremat ? "No tienes permiso para cambiar empresa" : undefined}
+              disabled={!canSeleccionarCliente}
+              title={!canSeleccionarCliente ? "No tienes permiso para cambiar el cliente" : undefined}
               className="!px-0 text-xs"
             >
               Cambiar cliente
@@ -2543,8 +2547,8 @@ const FirematFunnel: React.FC<{
               <Button
                 size="small"
                 type="link"
-                disabled={!canCambiarEmpresaFiremat}
-                title={!canCambiarEmpresaFiremat ? "No tienes permiso para cambiar empresa" : undefined}
+                disabled={!canSeleccionarCliente}
+                title={!canSeleccionarCliente ? "No tienes permiso para cambiar el cliente" : undefined}
                 onClick={() => setShowClienteSelector(false)}
                 className="!px-0 text-xs"
               >
@@ -2562,11 +2566,11 @@ const FirematFunnel: React.FC<{
                 options={clienteOptions}
                 optionFilterProp="label"
                 placeholder={
-                  canCambiarEmpresaFiremat
+                  canSeleccionarCliente
                     ? "Seleccionar cliente por RUT, nombre o razon social"
                     : "No tienes permiso para cambiar empresa"
                 }
-                disabled={!canCambiarEmpresaFiremat}
+                disabled={!canSeleccionarCliente}
                 onClear={() => {
                   limpiarClienteFirematSeleccionado();
                   form.setFieldValue("cliente", "");
@@ -2581,7 +2585,7 @@ const FirematFunnel: React.FC<{
               />
             </Form.Item>
             {selectedClienteId && (
-              <Button onClick={limpiarClienteFirematSeleccionado}>
+              <Button onClick={limpiarClienteFirematSeleccionado} disabled={!canSeleccionarCliente}>
                 Quitar cliente asociado
               </Button>
             )}
@@ -2610,11 +2614,11 @@ const FirematFunnel: React.FC<{
           >
             <Input
               placeholder={
-                !canCambiarEmpresaFiremat
+                !canSeleccionarCliente
                   ? "No tienes permiso para cambiar empresa"
                   : "Nombre cliente no registrado"
               }
-              disabled={Boolean(selectedClienteId) || !canCambiarEmpresaFiremat}
+              disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
             />
           </Form.Item>
         )}
@@ -3740,6 +3744,7 @@ const FirematFunnel: React.FC<{
                   options={clienteOptions}
                   optionFilterProp="label"
                   placeholder="Seleccionar cliente por RUT, nombre o razón social"
+                  disabled={!canSeleccionarCliente}
                   onClear={() => {
                     limpiarClienteFirematSeleccionado();
                     form.setFieldValue("cliente", "");
@@ -3754,7 +3759,7 @@ const FirematFunnel: React.FC<{
                 />
               </Form.Item>
               {selectedClienteId && (
-                <Button onClick={limpiarClienteFirematSeleccionado}>
+                <Button onClick={limpiarClienteFirematSeleccionado} disabled={!canSeleccionarCliente}>
                   Quitar cliente asociado
                 </Button>
               )}
@@ -3782,7 +3787,7 @@ const FirematFunnel: React.FC<{
               >
                 <Input
                   placeholder="Nombre cliente no registrado"
-                  disabled={Boolean(selectedClienteId)}
+                  disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
                 />
               </Form.Item>
             )}
