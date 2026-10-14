@@ -3938,7 +3938,13 @@ export const clientesFirematAPI = {
   },
 };
 
-export interface ClienteTrager {
+export interface ContactoClienteTrager extends Omit<ContactoClienteFiremat, 'id' | 'clienteId'> {
+  id: number;
+  clienteId: number;
+}
+
+export interface ClienteTrager extends Omit<ClienteFiremat, 'id' | 'contactos'> {
+  contactos?: ContactoClienteTrager[];
   id: number;
   nombre: string;
   rut?: string | null;
@@ -3950,7 +3956,8 @@ export interface ClienteTrager {
   updatedAt: string;
 }
 
-export interface ClienteTragerPayload {
+export interface ClienteTragerPayload extends ClienteFirematPayload {
+  email?: string | null;
   nombre: string;
   rut?: string | null;
   contactoNombre?: string | null;
@@ -3960,6 +3967,23 @@ export interface ClienteTragerPayload {
 }
 
 export const clientesTragerAPI = {
+  importar: async (file: File): Promise<ImportarClientesResult> => {
+    const body = new FormData(); body.append("file", file);
+    const response = await api.post<ImportarClientesRawResult>("/trager/clientes/importar", body, { headers: { "Content-Type": "multipart/form-data" } });
+    return normalizeImportarClientesResult(unwrapItem(response.data));
+  },
+  agregarContacto: async (clienteId: number, payload: ContactoClienteFirematPayload): Promise<ContactoClienteTrager> => {
+    const response = await api.post<ApiResponseEnvelope<ContactoClienteTrager>>(`/trager/clientes/${clienteId}/contactos`, payload);
+    return unwrapItem(response.data);
+  },
+  actualizarContacto: async (id: number, payload: ContactoClienteFirematPayload): Promise<ContactoClienteTrager> => {
+    const response = await api.put<ApiResponseEnvelope<ContactoClienteTrager>>(`/trager/clientes/contactos/${id}`, payload);
+    return unwrapItem(response.data);
+  },
+  toggleEstadoContacto: async (id: number, activo: boolean): Promise<ContactoClienteTrager> => {
+    const response = await api.patch<ApiResponseEnvelope<ContactoClienteTrager>>(`/trager/clientes/contactos/${id}/estado`, { activo });
+    return unwrapItem(response.data);
+  },
   listar: async (params?: { q?: string; activo?: boolean }): Promise<ClienteTrager[]> => {
     const response = await api.get<ApiResponseEnvelope<ClienteTrager[]> | ClienteTrager[]>("/trager/clientes", { params });
     return unwrapArray(response.data);

@@ -523,6 +523,34 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
   const [verInspeccionRegistroId, setVerInspeccionRegistroId] = useState<string | null>(null);
   const [selectedInspeccionIds, setSelectedInspeccionIds] = useState<React.Key[]>([]);
+  const [modoSeleccion, setModoSeleccion] = useState<"inspecciones" | "informe">("inspecciones");
+  const [informeIds, setInformeIds] = useState<React.Key[]>([]);
+  const [informeOpen, setInformeOpen] = useState(false);
+  const [generandoInforme, setGenerandoInforme] = useState(false);
+  const [clienteInforme, setClienteInforme] = useState("");
+  const [destinatarioInforme, setDestinatarioInforme] = useState("");
+  const [fotoPortadaInforme, setFotoPortadaInforme] = useState("");
+  const [ordenInforme, setOrdenInforme] = useState("piso");
+  const [tamanoFotosInforme, setTamanoFotosInforme] = useState("compacta");
+  const cargarFotoPortada = (file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 3 * 1024 * 1024) {
+      message.warning("Selecciona una imagen JPG o PNG de hasta 3 MB."); return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setFotoPortadaInforme(String(reader.result));
+    reader.onerror = () => message.error("No se pudo leer la imagen.");
+    reader.readAsDataURL(file);
+  };
+  const [tituloInforme, setTituloInforme] = useState("Informe técnico de registros");
+  const [introduccionInforme, setIntroduccionInforme] = useState("El presente informe reúne los registros seleccionados de trabajos ejecutados en la obra, validados por Ingeniería. Incluye sus antecedentes técnicos, observaciones y evidencia fotográfica. Su alcance se limita a los registros incorporados en este documento.");
+  const [conclusionInforme, setConclusionInforme] = useState("Se presenta la documentación de los registros seleccionados y su estado de validación por Ingeniería al momento de emitir el informe. Las fichas y fotografías permiten revisar los trabajos documentados. Este informe no sustituye certificaciones ni acredita condiciones que no estén respaldadas en sus antecedentes.");
+  const registrosInforme = registros.filter(r => informeIds.includes(r.id));
+  const obraInforme = registrosInforme[0]?.obraId;
+  const informeValido = informeIds.length > 0 && informeIds.length <= 50 &&
+    registrosInforme.length === informeIds.length &&
+    registrosInforme.every(r => r.estado === "validado" && r.obraId === obraInforme);
+  const puedeGenerarInforme = user?.rol === "Administrador" || user?.rol === "Ingenieria";
   const [descargandoConsolidado, setDescargandoConsolidado] = useState(false);
 
   const cargarRegistros = useCallback(async () => {
@@ -818,6 +846,32 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
     } catch (error) {
       console.error(error);
       message.error("No se pudo descargar el PDF del registro");
+    }
+  };
+
+  const descargarInforme = async () => {
+    if (!informeValido || !tituloInforme.trim() || !introduccionInforme.trim() || !conclusionInforme.trim()) {
+      message.warning("Selecciona hasta 50 registros validados de una misma obra y completa los textos.");
+      return;
+    }
+    setGenerandoInforme(true);
+    try {
+      await api.post("/registros/informe-ingenieria", {
+        registroIds: informeIds.map(String), titulo: tituloInforme,
+        introduccion: introduccionInforme, conclusion: conclusionInforme,
+        cliente: clienteInforme, destinatario: destinatarioInforme, fotoPortada: fotoPortadaInforme,
+        orden: ordenInforme, tamanoFotos: tamanoFotosInforme,
+      });
+      window.dispatchEvent(new Event("informe-ingenieria-creado"));
+      setInformeOpen(false);
+      message.success("Informe en preparación. Puedes seguir navegando por el CRM.");
+    } catch (error) {
+      const data = (error as { response?: { data?: { error?: string } } }).response?.data;
+      let detalle = "No se pudo generar el informe. Intenta nuevamente.";
+      if (data?.error) detalle = data.error;
+      message.error(detalle);
+    } finally {
+      setGenerandoInforme(false);
     }
   };
 
@@ -1551,6 +1605,31 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           >
             Descargar inspecciones seleccionadas ({selectedInspeccionIds.length})
           </Button>
+          {puedeGenerarInforme && (
+            <>
+              <Select
+                aria-label="Tipo de selección"
+                value={modoSeleccion}
+                size="small"
+                options={[{ value: "inspecciones", label: "Seleccionar inspecciones" }, { value: "informe", label: "Seleccionar para informe" }]}
+                onChange={value => {
+                  setModoSeleccion(value);
+                  setInformeIds([]);
+                  setSelectedInspeccionIds([]);
+                  if (value === "informe") setFiltroEstado("validado");
+                }}
+              />
+              <Button type="primary" size="small" disabled={!informeValido} onClick={() => setInformeOpen(true)}>
+                Generar informe ({informeIds.length})
+              </Button>
+              {modoSeleccion === "informe" && (
+                <span className="text-xs text-slate-500">
+                  Solo validados · Una obra · Máximo 50
+                  {informeIds.length > 0 && <Button size="small" type="link" onClick={() => setInformeIds([])}>Limpiar selección</Button>}
+                </span>
+              )}
+            </>
+          )}
         </div>
 
         <Table
@@ -1563,16 +1642,74 @@ const Ingenieria: React.FC<IngenieriaProps> = ({ themeMode }) => {
           tableLayout="auto"
           pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ["10", "20", "50"] }}
           rowSelection={{
-            selectedRowKeys: selectedInspeccionIds,
-            onChange: (keys) => setSelectedInspeccionIds(keys),
+            selectedRowKeys: modoSeleccion === "informe" ? informeIds : selectedInspeccionIds,
+            onChange: (keys) => modoSeleccion === "informe" ? setInformeIds(keys) : setSelectedInspeccionIds(keys),
+            hideSelectAll: modoSeleccion === "informe",
             getCheckboxProps: (record) => ({
               disabled:
-                normalizeInspeccionEstado(record.inspeccionEstado, record.seleccionadoParaInspeccion) !==
-                "inspeccionado",
+                modoSeleccion === "informe"
+                  ? record.estado !== "validado" ||
+                    (informeIds.length > 0 && record.obraId !== obraInforme) ||
+                    (informeIds.length >= 50 && !informeIds.includes(record.id))
+                  : normalizeInspeccionEstado(record.inspeccionEstado, record.seleccionadoParaInspeccion) !== "inspeccionado",
             }),
           }}
         />
       </Card>
+
+      <Modal
+        title="Generar informe técnico Beck"
+        open={informeOpen}
+        onCancel={() => { if (!generandoInforme) setInformeOpen(false); }}
+        onOk={() => void descargarInforme()}
+        okText="Generar PDF en segundo plano"
+        cancelText="Cancelar"
+        confirmLoading={generandoInforme}
+        closable={!generandoInforme}
+        maskClosable={!generandoInforme}
+        cancelButtonProps={{ disabled: generandoInforme }}
+        okButtonProps={{ disabled: !informeValido || !tituloInforme.trim() || !introduccionInforme.trim() || !conclusionInforme.trim() }}
+        width={720}
+      >
+        <div className="space-y-4 py-3">
+          <p>{registrosInforme[0]?.obraNombre} · {informeIds.length} registros validados</p>
+          <div className="max-h-32 overflow-y-auto rounded border border-slate-200 p-2 text-xs text-slate-600">
+            {informeIds.map(id => {
+              const registro = registrosInforme.find(r => r.id === id);
+              return <div key={id}>{registro?.codigo} · Sello {registro?.numeroSello} · Piso {registro?.piso}</div>;
+            })}
+          </div>
+          <p className="text-xs text-slate-500">Portada, introducción, resumen ejecutivo, índice con enlaces, fichas y conclusión. Solo se incluyen los registros seleccionados. Disponible durante una hora; sin historial permanente.</p>
+          <label className="block">Título
+            <Input maxLength={150} value={tituloInforme} disabled={generandoInforme} onChange={e => setTituloInforme(e.target.value)} />
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label>Cliente (opcional)<Input maxLength={150} value={clienteInforme} disabled={generandoInforme} onChange={e => setClienteInforme(e.target.value)} /></label>
+            <label>Dirigido a (opcional)<Input maxLength={150} value={destinatarioInforme} disabled={generandoInforme} onChange={e => setDestinatarioInforme(e.target.value)} /></label>
+            <label>Orden de las fichas<Select className="w-full" value={ordenInforme} disabled={generandoInforme} onChange={setOrdenInforme} options={[{ value: "piso", label: "Piso (ascendente)" }, { value: "fecha", label: "Fecha de ejecución (ascendente)" }, { value: "sello", label: "Número de sello (ascendente)" }]} /></label>
+            <label>Fotografías<Select className="w-full" value={tamanoFotosInforme} disabled={generandoInforme} onChange={setTamanoFotosInforme} options={[{ value: "compacta", label: "Compactas en la ficha" }, { value: "grande", label: "Grandes: una por página adicional" }]} /></label>
+          </div>
+          <label className="block">Fotografía de portada (opcional, JPG/PNG, máximo 3 MB)
+            <input type="file" accept="image/jpeg,image/png" disabled={generandoInforme} onChange={e => { cargarFotoPortada(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          {fotoPortadaInforme && <div className="flex items-center gap-3"><img src={fotoPortadaInforme} alt="Vista previa de portada" className="h-24 w-40 rounded object-contain" /><Button disabled={generandoInforme} onClick={() => setFotoPortadaInforme("")}>Quitar fotografía</Button></div>}
+          <Button size="small" disabled={generandoInforme} onClick={() => Modal.confirm({
+            title: "¿Restaurar los textos sugeridos?",
+            content: "Se reemplazarán la introducción y la conclusión que hayas escrito.",
+            okText: "Restaurar", cancelText: "Cancelar",
+            onOk: () => {
+              setIntroduccionInforme("El presente informe reúne los registros seleccionados de trabajos ejecutados en la obra, validados por Ingeniería. Incluye antecedentes técnicos, resumen de cantidades sin factores y evidencia fotográfica. Su alcance se limita a los registros incorporados en este documento.");
+              setConclusionInforme("Se presenta la documentación de los registros seleccionados y su estado de validación por Ingeniería al momento de emitir el informe. Las fichas y fotografías permiten revisar los trabajos documentados. Este informe no sustituye certificaciones ni acredita condiciones que no estén respaldadas en sus antecedentes.");
+            }
+          })}>Restaurar introducción y conclusión sugeridas</Button>
+          <label className="block">Introducción
+            <Input.TextArea rows={5} maxLength={5000} showCount value={introduccionInforme} disabled={generandoInforme} onChange={e => setIntroduccionInforme(e.target.value)} />
+          </label>
+          <label className="block">Conclusión
+            <Input.TextArea rows={5} maxLength={5000} showCount value={conclusionInforme} disabled={generandoInforme} onChange={e => setConclusionInforme(e.target.value)} />
+          </label>
+        </div>
+      </Modal>
 
       <RegistroDetalleModal
         registro={registroDetalle}

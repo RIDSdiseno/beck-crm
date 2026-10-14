@@ -1,3 +1,4 @@
+import InformesIngenieriaTemporales from "./components/InformesIngenieriaTemporales";
 import TragerPermisos from "./pages/trager/Permisos";
 import { TRAGER_NAV_MODULO } from "./constants/permisosPlataformas";
 import React, { useEffect, useMemo, useState } from "react";
@@ -703,6 +704,7 @@ const AppShell: React.FC = () => {
             }}
           >
             {bellStrip}
+            {permisosLoaded && ['Administrador', 'Ingenieria'].includes(user.rol) && canView('beck_procesamiento_ingenieria') && <InformesIngenieriaTemporales key={user.id} />}
             <div className="w-full min-w-0">
               <Routes>
                 <Route path="/auth/callback" element={<AuthCallback />} />
