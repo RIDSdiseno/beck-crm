@@ -1,3 +1,4 @@
+import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
@@ -1819,6 +1820,7 @@ const TragerFunnel: React.FC<{
     [visibleOportunidades, getColumnaKanban]
   );
 
+  const canSeleccionarCliente = puedeSeleccionarClienteComercial(modalMode, canEditTragerFunnel, canCambiarEmpresaTrager);
   const modalReadOnly = modalMode === "ver";
   const isFocusedStageEdit = modalMode === "editar" && Boolean(initialEditSection);
   const isCreateMode = modalMode === "crear";
@@ -1965,8 +1967,8 @@ const TragerFunnel: React.FC<{
               size="small"
               type="link"
               onClick={() => setShowClienteSelector(true)}
-              disabled={!canCambiarEmpresaTrager}
-              title={!canCambiarEmpresaTrager ? "No tienes permiso para cambiar empresa" : undefined}
+              disabled={!canSeleccionarCliente}
+              title={!canSeleccionarCliente ? "No tienes permiso para cambiar empresa" : undefined}
               className="!px-0 text-xs"
             >
               Cambiar cliente
@@ -2030,8 +2032,8 @@ const TragerFunnel: React.FC<{
               <Button
                 size="small"
                 type="link"
-                disabled={!canCambiarEmpresaTrager}
-                title={!canCambiarEmpresaTrager ? "No tienes permiso para cambiar empresa" : undefined}
+                disabled={!canSeleccionarCliente}
+                title={!canSeleccionarCliente ? "No tienes permiso para cambiar empresa" : undefined}
                 onClick={() => setShowClienteSelector(false)}
                 className="!px-0 text-xs"
               >
@@ -2049,11 +2051,11 @@ const TragerFunnel: React.FC<{
                 options={clienteOptions}
                 optionFilterProp="label"
                 placeholder={
-                  canCambiarEmpresaTrager
+                  canSeleccionarCliente
                     ? "Seleccionar cliente por RUT, nombre o razon social"
                     : "No tienes permiso para cambiar empresa"
                 }
-                disabled={!canCambiarEmpresaTrager}
+                disabled={!canSeleccionarCliente}
                 onClear={() => {
                   limpiarClienteTragerSeleccionado();
                   form.setFieldValue("cliente", "");
@@ -2097,11 +2099,11 @@ const TragerFunnel: React.FC<{
           >
             <Input
               placeholder={
-                !canCambiarEmpresaTrager
+                !canSeleccionarCliente
                   ? "No tienes permiso para cambiar empresa"
                   : "Nombre cliente no registrado"
               }
-              disabled={Boolean(clienteTragerIdWatch) || !canCambiarEmpresaTrager}
+              disabled={Boolean(clienteTragerIdWatch) || !canSeleccionarCliente}
             />
           </Form.Item>
         )}

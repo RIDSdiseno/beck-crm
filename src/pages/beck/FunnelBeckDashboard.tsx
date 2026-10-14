@@ -111,6 +111,7 @@ const UNIDAD_NEGOCIO_COLORS: Record<string, string> = {
   Beck: "#3b82f6",
   Firemat: "#f97316",
   Mixto: "#8b5cf6",
+  Trager: "#2563eb",
 };
 
 type UnidadNegocioItem = { unidadNegocio: string; cantidad: number; montoClp: number };

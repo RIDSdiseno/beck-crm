@@ -38,6 +38,11 @@ export const PermisosProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const canView = useCallback(
     (modulo: ModuloBeck): boolean => {
+      if (modulo.startsWith("trager_") || modulo.endsWith("_acceder_plataforma")) {
+        const entry = permisos?.find(p => p.modulo === modulo);
+        const acceso = permisos?.find(p => p.modulo === "trager_acceder_plataforma");
+        if (!entry || (modulo.startsWith("trager_") && !acceso?.puedeVer)) return false;
+      }
       if (!permisos || !Array.isArray(permisos)) return true;
       const entry = permisos.find((p) => p.modulo === modulo);
       if (!entry) return true;
@@ -48,6 +53,11 @@ export const PermisosProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const canEdit = useCallback(
     (modulo: ModuloBeck): boolean => {
+      if (modulo.startsWith("trager_") || modulo.endsWith("_acceder_plataforma")) {
+        const entry = permisos?.find(p => p.modulo === modulo);
+        const acceso = permisos?.find(p => p.modulo === "trager_acceder_plataforma");
+        if (!entry || (modulo.startsWith("trager_") && !acceso?.puedeVer)) return false;
+      }
       if (!permisos || !Array.isArray(permisos)) return true;
       const entry = permisos.find((p) => p.modulo === modulo);
       if (!entry) return true;

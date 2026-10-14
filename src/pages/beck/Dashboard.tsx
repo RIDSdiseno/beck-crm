@@ -23,6 +23,7 @@ import {
 import type { ThemeMode } from "../../hooks/useSystemTheme";
 import { getTipoRegistroLabel } from "../../constants/roles";
 import RendimientoPorTrabajadorPanel from "./RendimientoPorTrabajadorPanel";
+import { formatFechaEjecucion } from "../../utils/fechaEjecucion";
 
 type DashboardProps = {
   themeMode: ThemeMode;
@@ -50,20 +51,6 @@ const integerFormatter = new Intl.NumberFormat("es-CL", {
 
 const formatNumber = (value?: number | null, decimals = false) =>
   (decimals ? numberFormatter : integerFormatter).format(Number(value ?? 0));
-
-const formatDate = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
 
 const normalizeEstado = (estado?: string | null) => {
   if (!estado) return "-";
@@ -283,10 +270,10 @@ const Dashboard: React.FC<DashboardProps> = ({ themeMode }) => {
 
   const registrosColumns: TableColumnsType<DashboardBeckRegistro> = [
     {
-      title: "Fecha",
+      title: "Fecha de ejecución",
       key: "fecha",
       render: (_, record) =>
-        formatDate(record.fecha ?? record.createdAt ?? record.created_at),
+        formatFechaEjecucion(record.fecha),
       width: 150,
     },
     {

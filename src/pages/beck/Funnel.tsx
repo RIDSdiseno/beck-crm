@@ -94,7 +94,7 @@
     themeMode: ThemeMode;
     alertaBell?: React.ReactNode;
 
-    embedUnidadNegocio?: "Beck" | "Firemat" | "Mixto" | "Todas";
+    embedUnidadNegocio?: "Beck" | "Firemat" | "Trager" | "Mixto" | "Todas";
     embedEstadoCierre?: string;
     onVisibleCountChange?: (count: number) => void;
   };
@@ -1103,9 +1103,11 @@
     Beck: "bg-[#d6b02a] text-black",
     Firemat: "bg-red-600 text-white",
     Mixto: "bg-purple-600 text-white",
+    Trager: "bg-blue-600 text-white",
   };
 
   const getUnidadNegocioVisualLabel = (deal: FunnelDeal): string => {
+    if (deal.unidadNegocio === "Trager") return "TRAGER";
     if (deal.unidadNegocio === "Mixto") return "MIXTO";
     if (deal.origen === "FIREMAT" || deal.unidadNegocio === "Firemat") {
       return "FIREMAT";
@@ -1115,7 +1117,7 @@
 
   const getUnidadNegocioStripClass = (label: string): string =>
     UNIDAD_NEGOCIO_STRIP[
-      label === "FIREMAT" ? "Firemat" : label === "MIXTO" ? "Mixto" : "Beck"
+      label === "TRAGER" ? "Trager" : label === "FIREMAT" ? "Firemat" : label === "MIXTO" ? "Mixto" : "Beck"
     ];
 
   const FunnelCard: React.FC<FunnelCardProps> = ({
@@ -2451,7 +2453,7 @@
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {renderTextInput("direccionProyecto", "Dirección / ubicación del proyecto")}
-                {renderSimpleSelect("unidadNegocio", "Unidad de negocio *", ["Beck", "Firemat"])}
+                {renderSimpleSelect("unidadNegocio", "Unidad de negocio *", ["Beck", "Firemat", "Trager", "Mixto"])}
                 {renderTextarea("observaciones", "Observaciones generales", "Comentarios u observaciones sobre la oportunidad")}
               </div>
             </div>
@@ -3430,7 +3432,7 @@
     const visibleDeals = useMemo(() => {
       let result = deals;
 
-      if (filterUnidadNegocio === "Beck" || filterUnidadNegocio === "Mixto") {
+      if (filterUnidadNegocio === "Beck" || filterUnidadNegocio === "Trager" || filterUnidadNegocio === "Mixto") {
         result = result.filter((d) => d.unidadNegocio === filterUnidadNegocio);
       } else if (filterUnidadNegocio === "__sin_unidad__") {
         result = result.filter((d) => !d.unidadNegocio);
@@ -6424,6 +6426,7 @@
                 options={[
                   { value: "Beck", label: "Beck" },
                   { value: "Firemat", label: "Firemat" },
+                  { value: "Trager", label: "Trager" },
                   { value: "Mixto", label: "Mixto" },
                   { value: "__sin_unidad__", label: "Sin unidad" },
                   { value: "Todas", label: "Todas" },

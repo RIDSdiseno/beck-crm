@@ -224,11 +224,13 @@ const UNIDAD_NEGOCIO_STRIP: Record<string, string> = {
   Beck: "bg-[#d6b02a] text-black",
   Firemat: "bg-red-600 text-white",
   Mixto: "bg-purple-600 text-white",
+    Trager: "bg-blue-600 text-white",
 };
 
 const getUnidadNegocioVisualLabel = (
   item: FirematFunnelOportunidad
-): "BECK" | "FIREMAT" | "MIXTO" => {
+): "BECK" | "FIREMAT" | "TRAGER" | "MIXTO" => {
+  if (item.unidadNegocio === "Trager") return "TRAGER";
   if (item.unidadNegocio === "Mixto") return "MIXTO";
   if (item.unidadNegocio === "Beck") return "BECK";
   return "FIREMAT";
@@ -236,7 +238,7 @@ const getUnidadNegocioVisualLabel = (
 
 const getUnidadNegocioStripClass = (label: string): string =>
   UNIDAD_NEGOCIO_STRIP[
-    label === "BECK" ? "Beck" : label === "MIXTO" ? "Mixto" : "Firemat"
+    label === "TRAGER" ? "Trager" : label === "BECK" ? "Beck" : label === "MIXTO" ? "Mixto" : "Firemat"
   ];
 
 const CIERRE_BANNER: Partial<
@@ -864,7 +866,7 @@ const FirematFunnel: React.FC<{
     "" | "activas" | "ganadas" | "perdidas" | "postergadas" | "descartadas"
   >("");
   const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<
-    "Beck" | "Firemat" | "Mixto"
+    "Beck" | "Firemat" | "Trager" | "Mixto"
   >("Firemat");
   const [beckVisibleCount, setBeckVisibleCount] = useState(0);
 
@@ -2679,7 +2681,8 @@ const FirematFunnel: React.FC<{
             options={[
               { value: "Beck", label: "Beck" },
               { value: "Firemat", label: "Firemat" },
-              { value: "Mixto", label: "Mixto" },
+              { value: "Trager", label: "Trager" },
+                  { value: "Mixto", label: "Mixto" },
             ]}
           />
         </Form.Item>
@@ -3310,7 +3313,8 @@ const FirematFunnel: React.FC<{
             options={[
               { value: "Beck", label: "Beck" },
               { value: "Firemat", label: "Firemat" },
-              { value: "Mixto", label: "Mixto" },
+              { value: "Trager", label: "Trager" },
+                  { value: "Mixto", label: "Mixto" },
             ]}
           />
           <span className="text-xs font-medium text-slate-500">
@@ -3899,6 +3903,7 @@ const FirematFunnel: React.FC<{
                 options={[
                   { value: "Beck", label: "Beck" },
                   { value: "Firemat", label: "Firemat" },
+                  { value: "Trager", label: "Trager" },
                   { value: "Mixto", label: "Mixto" },
                 ]}
               />

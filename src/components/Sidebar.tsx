@@ -1,3 +1,4 @@
+import { TRAGER_NAV_MODULO } from "../constants/permisosPlataformas";
 import React, { useEffect, useRef, useState } from "react";
 import {
   DashboardOutlined,
@@ -177,13 +178,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isAdmin = user?.rol === "Administrador";
   const hasViewPermission = (modulo: ModuloBeck): boolean =>
     isAdmin || (permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeVer));
-  const hasEditPermission = (modulo: ModuloBeck): boolean =>
-    isAdmin || (permisosReady && Array.isArray(permisos) && permisos.some((p) => p.modulo === modulo && p.puedeEditar));
-  const canCambiarEmpresaBeck =
-    !isCliente && (isAdmin || hasViewPermission("beck_cambiar_empresa") || hasEditPermission("beck_cambiar_empresa"));
-  const canCambiarEmpresaFiremat =
-    !isCliente && (isAdmin || hasViewPermission("firemat_cambiar_empresa") || hasEditPermission("firemat_cambiar_empresa"));
-  const canCambiarEmpresaTrager = canCambiarEmpresaFiremat;
+  const canCambiarEmpresaBeck = !isCliente && hasViewPermission("beck_acceder_plataforma");
+  const canCambiarEmpresaFiremat = !isCliente && hasViewPermission("firemat_acceder_plataforma");
+  const canCambiarEmpresaTrager = !isCliente && hasViewPermission("trager_acceder_plataforma")
+    && Object.values(TRAGER_NAV_MODULO).some(hasViewPermission);
   const puedeCambiarEmpresa = canCambiarEmpresaBeck || canCambiarEmpresaFiremat || canCambiarEmpresaTrager;
 
   const resolveAccessiblePath = (company: Company, fallbackPath: string): string => {
@@ -196,10 +194,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       return accessible?.path ?? fallbackPath;
     }
 
+    const routes = company === "trager"
+      ? Object.entries(TRAGER_NAV_MODULO).map(([suffix, modulo]) => ({ suffix, modulo }))
+      : FIREMAT_LIKE_ROUTE_ORDER;
     const directSuffix = fallbackPath.split("/")[2] ?? "dashboard";
-    const direct = FIREMAT_LIKE_ROUTE_ORDER.find((r) => r.suffix === directSuffix);
+    const direct = routes.find((r) => r.suffix === directSuffix);
     if (direct && hasViewPermission(direct.modulo)) return fallbackPath;
-    const accessible = FIREMAT_LIKE_ROUTE_ORDER.find((r) => hasViewPermission(r.modulo));
+    const accessible = routes.find((r) => hasViewPermission(r.modulo));
     return accessible ? `/${company}/${accessible.suffix}` : fallbackPath;
   };
 
@@ -290,12 +291,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const tragerNav = [
-    { key: "dashboard", to: "/trager/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: access.firematDashboard },
-    { key: "funnel", to: "/trager/funnel", icon: <ProjectOutlined />, label: "Funnel", access: access.firematFunnel },
-    { key: "cotizaciones", to: "/trager/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: access.firematCotizaciones },
-    { key: "clientes", to: "/trager/clientes", icon: <TeamOutlined />, label: "Clientes", access: access.firematClientes },
-    { key: "productos", to: "/trager/productos", icon: <AppstoreOutlined />, label: "Productos", access: access.firematProductos },
-    { key: "categorias", to: "/trager/categorias", icon: <ProfileOutlined />, label: "Categorias", access: access.firematCategorias },
+    { key: "dashboard", to: "/trager/dashboard", icon: <DashboardOutlined />, label: "Dashboard", access: hasViewPermission("trager_dashboard") },
+    { key: "funnel", to: "/trager/funnel", icon: <ProjectOutlined />, label: "Funnel", access: hasViewPermission("trager_funnel") },
+    { key: "cotizaciones", to: "/trager/cotizaciones", icon: <FileTextOutlined />, label: "Cotizaciones", access: hasViewPermission("trager_cotizaciones") },
+    { key: "clientes", to: "/trager/clientes", icon: <TeamOutlined />, label: "Clientes", access: hasViewPermission("trager_clientes") },
+    { key: "productos", to: "/trager/productos", icon: <AppstoreOutlined />, label: "Productos", access: hasViewPermission("trager_productos") },
+    { key: "categorias", to: "/trager/categorias", icon: <ProfileOutlined />, label: "Categorias", access: hasViewPermission("trager_categorias") },
   ];
 
   const clienteNav = [
@@ -324,7 +325,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             const modulo = BECK_NAV_MODULO[item.key];
             if (modulo) return hasViewPermission(modulo);
           } else {
-            const modulo = FIREMAT_NAV_MODULO[item.key];
+            const modulo = (activeCompany === "trager" ? TRAGER_NAV_MODULO : FIREMAT_NAV_MODULO)[item.key];
             if (modulo) return hasViewPermission(modulo);
           }
           return item.access === true;
@@ -335,7 +336,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     (isBeck
       ? hasViewPermission("beck_usuarios_parametros") ||
         hasViewPermission("beck_reglas_validacion")
-      : activeCompany !== "trager" && hasViewPermission("firemat_usuarios_parametros"));
+      : activeCompany === "trager" ? isAdmin : hasViewPermission("firemat_usuarios_parametros"));
   const companyOptions: Company[] = [
     ...(canCambiarEmpresaBeck ? (["beck"] as Company[]) : []),
     ...(canCambiarEmpresaFiremat ? (["firemat"] as Company[]) : []),
@@ -475,7 +476,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
             <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-              {(isBeck ? hasViewPermission("beck_usuarios_parametros") : hasViewPermission("firemat_usuarios_parametros")) && (
+              {activeCompany !== "trager" && (isBeck ? hasViewPermission("beck_usuarios_parametros") : hasViewPermission("firemat_usuarios_parametros")) && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : `/${firematBase}/usuarios-parametros`}
                 className={({ isActive }) =>
@@ -505,7 +506,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Permisos</span>}
               </NavLink>
               )}
-              {!isBeck && hasViewPermission("firemat_usuarios_parametros") && (
+              {!isBeck && (activeCompany === "trager" ? isAdmin : hasViewPermission("firemat_usuarios_parametros")) && (
               <NavLink
                 to={`/${firematBase}/permisos`}
                 className={({ isActive }) =>
@@ -535,9 +536,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Reglas de Validación</span>}
               </NavLink>
               )}
-              {!isBeck && user?.rol === "Administrador" && (
+              {activeCompany === "firemat" && user?.rol === "Administrador" && (
               <NavLink
-                to={activeCompany === "trager" ? "/trager/reglas-validacion" : "/firemat/configuracion-validacion"}
+                to="/firemat/configuracion-validacion"
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed

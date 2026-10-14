@@ -1,3 +1,4 @@
+import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -629,6 +630,7 @@ const TragerCotizaciones: React.FC = () => {
   ];
 
   const hayFiltros = q !== "" || estado !== "" || rango[0] !== null || rango[1] !== null;
+  const canSeleccionarCliente = puedeSeleccionarClienteComercial(modalMode, canEdit, canCambiarEmpresaTrager);
   const modalReadOnly = modalMode === "ver";
 
   return (
@@ -816,11 +818,11 @@ const TragerCotizaciones: React.FC = () => {
                   options={clienteOptions}
                   optionFilterProp="label"
                   placeholder={
-                    canCambiarEmpresaTrager
+                    canSeleccionarCliente
                       ? "Seleccionar cliente por RUT, nombre o razón social"
                       : "No tienes permiso para cambiar empresa"
                   }
-                  disabled={!canCambiarEmpresaTrager}
+                  disabled={!canSeleccionarCliente}
                   onClear={() => {
                     limpiarClienteTragerSeleccionado();
                     form.setFieldValue("cliente", "");
@@ -858,11 +860,11 @@ const TragerCotizaciones: React.FC = () => {
             >
               <Input
                 placeholder={
-                  !canCambiarEmpresaTrager
+                  !canSeleccionarCliente
                     ? "No tienes permiso para cambiar empresa"
                     : "Nombre cliente no registrado"
                 }
-                disabled={Boolean(selectedClienteId) || !canCambiarEmpresaTrager}
+                disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
               />
             </Form.Item>
             <Form.Item name="contacto" label="Contacto">

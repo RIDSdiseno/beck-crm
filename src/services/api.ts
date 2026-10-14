@@ -5688,6 +5688,9 @@ export const inventarioBeckAPI = {
 
 
 export type ModuloBeck =
+  | "beck_acceder_plataforma"
+  | "firemat_acceder_plataforma"
+  | "trager_acceder_plataforma"
   | "beck_dashboard"
   | "beck_procesamiento_ingenieria"
   | "beck_oficina_tecnica"

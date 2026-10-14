@@ -1,3 +1,5 @@
+import TragerPermisos from "./pages/trager/Permisos";
+import { TRAGER_NAV_MODULO } from "./constants/permisosPlataformas";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Navigate,
@@ -411,6 +413,9 @@ const AppShell: React.FC = () => {
       user.rol === "Bodeguero" ||
       user.rol === "VisualizadorFiremat";
 
+    const tragerHome = Object.entries(TRAGER_NAV_MODULO).find(([, modulo]) => canView(modulo));
+    const fallbackHome = tragerHome ? `/trager/${tragerHome[0]}` : "/login";
+
     if (isFirematRole) {
       const FIREMAT_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
         { route: "/firemat/dashboard", modulo: "firemat_dashboard" },
@@ -428,7 +433,7 @@ const AppShell: React.FC = () => {
       for (const { route, modulo } of FIREMAT_HOME_ORDER) {
         if (canView(modulo)) return route;
       }
-      return "/login";
+      return fallbackHome;
     }
 
     const BECK_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
@@ -449,7 +454,7 @@ const AppShell: React.FC = () => {
       if (canView(modulo)) return route;
     }
 
-    return "/login";
+    return fallbackHome;
   }, [user, permisosLoaded, canView]);
 
   const activeEmpresa = getEmpresaFromPath(location.pathname);
@@ -499,6 +504,10 @@ const AppShell: React.FC = () => {
       if (!canView(firematModulo)) {
         navigate(homeRoute, { replace: true });
       }
+      return;
+    }
+    if (location.pathname === "/trager/permisos") {
+      if (user.rol !== "Administrador") navigate(homeRoute, { replace: true });
       return;
     }
     const tragerModulo = TRAGER_ROUTE_MODULO[location.pathname];
@@ -950,6 +959,10 @@ const AppShell: React.FC = () => {
 
                 {/* ── Cliente routes ──────────────────────────── */}
                 {/* Trager routes: frontend-only modules, no Firemat services */}
+                <Route
+                  path="/trager/permisos"
+                  element={user.rol === "Administrador" ? <TragerPermisos /> : <Navigate to={homeRoute} replace />}
+                />
                 <Route
                   path="/trager/dashboard"
                   element={

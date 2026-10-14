@@ -1,3 +1,4 @@
+import { ACCESOS_PLATAFORMA, MODULOS_TRAGER } from "../../constants/permisosPlataformas";
 import React, { useCallback, useEffect, useState } from "react";
 import { usePermisos } from "../../hooks/usePermisos";
 import { useAuth } from "../../context/useAuth";
@@ -32,7 +33,7 @@ const MODULOS_BECK: Array<{ key: ModuloBeck; label: string }> = [
   { key: "beck_vista_cliente", label: "Vista Cliente" },
   { key: "beck_usuarios_parametros", label: "Usuarios y parámetros" },
   { key: "beck_reglas_validacion", label: "Reglas de Validación" },
-  { key: "beck_cambiar_empresa", label: "Cambiar empresa" },
+  { key: "beck_cambiar_empresa", label: "Cambiar cliente de un documento existente" },
 ];
 
 const MODULOS_FIREMAT: Array<{ key: ModuloBeck; label: string }> = [
@@ -47,18 +48,13 @@ const MODULOS_FIREMAT: Array<{ key: ModuloBeck; label: string }> = [
   { key: "firemat_movimientos", label: "Movimientos" },
   { key: "firemat_reportes", label: "Reportes" },
   { key: "firemat_usuarios_parametros", label: "Usuarios y parámetros" },
-  { key: "firemat_cambiar_empresa", label: "Cambiar empresa" },
+  { key: "firemat_cambiar_empresa", label: "Cambiar cliente de un documento existente" },
 ];
 
-const MODULOS_FIREMAT_MODAL = MODULOS_FIREMAT.filter(
-  (m) => m.key !== "firemat_cambiar_empresa",
-);
+const MODULOS_FIREMAT_MODAL = MODULOS_FIREMAT;
 
-const MODULOS_BECK_VISIBLE = MODULOS_BECK.filter(
-  (m) => m.key !== "beck_cambiar_empresa",
-);
+const MODULOS_BECK_VISIBLE = MODULOS_BECK;
 
-const TODOS_LOS_MODULOS = [...MODULOS_BECK, ...MODULOS_FIREMAT];
 
 const ROL_TAG_COLOR: Record<UsuarioApiRol, string> = {
   administrador: "volcano",
@@ -111,6 +107,8 @@ const BeckPermisos: React.FC = () => {
   const [loadingPermisosCache, setLoadingPermisosCache] = useState(false);
   const [savingPermisoRapido, setSavingPermisoRapido] = useState<Record<string, boolean>>({});
   const [savingUsuario, setSavingUsuario] = useState<Record<string, boolean>>({});
+
+  const [tragerModalUsuario, setTragerModalUsuario] = useState<UsuarioConOverride | null>(null);
 
   const [excepcionUsuario, setExcepcionUsuario] = useState<UsuarioApi | null>(null);
   const [excepcionDetalle, setExcepcionDetalle] = useState<PermisosUsuarioDetalleResponse | null>(null);
@@ -192,7 +190,7 @@ const BeckPermisos: React.FC = () => {
     if (!selectedRol) return;
     setSavingRol(true);
     try {
-      const payload: PermisoModuloInput[] = TODOS_LOS_MODULOS.map(({ key }) => {
+      const payload: PermisoModuloInput[] = MODULOS_BECK_VISIBLE.map(({ key }) => {
         const p = getFromList(rolPermisos, key);
         return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
       });
@@ -230,7 +228,7 @@ const BeckPermisos: React.FC = () => {
       const currentPermisos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
       const updatedPermisos = applyToggle(currentPermisos, modulo, field, value);
 
-      const payload: PermisoModuloInput[] = TODOS_LOS_MODULOS.map(({ key }) => {
+      const payload: PermisoModuloInput[] = [{ key: modulo }].map(({ key }) => {
         const p = getFromList(updatedPermisos, key);
         return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
       });
@@ -266,24 +264,14 @@ const BeckPermisos: React.FC = () => {
     }
   };
 
-  const toggleCambiarEmpresa = async (usuarioId: string, value: boolean) => {
+  const toggleCambiarEmpresa = async (usuarioId: string, modulo: ModuloBeck, value: boolean) => {
     if (savingUsuario[usuarioId]) return;
 
     const savingKey = `${usuarioId}-cambiar_empresa`;
     setSavingUsuario((prev) => ({ ...prev, [usuarioId]: true }));
     setSavingPermisoRapido((prev) => ({ ...prev, [savingKey]: true }));
     try {
-      const detalle = await permisosUsuarioAPI.obtenerDetallado(usuarioId);
-      const currentPermisos = detalle.permisosEfectivos ?? detalle.permisos ?? [];
-
-      const empresaKeys: ModuloBeck[] = ["beck_cambiar_empresa", "firemat_cambiar_empresa"];
-      const payload: PermisoModuloInput[] = TODOS_LOS_MODULOS.map(({ key }) => {
-        if (empresaKeys.includes(key)) {
-          return { modulo: key, puedeVer: value, puedeEditar: value };
-        }
-        const p = getFromList(currentPermisos, key);
-        return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
-      });
+      const payload: PermisoModuloInput[] = [{ modulo, puedeVer: value, puedeEditar: value }];
 
       await permisosUsuarioAPI.actualizar(usuarioId, payload);
       message.success("Permiso actualizado correctamente");
@@ -337,11 +325,15 @@ const BeckPermisos: React.FC = () => {
     if (!excepcionUsuario) return;
     setSavingExcepcion(true);
     try {
-      const payload: PermisoModuloInput[] = TODOS_LOS_MODULOS.map(({ key }) => {
+      const payload: PermisoModuloInput[] = MODULOS_BECK_VISIBLE.map(({ key }) => {
         const p = getFromList(excepcionPermisos, key);
         return { modulo: key, puedeVer: p.puedeVer, puedeEditar: p.puedeEditar };
       });
-      await permisosUsuarioAPI.actualizar(excepcionUsuario.id, payload);
+      const cambios = payload.filter(p => {
+        const anterior = getFromList(excepcionDetalle?.permisosEfectivos ?? excepcionDetalle?.permisos ?? [], p.modulo);
+        return anterior.puedeVer !== p.puedeVer || anterior.puedeEditar !== p.puedeEditar;
+      });
+      if (cambios.length) await permisosUsuarioAPI.actualizar(excepcionUsuario.id, cambios);
       message.success("Excepción guardada correctamente");
       void refreshPermisos();
       const detalleActualizado = await permisosUsuarioAPI.obtenerDetallado(excepcionUsuario.id);
@@ -549,8 +541,8 @@ const BeckPermisos: React.FC = () => {
                               <th className="pb-2 text-center font-medium">Activo</th>
                               <th className="pb-2 text-center font-medium">Override</th>
                               <th className="pb-2 text-center font-medium whitespace-nowrap">
-                                <Tooltip title="Controla el acceso a cambiar empresa en Beck CRM y Firemat CRM">
-                                  <span>Cambiar empresa</span>
+                                <Tooltip title="Accesos independientes a Beck, Firemat y Trager; configura también sus módulos.">
+                                  <span>Acceso a plataformas</span>
                                 </Tooltip>
                               </th>
                               <th className="pb-2 text-center font-medium whitespace-nowrap">
@@ -565,8 +557,8 @@ const BeckPermisos: React.FC = () => {
                           <tbody>
                             {usuariosRol.map((usuario) => {
                               const permisos = usuarioPermisosCache[usuario.id] ?? [];
-                              const hasBeckEmpresa = getFromList(permisos, "beck_cambiar_empresa").puedeVer;
-                              const hasFirematEmpresa = getFromList(permisos, "firemat_cambiar_empresa").puedeVer;
+                              const hasBeckEmpresa = getFromList(permisos, "beck_acceder_plataforma").puedeVer;
+                              const hasFirematEmpresa = getFromList(permisos, "firemat_acceder_plataforma").puedeVer;
                               const hasCambiarEmpresa = hasBeckEmpresa || hasFirematEmpresa;
                               const isUserSaving = Boolean(savingUsuario[usuario.id]);
                               const cacheLoading = loadingPermisosCache && !usuarioPermisosCache[usuario.id];
@@ -597,27 +589,21 @@ const BeckPermisos: React.FC = () => {
                                       <span className="text-slate-300">—</span>
                                     )}
                                   </td>
-                                  {/* Switch único: Cambiar empresa (controla beck + firemat) */}
+                                  {/* Acceso independiente por plataforma */}
                                   <td className="py-2.5 text-center">
-                                    <Tooltip
-                                      title={
-                                        isAdmin
-                                          ? "Admin tiene todos los permisos"
-                                          : hasCambiarEmpresa
-                                          ? "Quitar permiso cambiar empresa"
-                                          : "Dar permiso cambiar empresa"
-                                      }
-                                    >
-                                      <Switch
-                                        size="small"
-                                        checked={hasCambiarEmpresa}
-                                        loading={isUserSaving || cacheLoading}
-                                        disabled={isAdmin || isUserSaving || cacheLoading}
-                                        onChange={(val) =>
-                                          void toggleCambiarEmpresa(usuario.id, val)
-                                        }
-                                      />
-                                    </Tooltip>
+                                    <div className="flex flex-col gap-2 py-1">
+                                      {ACCESOS_PLATAFORMA.map(({ key, label }) => (
+                                        <label key={key} className="flex items-center justify-between gap-3 text-xs">
+                                          {label}
+                                          <Switch size="small"
+                                            checked={getFromList(permisos, key).puedeVer}
+                                            loading={isUserSaving || cacheLoading}
+                                            disabled={isAdmin || isUserSaving || cacheLoading}
+                                            onChange={(value) => void toggleCambiarEmpresa(usuario.id, key, value)}
+                                          />
+                                        </label>
+                                      ))}
+                                    </div>
                                   </td>
                                   {/* Botón Permisos Firemat: solo cuando tiene cambiar empresa activo y no es admin */}
                                   <td className="py-2.5 text-center">
@@ -640,6 +626,15 @@ const BeckPermisos: React.FC = () => {
                                     ) : (
                                       <span className="text-[10px] text-slate-300">—</span>
                                     )}
+                                    <Button
+                                      size="small"
+                                      icon={<KeyOutlined />}
+                                      disabled={isUserSaving || cacheLoading}
+                                      style={{ marginLeft: 8, borderColor: "#93c5fd", color: "#2563eb", fontSize: 10 }}
+                                      onClick={() => setTragerModalUsuario(usuario)}
+                                    >
+                                      Permisos Trager
+                                    </Button>
                                   </td>
                                   <td className="py-2.5 text-right">
                                     <Button
@@ -699,7 +694,7 @@ const BeckPermisos: React.FC = () => {
             <div>
               <div className="mb-3 rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-xs text-red-700">
                 Activa los módulos de Firemat a los que tendrá acceso este usuario.
-                El permiso "Cambiar empresa" se controla desde la tabla principal.
+                Los accesos a plataformas se controlan por separado de la edición del cliente de un documento.
               </div>
               {isModalUserSaving && (
                 <div className="mb-2 flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">
@@ -717,6 +712,96 @@ const BeckPermisos: React.FC = () => {
                 </thead>
                 <tbody>
                   {MODULOS_FIREMAT_MODAL.map(({ key, label }) => {
+                    const permisos = usuarioPermisosCache[modalUserId] ?? [];
+                    const p = getFromList(permisos, key);
+                    const isSavingVer = Boolean(savingPermisoRapido[`${modalUserId}-${key}-ver`]);
+                    const isSavingEditar = Boolean(savingPermisoRapido[`${modalUserId}-${key}-editar`]);
+                    return (
+                      <tr key={key} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 text-slate-700">{label}</td>
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={p.puedeVer}
+                            loading={isSavingVer}
+                            disabled={isModalUserSaving || modalCacheLoading}
+                            onChange={(val) =>
+                              void togglePermisoFiremat(modalUserId, key, "puedeVer", val)
+                            }
+                          />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Switch
+                            size="small"
+                            checked={p.puedeEditar}
+                            loading={isSavingEditar}
+                            disabled={isModalUserSaving || modalCacheLoading || !p.puedeVer}
+                            onChange={(val) =>
+                              void togglePermisoFiremat(modalUserId, key, "puedeEditar", val)
+                            }
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      <Modal
+        title={
+          tragerModalUsuario ? (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <FireOutlined style={{ color: "#ef4444" }} />
+                Permisos Trager
+              </div>
+              <div className="mt-0.5 text-xs font-normal text-slate-500">
+                {tragerModalUsuario.nombre}
+                {" — "}
+                {tragerModalUsuario.email}
+              </div>
+            </div>
+          ) : null
+        }
+        open={Boolean(tragerModalUsuario)}
+        onCancel={() => setTragerModalUsuario(null)}
+        footer={
+          <Button onClick={() => setTragerModalUsuario(null)}>Cerrar</Button>
+        }
+        width="94vw"
+        style={{ maxWidth: 520 }}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}
+      >
+        {tragerModalUsuario && (() => {
+          const modalUserId = tragerModalUsuario.id;
+          const isModalUserSaving = Boolean(savingUsuario[modalUserId]);
+          const modalCacheLoading = loadingPermisosCache && !usuarioPermisosCache[modalUserId];
+          return (
+            <div>
+              <div className="mb-3 rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-xs text-red-700">
+                Activa los módulos de Trager a los que tendrá acceso este usuario.
+                El acceso se configura individualmente en «Cambiar plataforma». Aquí selecciona los módulos permitidos; los cambios se guardan automáticamente.
+              </div>
+              {isModalUserSaving && (
+                <div className="mb-2 flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">
+                  <Spin size="small" />
+                  Guardando permiso...
+                </div>
+              )}
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+                    <th className="pb-2 text-left font-medium">Módulo</th>
+                    <th className="pb-2 text-center font-medium">Ver</th>
+                    <th className="pb-2 text-center font-medium">Editar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MODULOS_TRAGER.map(({ key, label }) => {
                     const permisos = usuarioPermisosCache[modalUserId] ?? [];
                     const p = getFromList(permisos, key);
                     const isSavingVer = Boolean(savingPermisoRapido[`${modalUserId}-${key}-ver`]);
