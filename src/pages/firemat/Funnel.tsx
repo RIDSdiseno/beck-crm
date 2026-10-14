@@ -1,6 +1,6 @@
 import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -762,6 +762,7 @@ const FirematFunnel: React.FC<{
   onEmbedClose?: () => void;
 }> = ({ alertaBell, embedOportunidadId, onEmbedClose }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const pendingOportunidadId = useRef<string | null>(null);
   const lastOpenedAlertTs = useRef<number | null>(null);
   const embedOpenedIdRef = useRef<string | null>(null);
@@ -866,7 +867,7 @@ const FirematFunnel: React.FC<{
     "" | "activas" | "ganadas" | "perdidas" | "postergadas" | "descartadas"
   >("");
   const [filterUnidadNegocio, setFilterUnidadNegocio] = useState<
-    "Beck" | "Firemat" | "Trager" | "Mixto"
+    "Beck" | "Firemat" | "Mixto"
   >("Firemat");
   const [beckVisibleCount, setBeckVisibleCount] = useState(0);
 
@@ -3309,7 +3310,20 @@ const FirematFunnel: React.FC<{
             size="small"
             style={{ minWidth: 160 }}
             value={filterUnidadNegocio}
-            onChange={(v) => setFilterUnidadNegocio(v ?? "Firemat")}
+            onChange={(value: string) => {
+              // Trager usa su propio funnel y endpoints, nunca FunnelBeck.
+              if (value === "Trager") {
+                if (!canViewFunnel("trager_acceder_plataforma") || !canViewFunnel("trager_funnel")) {
+                  void message.warning("Necesitas acceso a Trager y permiso para ver su funnel.");
+                  return;
+                }
+                navigate("/trager/funnel");
+                return;
+              }
+              if (value === "Beck" || value === "Mixto" || value === "Firemat") {
+                setFilterUnidadNegocio(value);
+              }
+            }}
             options={[
               { value: "Beck", label: "Beck" },
               { value: "Firemat", label: "Firemat" },
