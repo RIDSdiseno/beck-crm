@@ -59,6 +59,8 @@ import {
   TragerCategorias,
   TragerProductos,
   TragerCotizaciones,
+  TragerInventario,
+  TragerMovimientos,
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
@@ -338,6 +340,8 @@ const TRAGER_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/trager/productos": "trager_productos",
   "/trager/categorias": "trager_categorias",
   "/trager/cotizaciones": "trager_cotizaciones",
+  "/trager/inventario": "trager_inventario",
+  "/trager/movimientos": "trager_movimientos",
 };
 
 const PermisosFallback: React.FC = () => (
@@ -1010,6 +1014,22 @@ const AppShell: React.FC = () => {
                   element={
                     <PermisosGate modulo="trager_cotizaciones" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <TragerCotizaciones />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/inventario"
+                  element={
+                    <PermisosGate modulo="trager_inventario" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerInventario />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/movimientos"
+                  element={
+                    <PermisosGate modulo="trager_movimientos" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerMovimientos />
                     </PermisosGate>
                   }
                 />

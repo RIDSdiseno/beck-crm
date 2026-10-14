@@ -1,0 +1,714 @@
+// Copia de pages/firemat/Inventario.tsx para Trager (mismo tema visual, API /trager/inventario).
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Button,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Spin,
+  Table,
+  Tag,
+  message,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import {
+  ClearOutlined,
+  FileExcelOutlined,
+  InboxOutlined,
+  PictureOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+import { saveAs } from "file-saver";
+import {
+  tragerInventarioAPI,
+  type InventarioTragerItem,
+  type InventarioTragerResumen,
+} from "../../services/api";
+import { usePermisos } from "../../hooks/usePermisos";
+import ImportarExcelInventarioModal from "./ImportarExcelInventarioModal";
+
+const EDIT_INVENTARIO_TRAGER_PERMISSION_MESSAGE =
+  "No tienes permiso para editar inventario Trager.";
+
+const getInventarioErrorMessage = (err: unknown, fallback: string): string => {
+  const apiErr = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    message?: string;
+  } | null;
+  if (apiErr?.response?.status === 403) {
+    return EDIT_INVENTARIO_TRAGER_PERMISSION_MESSAGE;
+  }
+  return (
+    apiErr?.response?.data?.error ||
+    apiErr?.response?.data?.message ||
+    apiErr?.message ||
+    fallback
+  );
+};
+
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const d = dayjs(value);
+  return d.isValid() ? d.format("DD-MM-YYYY") : "-";
+};
+
+const formatDateInput = (value: string | null | undefined) => {
+  if (!value) return undefined;
+  const d = dayjs(value);
+  return d.isValid() ? d.format("YYYY-MM-DD") : undefined;
+};
+
+const criticidadColor: Record<string, string> = {
+  alta: "red",
+  media: "orange",
+  baja: "green",
+};
+
+const estadoStockTag = (estado: InventarioTragerItem["estadoStock"]) => {
+  if (estado === "SIN_STOCK") return <Tag color="red">Sin stock</Tag>;
+  if (estado === "BAJO_STOCK") return <Tag color="orange">Bajo stock</Tag>;
+  return <Tag color="green">OK</Tag>;
+};
+
+const columns: ColumnsType<InventarioTragerItem> = [
+  {
+    title: "SKU",
+    dataIndex: "sku",
+    key: "sku",
+    width: 130,
+    render: (v: string | null | undefined) =>
+      v ?? <span className="text-beck-muted">—</span>,
+  },
+  {
+    title: "Producto",
+    key: "producto",
+    width: 220,
+    render: (_, row) => (
+      <div className={row.alertaStockBajo ? "border-l-2 border-orange-400 pl-2" : ""}>
+        <p className="font-medium text-beck-ink leading-tight">{row.nombre}</p>
+        {row.descripcion && (
+          <p className="text-xs text-beck-muted mt-0.5 leading-snug line-clamp-2">
+            {row.descripcion}
+          </p>
+        )}
+      </div>
+    ),
+  },
+  {
+    title: "Categoría",
+    dataIndex: "categoria",
+    key: "categoria",
+    width: 130,
+    render: (v: string | null | undefined) =>
+      v ?? <span className="text-beck-muted">—</span>,
+  },
+  {
+    title: "Stock",
+    dataIndex: "stockInicial",
+    key: "stockInicial",
+    width: 100,
+    align: "center",
+    render: (v: number | null | undefined) => (
+      <span className="tabular-nums">{v ?? 0}</span>
+    ),
+  },
+  {
+    title: "Salidas",
+    dataIndex: "salidas",
+    key: "salidas",
+    width: 80,
+    align: "center",
+    render: (v: number | null | undefined) => (
+      <span className="tabular-nums">{v ?? 0}</span>
+    ),
+  },
+  {
+    title: "Última salida",
+    dataIndex: "fechaUltimaSalida",
+    key: "fechaUltimaSalida",
+    width: 115,
+    render: (v: string | null | undefined) => (
+      <span className="tabular-nums text-xs">{formatDate(v)}</span>
+    ),
+  },
+  {
+    title: "Entradas",
+    dataIndex: "entradas",
+    key: "entradas",
+    width: 85,
+    align: "center",
+    render: (v: number | null | undefined) => (
+      <span className="tabular-nums">{v ?? 0}</span>
+    ),
+  },
+  {
+    title: "Última entrada",
+    dataIndex: "fechaUltimaEntrada",
+    key: "fechaUltimaEntrada",
+    width: 120,
+    render: (v: string | null | undefined) => (
+      <span className="tabular-nums text-xs">{formatDate(v)}</span>
+    ),
+  },
+  {
+    title: "Stock actual",
+    dataIndex: "stock",
+    key: "stock",
+    width: 80,
+    align: "center",
+    render: (v: number) => <span className="tabular-nums">{v}</span>,
+  },
+  {
+    title: "Disponible",
+    key: "stockDisponible",
+    width: 100,
+    align: "center",
+    render: (_, row) =>
+      row.alertaStockBajo ? (
+        <Tag color="red" className="tabular-nums font-semibold">
+          {row.stockDisponible}
+        </Tag>
+      ) : (
+        <span className="tabular-nums">{row.stockDisponible}</span>
+      ),
+  },
+  {
+    title: "Estado stock",
+    dataIndex: "estadoStock",
+    key: "estadoStock",
+    width: 120,
+    render: (v: InventarioTragerItem["estadoStock"]) => estadoStockTag(v),
+  },
+  {
+    title: "Criticidad",
+    dataIndex: "criticidad",
+    key: "criticidad",
+    width: 100,
+    render: (v: string) => {
+      const lower = (v ?? "").toLowerCase();
+      return (
+        <Tag color={criticidadColor[lower] ?? "default"}>{v ?? "—"}</Tag>
+      );
+    },
+  },
+  {
+    title: "Estado",
+    dataIndex: "activo",
+    key: "activo",
+    width: 90,
+    render: (v: boolean) =>
+      v ? <Tag color="green">Activo</Tag> : <Tag color="default">Inactivo</Tag>,
+  },
+  {
+    title: "Imagen",
+    key: "imagen",
+    width: 70,
+    align: "center",
+    render: (_, row) =>
+      row.imagen ? (
+        <img
+          src={row.imagen}
+          alt={row.nombre}
+          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            background: "#f5f5f5",
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <PictureOutlined style={{ color: "#d1d5db" }} />
+        </div>
+      ),
+  },
+  {
+    title: "Creado",
+    dataIndex: "createdAt",
+    key: "createdAt",
+    width: 110,
+    render: (v: string) => (
+      <span className="tabular-nums text-xs text-beck-muted">{formatDate(v)}</span>
+    ),
+  },
+];
+
+const ESTADO_OPTIONS = [
+  { label: "Todos", value: "" },
+  { label: "Activos", value: "true" },
+  { label: "Inactivos", value: "false" },
+];
+
+const STOCK_OPTIONS = [
+  { label: "Todos", value: "" },
+  { label: "Solo bajo stock", value: "true" },
+];
+
+const CRITICIDAD_OPTIONS = [
+  { label: "Todas", value: "" },
+  { label: "Alta", value: "alta" },
+  { label: "Media", value: "media" },
+  { label: "Baja", value: "baja" },
+];
+
+type ResumenCardProps = {
+  label: string;
+  value: number;
+  highlight?: boolean;
+};
+
+const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) => (
+  <div
+    className={`firemat-kpi-card flex flex-col gap-1 rounded-2xl p-4 ${
+      highlight ? "border-orange-300" : ""
+    }`}
+  >
+    <p className="text-xs text-beck-muted">{label}</p>
+    <p
+      className={`text-2xl font-bold tabular-nums ${
+        highlight ? "text-firemat-primary" : "text-beck-ink"
+      }`}
+    >
+      {value.toLocaleString("es-CL")}
+    </p>
+  </div>
+);
+
+const RESUMEN_VACIO: InventarioTragerResumen = {
+  totalProductos: 0,
+  productosActivos: 0,
+  productosInactivos: 0,
+  productosSinStock: 0,
+  productosBajoStock: 0,
+  stockTotal: 0,
+  stockReservadoTotal: 0,
+  stockDisponibleTotal: 0,
+};
+
+type InventarioFormValues = {
+  nombre: string;
+  sku?: string;
+  stockInicial: number;
+  salidas: number;
+  fechaUltimaSalida?: string;
+  entradas: number;
+  fechaUltimaEntrada?: string;
+  ubicacion?: string;
+  activo: boolean;
+  motivo?: string;
+};
+
+const ModalEditarInventario: React.FC<{
+  item: InventarioTragerItem | null;
+  open: boolean;
+  canEditInventario: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ item, open, canEditInventario, onClose, onSaved }) => {
+  const [form] = Form.useForm<InventarioFormValues>();
+  const [saving, setSaving] = useState(false);
+  const stockInicial = Form.useWatch("stockInicial", form) ?? 0;
+  const salidas = Form.useWatch("salidas", form) ?? 0;
+  const entradas = Form.useWatch("entradas", form) ?? 0;
+  const stockActual = stockInicial - salidas + entradas;
+
+  useEffect(() => {
+    if (!open || !item) return;
+    form.setFieldsValue({
+      nombre: item.nombre,
+      sku: item.sku ?? undefined,
+      stockInicial: item.stockInicial ?? 0,
+      salidas: item.salidas ?? 0,
+      fechaUltimaSalida: formatDateInput(item.fechaUltimaSalida),
+      entradas: item.entradas ?? 0,
+      fechaUltimaEntrada: formatDateInput(item.fechaUltimaEntrada),
+      ubicacion: item.ubicacion ?? undefined,
+      activo: item.activo,
+      motivo: undefined,
+    });
+  }, [form, item, open]);
+
+  const guardar = async () => {
+    if (!item) return;
+    if (!canEditInventario) {
+      void message.error(EDIT_INVENTARIO_TRAGER_PERMISSION_MESSAGE);
+      return;
+    }
+    try {
+      const values = await form.validateFields();
+      const totalCalculado = values.stockInicial - values.salidas + values.entradas;
+      if (totalCalculado < 0) {
+        void message.error("El total no puede ser negativo");
+        return;
+      }
+      setSaving(true);
+      await tragerInventarioAPI.actualizar(item.id, {
+        stockNuevo: totalCalculado,
+        nombre: values.nombre.trim(),
+        sku: values.sku?.trim() || null,
+        stockInicial: values.stockInicial,
+        salidas: values.salidas,
+        fechaUltimaSalida: values.fechaUltimaSalida || null,
+        entradas: values.entradas,
+        fechaUltimaEntrada: values.fechaUltimaEntrada || null,
+        ubicacion: values.ubicacion?.trim() || undefined,
+        activo: values.activo,
+        motivo: values.motivo?.trim() || undefined,
+      });
+      void message.success("Inventario actualizado");
+      onClose();
+      onSaved();
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "errorFields" in err) return;
+      void message.error(getInventarioErrorMessage(err, "No se pudo actualizar el inventario"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="Editar inventario"
+      okText="Guardar"
+      cancelText="Cancelar"
+      confirmLoading={saving}
+      okButtonProps={{
+        className: "firemat-action-button",
+        style: canEditInventario ? undefined : { display: "none" },
+      }}
+      onCancel={onClose}
+      onOk={canEditInventario ? () => void guardar() : undefined}
+      destroyOnClose
+      width="94vw"
+      style={{ maxWidth: 760 }}
+    >
+      <Form form={form} layout="vertical" disabled={!canEditInventario}>
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+          <Form.Item
+            name="nombre"
+            label="Producto"
+            rules={[{ required: true, message: "El nombre del producto es obligatorio" }]}
+          >
+            <Input placeholder="Nombre del producto" />
+          </Form.Item>
+          <Form.Item name="sku" label="SKU">
+            <Input placeholder="SKU" />
+          </Form.Item>
+          <Form.Item
+            name="stockInicial"
+            label="Stock"
+            rules={[
+              { required: true, message: "Stock requerido" },
+              { type: "number", min: 0, message: "Stock debe ser >= 0" },
+            ]}
+          >
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="salidas"
+            label="Salidas"
+            rules={[
+              { required: true, message: "Salidas requeridas" },
+              { type: "number", min: 0, message: "Salidas debe ser >= 0" },
+            ]}
+          >
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="fechaUltimaSalida" label="Fecha última salida">
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item
+            name="entradas"
+            label="Entradas"
+            rules={[
+              { required: true, message: "Entradas requeridas" },
+              { type: "number", min: 0, message: "Entradas debe ser >= 0" },
+            ]}
+          >
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="fechaUltimaEntrada" label="Fecha última entrada">
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item
+            label="Stock actual (total)"
+            validateStatus={stockActual < 0 ? "error" : undefined}
+            help={stockActual < 0 ? "El total no puede ser negativo" : undefined}
+          >
+            <InputNumber value={stockActual} precision={0} disabled style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="ubicacion" label="Ubicación">
+            <Input placeholder="Ej: Bodega A - Pasillo 3" />
+          </Form.Item>
+          <Form.Item
+            name="activo"
+            label="Estado"
+            rules={[{ required: true, message: "Estado obligatorio" }]}
+          >
+            <Select
+              options={[
+                { label: "Activo", value: true },
+                { label: "Inactivo", value: false },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="motivo" label="Motivo del ajuste" className="col-span-2">
+            <Input.TextArea rows={3} placeholder="Describe el motivo del ajuste" />
+          </Form.Item>
+        </div>
+      </Form>
+    </Modal>
+  );
+};
+
+const TragerInventario: React.FC = () => {
+  const { canView, canEdit } = usePermisos();
+  const canViewInventario = canView("trager_inventario");
+  const canEditInventario = canEdit("trager_inventario");
+
+  const [items, setItems] = useState<InventarioTragerItem[]>([]);
+  const [resumen, setResumen] = useState<InventarioTragerResumen>(RESUMEN_VACIO);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [activo, setActivo] = useState<"" | "true" | "false">("");
+  const [bajoStock, setBajoStock] = useState<"" | "true">("");
+  const [criticidad, setCriticidad] = useState("");
+  const [itemEditando, setItemEditando] = useState<InventarioTragerItem | null>(null);
+  const [importarExcelOpen, setImportarExcelOpen] = useState(false);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
+
+  const cargar = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params: Parameters<typeof tragerInventarioAPI.listar>[0] = {};
+      if (q.trim()) params.q = q.trim();
+      if (activo !== "") params.activo = activo === "true";
+      if (bajoStock === "true") params.bajoStock = true;
+      if (criticidad) params.criticidad = criticidad;
+
+      const response = await tragerInventarioAPI.listar(params);
+      setItems(response.data);
+      setResumen(response.resumen);
+    } catch {
+      void message.error("No se pudo cargar el inventario Trager");
+      setItems([]);
+      setResumen(RESUMEN_VACIO);
+    } finally {
+      setLoading(false);
+    }
+  }, [q, activo, bajoStock, criticidad]);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  const limpiar = () => {
+    setQ("");
+    setActivo("");
+    setBajoStock("");
+    setCriticidad("");
+  };
+
+  const hayFiltros = q !== "" || activo !== "" || bajoStock !== "" || criticidad !== "";
+
+  const exportarExcel = async () => {
+    try {
+      setExportandoExcel(true);
+      const params: Parameters<typeof tragerInventarioAPI.exportar>[0] = {};
+      if (q.trim()) params.q = q.trim();
+      if (activo !== "") params.activo = activo === "true";
+      if (bajoStock === "true") params.bajoStock = true;
+      if (criticidad) params.criticidad = criticidad;
+      const blob = await tragerInventarioAPI.exportar(params);
+      saveAs(blob, `inventario_trager_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`);
+      void message.success("Inventario exportado correctamente");
+    } catch (err: unknown) {
+      void message.error(getInventarioErrorMessage(err, "No se pudo exportar el inventario"));
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
+
+  const abrirEditarInventario = (row: InventarioTragerItem) => {
+    if (!canEditInventario) {
+      void message.error(EDIT_INVENTARIO_TRAGER_PERMISSION_MESSAGE);
+      return;
+    }
+    setItemEditando(row);
+  };
+
+  const tableColumns: ColumnsType<InventarioTragerItem> = [
+    ...columns,
+    ...(canEditInventario ? [{
+      title: "Acciones",
+      key: "acciones",
+      width: 90,
+      render: (_: unknown, row: InventarioTragerItem) => (
+        <Button size="small" type="link" onClick={() => abrirEditarInventario(row)}>
+          Editar
+        </Button>
+      ),
+    }] : []),
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <section className="firemat-panel">
+        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="firemat-badge">
+              <InboxOutlined style={{ fontSize: 10 }} />
+              <span>Stock en tiempo real</span>
+            </div>
+            <h1 className="mt-2 text-lg font-semibold tracking-wide text-beck-ink">
+              Inventario Trager
+            </h1>
+            <p className="mt-1 max-w-2xl text-xs text-beck-ink-soft">
+              Control de stock, reservas y alertas de los productos Trager.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {canViewInventario && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => void exportarExcel()}
+                loading={exportandoExcel}
+              >
+                Exportar Excel
+              </Button>
+            )}
+            {canEditInventario && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => setImportarExcelOpen(true)}
+              >
+                Importar Excel
+              </Button>
+            )}
+            <Button
+              className="firemat-action-button"
+              icon={<ReloadOutlined />}
+              onClick={() => void cargar()}
+              loading={loading}
+            >
+              Actualizar
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Cards resumen */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <ResumenCard label="Total productos" value={resumen.totalProductos} />
+        <ResumenCard label="Stock total" value={resumen.stockTotal} />
+        <ResumenCard label="Stock reservado" value={resumen.stockReservadoTotal} />
+        <ResumenCard label="Stock disponible" value={resumen.stockDisponibleTotal} />
+        <ResumenCard
+          label="Bajo stock"
+          value={resumen.productosBajoStock}
+          highlight={resumen.productosBajoStock > 0}
+        />
+      </div>
+
+      {/* Filtros */}
+      <section className="firemat-panel p-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+          <Input
+            prefix={<SearchOutlined className="text-beck-muted" />}
+            placeholder="Buscar por nombre o descripción"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            allowClear
+            className="w-full sm:w-auto sm:min-w-[200px]"
+          />
+          <Select
+            value={activo}
+            onChange={(v) => setActivo(v as "" | "true" | "false")}
+            options={ESTADO_OPTIONS}
+            style={{ width: 130 }}
+            className="!w-full sm:!w-[130px]"
+            placeholder="Estado"
+          />
+          <Select
+            value={bajoStock}
+            onChange={(v) => setBajoStock(v as "" | "true")}
+            options={STOCK_OPTIONS}
+            style={{ width: 150 }}
+            className="!w-full sm:!w-[150px]"
+            placeholder="Stock"
+          />
+          <Select
+            value={criticidad}
+            onChange={(v) => setCriticidad(v as string)}
+            options={CRITICIDAD_OPTIONS}
+            style={{ width: 130 }}
+            className="!w-full sm:!w-[130px]"
+            placeholder="Criticidad"
+          />
+          {hayFiltros && (
+            <Button icon={<ClearOutlined />} onClick={limpiar}>
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
+      </section>
+
+      {/* Tabla */}
+      <section className="firemat-panel overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <Spin size="large" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-16">
+            <Empty description="No hay productos que coincidan con los filtros" />
+          </div>
+        ) : (
+          <Table<InventarioTragerItem>
+            dataSource={items}
+            columns={tableColumns}
+            rowKey="id"
+            size="small"
+            scroll={{ x: 1500 }}
+            rowClassName={(row) =>
+              row.alertaStockBajo ? "bg-orange-50" : ""
+            }
+            pagination={{
+              pageSize: 25,
+              showSizeChanger: false,
+              showTotal: (total) => `${total} productos`,
+            }}
+          />
+        )}
+      </section>
+
+      <ModalEditarInventario
+        item={itemEditando}
+        open={itemEditando !== null && canEditInventario}
+        canEditInventario={canEditInventario}
+        onClose={() => setItemEditando(null)}
+        onSaved={() => void cargar()}
+      />
+
+      <ImportarExcelInventarioModal
+        open={importarExcelOpen && canEditInventario}
+        onClose={() => setImportarExcelOpen(false)}
+        onImportado={() => void cargar()}
+      />
+    </div>
+  );
+};
+
+export default TragerInventario;

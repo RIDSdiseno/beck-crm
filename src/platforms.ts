@@ -52,6 +52,11 @@ export const getFirematLikePath = (
   suffix: string
 ): string => `/${empresa}/${suffix.replace(/^\/+/, "")}`;
 
+// Páginas que existen en Trager: al cambiar de empresa se conserva la misma página.
+const RUTAS_TRAGER = [
+  "dashboard", "funnel", "clientes", "cotizaciones", "productos", "categorias", "inventario", "movimientos",
+];
+
 export const getEquivalentCompanyPath = (
   pathname: string,
   target: EmpresaActiva
@@ -75,7 +80,7 @@ export const getEquivalentCompanyPath = (
   }
 
   if (current === "firemat" || current === "trager") {
-    if (target === "trager" && !["dashboard", "funnel", "clientes"].includes(suffix)) {
+    if (target === "trager" && !RUTAS_TRAGER.includes(suffix)) {
       return "/trager/dashboard";
     }
     return `/${target}/${suffix || "dashboard"}`;
@@ -93,7 +98,7 @@ export const getEquivalentCompanyPath = (
     permisos: "permisos",
   };
 
-  if (target === "trager" && !["dashboard", "funnel", "clientes"].includes(suffix)) {
+  if (target === "trager" && !RUTAS_TRAGER.includes(suffix)) {
     return "/trager/dashboard";
   }
 

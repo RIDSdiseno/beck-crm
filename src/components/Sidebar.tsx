@@ -297,6 +297,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "clientes", to: "/trager/clientes", icon: <TeamOutlined />, label: "Clientes", access: hasViewPermission("trager_clientes") },
     { key: "productos", to: "/trager/productos", icon: <AppstoreOutlined />, label: "Productos", access: hasViewPermission("trager_productos") },
     { key: "categorias", to: "/trager/categorias", icon: <ProfileOutlined />, label: "Categorias", access: hasViewPermission("trager_categorias") },
+    { key: "inventario", to: "/trager/inventario", icon: <InboxOutlined />, label: "Inventario", access: hasViewPermission("trager_inventario") },
+    { key: "movimientos", to: "/trager/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: hasViewPermission("trager_movimientos") },
   ];
 
   const clienteNav = [

@@ -3313,6 +3313,87 @@ export const firematInventarioAPI = {
   },
 };
 
+// Inventario de Trager: mismo contrato que el de Firemat, sobre /trager/inventario.
+// La importación de lista de precios en PDF queda pendiente (formato del proveedor).
+export type InventarioTragerItem = InventarioFirematItem;
+export type InventarioTragerResumen = InventarioFirematResumen;
+export type MovimientoTrager = MovimientoFiremat;
+
+export const tragerInventarioAPI = {
+  listar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+    bajoStock?: boolean;
+    criticidad?: string;
+  }): Promise<{ data: InventarioTragerItem[]; resumen: InventarioTragerResumen }> => {
+    const res = await api.get<InventarioApiEnvelope>("/trager/inventario", { params });
+    const payload = res.data;
+    if (!payload.success) {
+      throw new Error(payload.message ?? payload.error ?? "Error al cargar inventario");
+    }
+    return {
+      data: payload.data ?? [],
+      resumen: payload.resumen ?? {
+        totalProductos: 0,
+        productosActivos: 0,
+        productosInactivos: 0,
+        productosSinStock: 0,
+        productosBajoStock: 0,
+        stockTotal: 0,
+        stockReservadoTotal: 0,
+        stockDisponibleTotal: 0,
+      },
+    };
+  },
+
+  exportar: async (params?: {
+    q?: string;
+    activo?: boolean;
+    categoriaId?: number;
+    bajoStock?: boolean;
+    criticidad?: string;
+  }): Promise<Blob> => {
+    const response = await api.get<Blob>("/trager/inventario/exportar", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  movimientos: async (params?: {
+    productoId?: number;
+    tipo?: string;
+    desde?: string;
+    hasta?: string;
+  }): Promise<MovimientosApiEnvelope> => {
+    const res = await api.get<MovimientosApiEnvelope>("/trager/inventario/movimientos", { params });
+    return res.data;
+  },
+
+  actualizar: async (
+    productoId: number,
+    payload: ActualizarInventarioFirematPayload
+  ): Promise<ActualizarInventarioFirematResponse> => {
+    const response = await api.patch<ActualizarInventarioFirematResponse>(
+      `/trager/inventario/${productoId}`,
+      payload
+    );
+    return response.data;
+  },
+
+  importarInventarioExcel: async (file: File): Promise<ImportarExcelInventarioResult> => {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    const response = await api.post<ApiResponseEnvelope<ImportarExcelInventarioResult>>(
+      "/trager/inventario/importar-excel",
+      formData,
+      { headers: { "Content-Type": false } }
+    );
+    return unwrapApiResponse(response.data);
+  },
+};
+
 export type MovimientoCRMRecord = {
   id: string;
   usuarioId: string;
@@ -5749,7 +5830,9 @@ export type ModuloBeck =
   | "trager_cambiar_empresa"
   | "trager_productos"
   | "trager_categorias"
-  | "trager_cotizaciones";
+  | "trager_cotizaciones"
+  | "trager_inventario"
+  | "trager_movimientos";
 
 export interface PermisoModulo {
   modulo: ModuloBeck;

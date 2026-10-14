@@ -5,3 +5,5 @@ export { default as TragerProximamente } from "./Proximamente";
 export { default as TragerCategorias } from "./Categorias";
 export { default as TragerProductos } from "./Productos";
 export { default as TragerCotizaciones } from "./Cotizaciones";
+export { default as TragerInventario } from "./Inventario";
+export { default as TragerMovimientos } from "./Movimientos";
