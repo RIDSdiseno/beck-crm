@@ -66,6 +66,9 @@ const ROL_TAG_COLOR: Record<UsuarioApiRol, string> = {
   vendedor_firemat: "orange",
   bodeguero: "lime",
   visualizador_firemat: "blue",
+  vendedor_trager: "orange",
+  bodeguero_trager: "lime",
+  visualizador_trager: "blue",
   cliente: "teal",
 };
 

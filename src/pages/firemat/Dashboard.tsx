@@ -80,35 +80,24 @@ const ESTADO_LABEL: Record<string, string> = {
 
 const CHART_COLORS = ["#e05c3b", "#f4a17a", "#c0392b", "#f39c12", "#e67e22", "#d35400"];
 
+// Estados reales de las cotizaciones de Firemat (los mismos del backend).
 const COTIZ_COLORES: Record<string, string> = {
   BORRADOR: "#94a3b8",
   ENVIADA: "#1677ff",
-  SEGUIMIENTO: "#9254de",
-  ORDEN_CONFIRMADA: "#13c2c2",
-  GANADA: "#52c41a",
-  PERDIDA: "#ff4d4f",
-  POSTERGADA: "#fa8c16",
+  ACEPTADA: "#52c41a",
+  RECHAZADA: "#ff4d4f",
+  VENCIDA: "#fa8c16",
 };
 
 const COTIZ_LABELS: Record<string, string> = {
   BORRADOR: "Borrador",
   ENVIADA: "Enviada",
-  SEGUIMIENTO: "Seguimiento",
-  ORDEN_CONFIRMADA: "Confirmada",
-  GANADA: "Ganada",
-  PERDIDA: "Perdida",
-  POSTERGADA: "Postergada",
+  ACEPTADA: "Aceptada",
+  RECHAZADA: "Rechazada",
+  VENCIDA: "Vencida",
 };
 
-const COTIZ_ESTADOS_ORDEN = [
-  "BORRADOR",
-  "ENVIADA",
-  "SEGUIMIENTO",
-  "ORDEN_CONFIRMADA",
-  "GANADA",
-  "PERDIDA",
-  "POSTERGADA",
-];
+const COTIZ_ESTADOS_ORDEN = ["BORRADOR", "ENVIADA", "ACEPTADA", "RECHAZADA", "VENCIDA"];
 
 /* ── tipos locales ──────────────────────────────────────── */
 
@@ -341,7 +330,8 @@ const FirematDashboard: React.FC = () => {
   }, [cotizaciones]);
 
   const cotizacionesActivasCount = useMemo(
-    () => cotizaciones.filter((c) => ["BORRADOR", "ENVIADA", "SEGUIMIENTO"].includes(c.estado)).length,
+    // Activas: las que todavía no se aceptan, rechazan ni vencen.
+    () => cotizaciones.filter((c) => ["BORRADOR", "ENVIADA"].includes(c.estado)).length,
     [cotizaciones]
   );
 

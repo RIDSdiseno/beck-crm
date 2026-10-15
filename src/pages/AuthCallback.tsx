@@ -21,14 +21,23 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   vendedor_firemat: "VendedorFiremat",
   bodeguero: "Bodeguero",
   visualizador_firemat: "VisualizadorFiremat",
+  vendedor_trager: "VendedorTrager",
+  bodeguero_trager: "BodegueroTrager",
+  visualizador_trager: "VisualizadorTrager",
 };
 
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>
   rol === "Terreno" || rol === "JefeObra";
 
-const getEmpresaPorEmail = (email?: string): "beck" | "firemat" => {
+type EmpresaLogin = "beck" | "firemat" | "trager";
+
+const esEmpresaLogin = (value: unknown): value is EmpresaLogin =>
+  value === "beck" || value === "firemat" || value === "trager";
+
+const getEmpresaPorEmail = (email?: string): EmpresaLogin => {
   const lower = email?.toLowerCase() ?? "";
   if (lower.endsWith("@firemat.cl")) return "firemat";
+  if (lower.endsWith("@trager.cl")) return "trager";
   return "beck";
 };
 
@@ -117,12 +126,12 @@ const AuthCallback: React.FC = () => {
 
         window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
 
-        let empresa: "beck" | "firemat";
-        if (empresaDefaultParam === "beck" || empresaDefaultParam === "firemat") {
+        let empresa: EmpresaLogin;
+        if (esEmpresaLogin(empresaDefaultParam)) {
           empresa = empresaDefaultParam;
         } else {
           const meEmpresa = (meResponse as { empresaDefault?: string }).empresaDefault;
-          if (meEmpresa === "beck" || meEmpresa === "firemat") {
+          if (esEmpresaLogin(meEmpresa)) {
             empresa = meEmpresa;
           } else {
             empresa = getEmpresaPorEmail(authUser.email);
@@ -131,7 +140,7 @@ const AuthCallback: React.FC = () => {
 
         window.localStorage.setItem(EMPRESA_STORAGE_KEY, empresa);
 
-        redirectTo(empresa === "firemat" ? "/firemat/dashboard" : "/beck/dashboard");
+        redirectTo(`/${empresa}/dashboard`);
       } catch {
         clearStoredSession();
         redirectTo("/login");

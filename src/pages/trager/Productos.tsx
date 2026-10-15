@@ -1,3 +1,5 @@
+// Productos de Trager: copia de pages/firemat/Productos.tsx con la API completa de Trager (services/tragerComercialApi.ts).
+// Sin importación de lista de precios PDF: queda pendiente hasta tener el formato del proveedor.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
@@ -17,20 +19,24 @@ import type { ColumnsType } from "antd/es/table";
 import {
   AppstoreOutlined,
   ClearOutlined,
+  EyeInvisibleOutlined,
   EyeOutlined,
+  FileExcelOutlined,
   PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   TagsOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { saveAs } from "file-saver";
 import {
   tragerCategoriasAPI,
   tragerProductosAPI,
   type CategoriaTrager,
   type ProductoTrager,
   type ProductoTragerPayload,
-} from "../../services/api";
+} from "../../services/tragerComercialApi";
 import { usePermisos } from "../../hooks/usePermisos";
 
 const EDIT_PRODUCTOS_TRAGER_PERMISSION_MESSAGE =
@@ -93,6 +99,7 @@ type FormValues = {
   precioUsd?: number;
   precio: number;
   precioSugerido?: number;
+  precioInstalador?: number;
   stockMinimo: number;
   stockInicial?: number;
   ubicacion?: string;
@@ -150,6 +157,7 @@ const ModalProducto: React.FC<{
         precioUsd: producto.precioUsd ?? undefined,
         precio: producto.precioClp ?? producto.precio,
         precioSugerido: producto.precioSugerido ?? undefined,
+        precioInstalador: producto.precioInstalador ?? undefined,
         stockMinimo: producto.stockMinimo ?? producto.minStock,
         stockInicial: producto.stockInicial ?? 0,
         ubicacion: producto.ubicacion ?? undefined,
@@ -216,6 +224,7 @@ const ModalProducto: React.FC<{
         precio: values.precio,
         precioUsd: values.precioUsd ?? null,
         precioSugerido: values.precioSugerido ?? null,
+        precioInstalador: values.precioInstalador ?? null,
         disponibilidad: values.disponibilidad,
         formato: values.formato || null,
         cantidadCaja: values.cantidadCaja?.trim() || null,
@@ -354,6 +363,20 @@ const ModalProducto: React.FC<{
             name="precioSugerido"
             label="Precio sugerido"
             rules={[{ type: "number", min: 0, message: "Precio sugerido debe ser >= 0" }]}
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              style={{ width: "100%" }}
+              formatter={(v) => `$ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+              parser={(v) => (Number(v?.replace(/\$\s?|\./g, "") ?? 0) as 0)}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="precioInstalador"
+            label="Precio instalador"
+            rules={[{ type: "number", min: 0, message: "Precio instalador debe ser >= 0" }]}
           >
             <InputNumber
               min={0}
@@ -656,7 +679,8 @@ const ModalAsignarCategorias: React.FC<{
 
 /* ────────────── Componente principal ────────────── */
 const TragerProductos: React.FC = () => {
-  const { canEdit } = usePermisos();
+  const { canView, canEdit } = usePermisos();
+  const canViewProductos = canView("trager_productos");
   const canEditProductos = canEdit("trager_productos");
 
   const [productos, setProductos] = useState<ProductoTrager[]>([]);
@@ -665,12 +689,14 @@ const TragerProductos: React.FC = () => {
   const [q, setQ] = useState("");
   const [activo, setActivo] = useState<"" | "true" | "false">("");
   const [categoriaFiltroId, setCategoriaFiltroId] = useState<number | undefined>();
+  const [verPrecioInstalador, setVerPrecioInstalador] = useState(false);
   const [categorias, setCategorias] = useState<CategoriaTrager[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [seleccionado, setSeleccionado] = useState<ProductoTrager | null>(null);
   const [modalAsignarOpen, setModalAsignarOpen] = useState(false);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -759,6 +785,23 @@ const TragerProductos: React.FC = () => {
   };
 
   const hayFiltros = q !== "" || activo !== "" || categoriaFiltroId !== undefined;
+
+  const exportarExcel = async () => {
+    try {
+      setExportandoExcel(true);
+      const params: Parameters<typeof tragerProductosAPI.exportar>[0] = {};
+      if (q.trim()) params.q = q.trim();
+      if (activo !== "") params.activo = activo === "true";
+      if (categoriaFiltroId !== undefined) params.categoriaId = categoriaFiltroId;
+      const blob = await tragerProductosAPI.exportar(params);
+      saveAs(blob, `productos_trager_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`);
+      void message.success("Productos exportados correctamente");
+    } catch (err: unknown) {
+      void message.error(getProductosErrorMessage(err, "No se pudieron exportar los productos"));
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
 
   const columns: ColumnsType<ProductoTrager> = [
     {
@@ -871,6 +914,20 @@ const TragerProductos: React.FC = () => {
         <span className="tabular-nums">{formatCLP(v)}</span>
       ),
     },
+    ...(verPrecioInstalador
+      ? [
+          {
+            title: "Precio instalador",
+            dataIndex: "precioInstalador",
+            key: "precioInstalador",
+            width: 130,
+            align: "right" as const,
+            render: (v: number | null | undefined) => (
+              <span className="tabular-nums">{formatCLP(v)}</span>
+            ),
+          },
+        ]
+      : []),
     {
       title: "Stock",
       key: "stockActual",
@@ -967,6 +1024,15 @@ const TragerProductos: React.FC = () => {
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canViewProductos && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() => void exportarExcel()}
+                loading={exportandoExcel}
+              >
+                Exportar Excel
+              </Button>
+            )}
             {canEditProductos && (
               <>
             <Button
@@ -1034,6 +1100,14 @@ const TragerProductos: React.FC = () => {
               Limpiar filtros
             </Button>
           )}
+          <Button
+            type={verPrecioInstalador ? "primary" : "default"}
+            icon={verPrecioInstalador ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+            onClick={() => setVerPrecioInstalador((v) => !v)}
+            className="sm:ml-auto"
+          >
+            {verPrecioInstalador ? "Ocultar precio instalador" : "Ver precio instalador"}
+          </Button>
         </div>
       </section>
 

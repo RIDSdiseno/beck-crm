@@ -16,7 +16,7 @@ import {
   type UsuarioApiRol,
   type UsuarioConOverride,
 } from "../../services/api";
-import { ROLES_FIREMAT as ROLES_FIREMAT_BASE, ROLES_ALL } from "../../constants/roles";
+import { ROLES_FIREMAT as ROLES_FIREMAT_BASE, ROLES_TRAGER } from "../../constants/roles";
 
 const MODULOS_FIREMAT_BASE: Array<{ key: ModuloBeck; label: string }> = [
   { key: "firemat_cambiar_empresa", label: "Firemat · Cambiar cliente de un documento existente" },
@@ -57,6 +57,9 @@ const ROL_TAG_COLOR: Partial<Record<UsuarioApiRol, string>> = {
   vendedor_firemat: "orange",
   bodeguero: "lime",
   visualizador_firemat: "blue",
+  vendedor_trager: "orange",
+  bodeguero_trager: "lime",
+  visualizador_trager: "blue",
 };
 
 const getFromList = (list: PermisoModulo[], modulo: ModuloBeck): PermisoModulo =>
@@ -85,9 +88,8 @@ const FirematPermisos: React.FC<{ plataforma?: "firemat" | "trager" }> = ({ plat
   const MODULOS_FIREMAT = plataforma === "trager"
     ? MODULOS_TRAGER.map(m => ({ ...m, label: m.label.replace(/^Trager · /, "") }))
     : MODULOS_FIREMAT_BASE;
-  const ROLES_FIREMAT = plataforma === "trager"
-    ? ROLES_ALL.filter(r => r.value !== "terreno" && r.value !== "cliente")
-    : ROLES_FIREMAT_BASE;
+  // Cada plataforma muestra solo sus roles propios.
+  const ROLES_FIREMAT = plataforma === "trager" ? ROLES_TRAGER : ROLES_FIREMAT_BASE;
   const { refreshPermisos } = usePermisos();
   const { user: currentUser } = useAuth();
   const [rolesInfo, setRolesInfo] = useState<PermisosRolResponse[]>([]);

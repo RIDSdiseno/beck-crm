@@ -126,7 +126,11 @@ const formatFecha = (value?: string | null): string => {
 
 const ConfiguracionValidacionPage: React.FC = () => {
   const { pathname } = useLocation();
-  const moduloActual: "BECK" | "FIREMAT" = pathname.startsWith("/firemat") ? "FIREMAT" : "BECK";
+  const moduloActual: "BECK" | "FIREMAT" | "TRAGER" = pathname.startsWith("/firemat")
+    ? "FIREMAT"
+    : pathname.startsWith("/trager")
+      ? "TRAGER"
+      : "BECK";
   const { canEdit } = usePermisos();
   const canEditReglas = moduloActual === "BECK" ? canEdit("beck_reglas_validacion") : true;
 
@@ -322,7 +326,7 @@ const ConfiguracionValidacionPage: React.FC = () => {
     <div style={{ padding: "0 0 24px" }}>
       <div style={{ marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
-          Reglas de Validación {moduloActual === "FIREMAT" ? "FIREMAT" : "BECK"}
+          Reglas de Validación {moduloActual}
         </Title>
         <p style={{ margin: "4px 0 0", color: "#8c8c8c", fontSize: 13 }}>
           Configura el nivel y estado de cada regla de validación del CRM.

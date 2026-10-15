@@ -33,6 +33,9 @@ const ROLE_MAP: Record<string, RolUsuario> = {
   bodeguero: "Bodeguero",
   visualizador_firemat: "VisualizadorFiremat",
   cliente: "Cliente",
+  vendedor_trager: "VendedorTrager",
+  bodeguero_trager: "BodegueroTrager",
+  visualizador_trager: "VisualizadorTrager",
 };
 
 const getEmpresaPorEmail = (email?: string): EmpresaActiva => {
@@ -61,6 +64,9 @@ const isRolUsuario = (value: unknown): value is RolUsuario =>
   value === "VendedorFiremat" ||
   value === "Bodeguero" ||
   value === "VisualizadorFiremat" ||
+  value === "VendedorTrager" ||
+  value === "BodegueroTrager" ||
+  value === "VisualizadorTrager" ||
   value === "Cliente";
 
 const isCrmBlockedRole = (rol: RolUsuario): boolean =>

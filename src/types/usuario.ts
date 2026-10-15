@@ -8,7 +8,10 @@ export type RolUsuario =
   | "VendedorFiremat"
   | "Bodeguero"
   | "VisualizadorFiremat"
-  | "Cliente";
+  | "Cliente"
+  | "VendedorTrager"
+  | "BodegueroTrager"
+  | "VisualizadorTrager";
 
 export type Usuario = {
   id: string;

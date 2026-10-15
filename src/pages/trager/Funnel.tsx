@@ -1,6 +1,7 @@
+// Funnel de Trager: copia de pages/firemat/Funnel.tsx con la API completa de Trager (services/tragerComercialApi.ts).
 import { puedeSeleccionarClienteComercial } from "../../utils/permisoClienteComercial";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -15,6 +16,7 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { usePermisos } from "../../hooks/usePermisos";
 import {
+  Alert,
   Button,
   DatePicker,
   Descriptions,
@@ -28,6 +30,7 @@ import {
   Spin,
   Tag,
   Timeline,
+  Typography,
   Upload,
   message,
 } from "antd";
@@ -36,6 +39,7 @@ import {
   DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -50,12 +54,29 @@ import {
   parseMotivoSelect,
 } from "../../constants/motivosCierre";
 import FunnelTragerDashboard from "./FunnelTragerDashboard";
+
+const toClienteId = (value: string | number | null | undefined): number | undefined => {
+  if (value === null || value === undefined || value === "") return undefined;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : undefined;
+};
 import FunnelTragerCalendario from "../../components/FunnelTragerCalendario";
 const FunnelBeck = React.lazy(() => import("../beck/Funnel"));
 import {
   clientesTragerAPI,
-  tragerFunnelAPI,
   type ClienteTrager,
+  type ContactoClienteTrager,
+  type ContactoClienteFirematPayload as ContactoClienteTragerPayload,
+  usuariosAPI,
+  type UsuarioResumen,
+} from "../../services/api";
+import {
+  tragerCotizacionesAPI,
+  tragerFunnelAPI,
+  tragerProductosAPI,
+  type TragerCotizacion,
+  type TragerCotizacionPayload,
+  type TragerCotizacionTipoCliente,
   type FunnelTragerArchivo,
   type FunnelTragerArchivoTipo,
   type TragerFunnelEtapa,
@@ -63,9 +84,10 @@ import {
   type TragerFunnelPayload,
   type TragerFunnelResumen,
   type HistorialEtapaTrager,
-  usuariosAPI,
-  type UsuarioResumen,
-} from "../../services/api";
+  type ProductoTrager,
+} from "../../services/tragerComercialApi";
+
+const { Text } = Typography;
 
 type ModalMode = "crear" | "editar" | "ver";
 
@@ -80,13 +102,35 @@ type TragerEditSection =
   | "postergada"
   | "descartado";
 
+type LineaCotizacionForm = {
+  productoId?: number | string;
+  cantidad?: number;
+  precioUnitario?: number;
+  descuentoPct?: number;
+  observacion?: string | null;
+};
+
+type CotizacionFormValues = {
+  cliente: string;
+  contacto?: string;
+  tipoCliente: TragerCotizacionTipoCliente;
+  responsable?: string;
+  fechaVencimiento?: Dayjs | null;
+  fechaSeguimiento?: Dayjs | null;
+  observaciones?: string;
+  lineas: LineaCotizacionForm[];
+};
+
 type FunnelFormValues = {
+  clienteId?: number;
   clienteTragerId?: number;
+  contactoId?: number;
+  contactoTragerId?: number;
   cliente: string;
   contacto?: string;
   telefono?: string;
   correo?: string;
-  tipoCliente?: string;
+  tipoCliente?: TragerCotizacionTipoCliente;
   rutEmpresa?: string;
   region?: string;
   comuna?: string;
@@ -125,7 +169,7 @@ type FunnelFormValues = {
   fechaProximaAccion?: Dayjs | null;
   observaciones?: string;
   origen?: string;
-  cotizacionId?: number;
+  cotizacionId?: string | number;
   motivoPerdida?: string;
   motivoPerdidaDetalle?: string;
   motivoPostergacion?: string;
@@ -189,11 +233,13 @@ const UNIDAD_NEGOCIO_STRIP: Record<string, string> = {
   Beck: "bg-[#d6b02a] text-black",
   Trager: "bg-red-600 text-white",
   Mixto: "bg-purple-600 text-white",
+    Firemat: "bg-blue-600 text-white",
 };
 
 const getUnidadNegocioVisualLabel = (
   item: TragerFunnelOportunidad
-): "BECK" | "TRAGER" | "MIXTO" => {
+): "BECK" | "TRAGER" | "FIREMAT" | "MIXTO" => {
+  if (item.unidadNegocio === "Firemat") return "FIREMAT";
   if (item.unidadNegocio === "Mixto") return "MIXTO";
   if (item.unidadNegocio === "Beck") return "BECK";
   return "TRAGER";
@@ -201,7 +247,7 @@ const getUnidadNegocioVisualLabel = (
 
 const getUnidadNegocioStripClass = (label: string): string =>
   UNIDAD_NEGOCIO_STRIP[
-    label === "BECK" ? "Beck" : label === "MIXTO" ? "Mixto" : "Trager"
+    label === "FIREMAT" ? "Firemat" : label === "BECK" ? "Beck" : label === "MIXTO" ? "Mixto" : "Trager"
   ];
 
 const CIERRE_BANNER: Partial<
@@ -240,7 +286,7 @@ const resolverEtapaComercialDesdeHistorial = (
 
 const TIPO_CLIENTE_OPTIONS: Array<{
   label: string;
-  value: string;
+  value: TragerCotizacionTipoCliente;
 }> = [
   { label: "Cliente final", value: "CLIENTE_FINAL" },
   { label: "Broker", value: "BROKER" },
@@ -326,6 +372,64 @@ const downloadArchivo = (url?: string | null) => {
   const downloadUrl = toCloudinaryDownloadUrl(url);
   if (!downloadUrl) return;
   window.open(downloadUrl, "_blank", "noopener,noreferrer");
+};
+
+const getEstadoLabel = (estado?: string | null) => {
+  if (estado === "BORRADOR") return "Borrador";
+  if (estado === "ENVIADA") return "Enviada";
+  if (estado === "SEGUIMIENTO") return "Seguimiento";
+  if (estado === "ORDEN_CONFIRMADA") return "Orden confirmada";
+  if (estado === "GANADA") return "Ganada";
+  if (estado === "PERDIDA") return "Perdida";
+  if (estado === "POSTERGADA") return "Postergada";
+  return estado ?? "—";
+};
+
+const getEstadoColor = (estado?: string | null) => {
+  if (estado === "BORRADOR") return "gold";
+  if (estado === "ENVIADA") return "blue";
+  if (estado === "SEGUIMIENTO") return "orange";
+  if (estado === "ORDEN_CONFIRMADA") return "cyan";
+  if (estado === "GANADA") return "green";
+  if (estado === "PERDIDA") return "red";
+  if (estado === "POSTERGADA") return "purple";
+  return "default";
+};
+
+const getLineasCotizacion = (cotizacion: TragerCotizacion) =>
+  cotizacion.lineas ?? cotizacion.detalle ?? [];
+
+const calculateLineSubtotal = (linea: LineaCotizacionForm) => {
+  const cantidad = Number(linea.cantidad || 0);
+  const precio = Number(linea.precioUnitario || 0);
+  const descuentoPct = Number(linea.descuentoPct || 0);
+  return Math.round(cantidad * precio * (1 - descuentoPct / 100));
+};
+
+const calculateTotals = (lineas: LineaCotizacionForm[] = []) => {
+  const subtotal = lineas.reduce(
+    (acc, linea) => acc + calculateLineSubtotal(linea),
+    0
+  );
+  const descuento = lineas.reduce((acc, linea) => {
+    const bruto = Number(linea.cantidad || 0) * Number(linea.precioUnitario || 0);
+    return acc + Math.round(bruto * (Number(linea.descuentoPct || 0) / 100));
+  }, 0);
+  const iva = Math.round(subtotal * 0.19);
+  const total = subtotal + iva;
+
+  return { subtotal, descuento, iva, total };
+};
+
+const downloadBlob = (blob: Blob, fileName: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 };
 
 const ETAPAS_CERRADAS: TragerFunnelEtapa[] = ["GANADA", "PERDIDA", "DESCARTADO", "POSTERGADA"];
@@ -438,9 +542,45 @@ const getStageActionLabel = (etapa: TragerFunnelEtapa) => {
 };
 
 
+const getCotizacionLabel = (cotizacion: TragerCotizacion) => {
+  const numero = cotizacion.numero ?? cotizacion.id;
+  return `#${numero} · ${cotizacion.cliente} · ${formatCLP(cotizacion.total)}`;
+};
+
 const getClienteTragerLabel = (cliente: ClienteTrager) => {
-  const nombre = cliente.nombre?.trim() || "Cliente sin nombre";
+  const nombre =
+    cliente.nombreEmpresa?.trim() ||
+    cliente.nombre?.trim() ||
+    cliente.razonSocial?.trim() ||
+    "Cliente sin nombre";
   return `${nombre} — ${cliente.rut?.trim() || "Sin RUT"}`;
+};
+
+const getClienteTragerNombre = (cliente: ClienteTrager) =>
+  cliente.nombreEmpresa?.trim() ||
+  cliente.nombre?.trim() ||
+  cliente.razonSocial?.trim() ||
+  "";
+
+const getClienteTragerTipo = (cliente: ClienteTrager) => {
+  const tipo = cliente.tipoCliente?.trim();
+  const map: Record<string, TragerCotizacionTipoCliente> = {
+    cliente_final: "CLIENTE_FINAL",
+    broker: "BROKER",
+    ferreteria: "FERRETERIA",
+    redistribuidor: "REDISTRIBUIDOR",
+    instalador: "INSTALADOR",
+    comisionista: "COMISIONISTA",
+    recompra: "RECOMPRA",
+    CLIENTE_FINAL: "CLIENTE_FINAL",
+    BROKER: "BROKER",
+    FERRETERIA: "FERRETERIA",
+    REDISTRIBUIDOR: "REDISTRIBUIDOR",
+    INSTALADOR: "INSTALADOR",
+    COMISIONISTA: "COMISIONISTA",
+    RECOMPRA: "RECOMPRA",
+  };
+  return tipo ? map[tipo] : undefined;
 };
 
 const getArchivoTragerTipoLabel = (tipo?: string | null) =>
@@ -473,12 +613,14 @@ const ResumenCard: React.FC<ResumenCardProps> = ({ label, value, highlight }) =>
 
 type TragerFunnelCardProps = {
   item: TragerFunnelOportunidad;
+  productoNombre?: string | null;
   dragDisabled: boolean;
   onViewDetail: (item: TragerFunnelOportunidad) => Promise<void> | void;
 };
 
 const TragerFunnelCard: React.FC<TragerFunnelCardProps> = ({
   item,
+  productoNombre,
   dragDisabled,
   onViewDetail,
 }) => {
@@ -527,6 +669,9 @@ const TragerFunnelCard: React.FC<TragerFunnelCardProps> = ({
           Próxima: {formatDate(item.fechaProximaAccion)}
         </p>
 
+        {productoNombre && (
+          <p className="mt-1 line-clamp-2 text-beck-ink-soft">{productoNombre}</p>
+        )}
         <Button
           size="small"
           type="link"
@@ -552,12 +697,14 @@ type TragerFunnelColumnProps = {
     items: TragerFunnelOportunidad[];
     total: number;
   };
+  productoMap: Map<number, ProductoTrager>;
   dragDisabled: boolean;
   onViewDetail: (item: TragerFunnelOportunidad) => Promise<void> | void;
 };
 
 const TragerFunnelColumn: React.FC<TragerFunnelColumnProps> = ({
   column,
+  productoMap,
   dragDisabled,
   onViewDetail,
 }) => {
@@ -591,14 +738,22 @@ const TragerFunnelColumn: React.FC<TragerFunnelColumnProps> = ({
 
       <div className="flex-1 space-y-3 overflow-y-auto pr-1">
         {column.items.length ? (
-          column.items.map((item) => (
-            <TragerFunnelCard
-              key={item.id}
-              item={item}
-              dragDisabled={dragDisabled}
-              onViewDetail={onViewDetail}
-            />
-          ))
+          column.items.map((item) => {
+            const producto =
+              item.producto?.nombre ??
+              item.productoNombre ??
+              (item.productoId ? productoMap.get(item.productoId)?.nombre : null);
+
+            return (
+              <TragerFunnelCard
+                key={item.id}
+                item={item}
+                productoNombre={producto}
+                dragDisabled={dragDisabled}
+                onViewDetail={onViewDetail}
+              />
+            );
+          })
         ) : (
           <p className="mt-4 text-center text-xs text-beck-muted">
             Sin oportunidades
@@ -616,6 +771,7 @@ const TragerFunnel: React.FC<{
   onEmbedClose?: () => void;
 }> = ({ alertaBell, embedOportunidadId, onEmbedClose }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const pendingOportunidadId = useRef<string | null>(null);
   const lastOpenedAlertTs = useRef<number | null>(null);
   const embedOpenedIdRef = useRef<string | null>(null);
@@ -635,16 +791,21 @@ const TragerFunnel: React.FC<{
   );
 
   const [form] = Form.useForm<FunnelFormValues>();
+  const [cotizacionForm] = Form.useForm<CotizacionFormValues>();
   const etapaWatch = Form.useWatch("etapa", form);
-  const clienteTragerIdWatch = Form.useWatch("clienteTragerId", form);
   const regionWatch = Form.useWatch("region", form);
   const motivoPerdidaWatch = Form.useWatch("motivoPerdida", form);
   const motivoPostergacionWatch = Form.useWatch("motivoPostergacion", form);
   const motivoDescarteWatch = Form.useWatch("motivoDescarte", form);
+  const lineasCotizacionRaw = Form.useWatch("lineas", cotizacionForm);
+  const lineasCotizacionWatch = useMemo(() => lineasCotizacionRaw ?? [], [lineasCotizacionRaw]);
 
   const [oportunidades, setOportunidades] = useState<TragerFunnelOportunidad[]>([]);
   const [resumen, setResumen] = useState<TragerFunnelResumen>(RESUMEN_VACIO);
+  const [productos, setProductos] = useState<ProductoTrager[]>([]);
+  const [cotizaciones, setCotizaciones] = useState<TragerCotizacion[]>([]);
   const [clientesTrager, setClientesTrager] = useState<ClienteTrager[]>([]);
+  const [contactosCliente, setContactosCliente] = useState<ContactoClienteTrager[]>([]);
   const [archivosTrager, setArchivosTrager] = useState<FunnelTragerArchivo[]>([]);
   const [uploadingArchivo, setUploadingArchivo] = useState(false);
   const [clientesLoading, setClientesLoading] = useState(false);
@@ -653,6 +814,10 @@ const TragerFunnel: React.FC<{
   >([]);
   const [usuariosComercialesTragerLoading, setUsuariosComercialesTragerLoading] =
     useState(false);
+  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
+  const [contactoModalOpen, setContactoModalOpen] = useState(false);
+  const [contactoSaving, setContactoSaving] = useState(false);
+  const [contactoForm] = Form.useForm<ContactoClienteTragerPayload>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -661,6 +826,12 @@ const TragerFunnel: React.FC<{
     useState<TragerEditSection | null>(null);
   const [targetEtapa, setTargetEtapa] = useState<TragerFunnelEtapa | null>(null);
   const [selected, setSelected] = useState<TragerFunnelOportunidad | null>(null);
+  const [cotizacionModalOpen, setCotizacionModalOpen] = useState(false);
+  const [cotizacionModalMode, setCotizacionModalMode] =
+    useState<ModalMode>("crear");
+  const [selectedCotizacion, setSelectedCotizacion] =
+    useState<TragerCotizacion | null>(null);
+  const [savingCotizacion, setSavingCotizacion] = useState(false);
   const [activeDragOpportunity, setActiveDragOpportunity] =
     useState<TragerFunnelOportunidad | null>(null);
 
@@ -709,6 +880,15 @@ const TragerFunnel: React.FC<{
   >("Trager");
   const [beckVisibleCount, setBeckVisibleCount] = useState(0);
 
+  const productoOptions = useMemo(
+    () =>
+      productos.map((producto) => ({
+        label: producto.nombre,
+        value: producto.id,
+      })),
+    [productos]
+  );
+
   const responsableTragerOptions = useMemo(
     () =>
       usuariosComercialesTrager
@@ -729,12 +909,41 @@ const TragerFunnel: React.FC<{
     return label.toLowerCase().includes(input.toLowerCase());
   };
 
+  const productoMap = useMemo(
+    () => new Map(productos.map((producto) => [producto.id, producto])),
+    [productos]
+  );
+
+  const cotizacionOptions = useMemo(
+    () =>
+      cotizaciones.map((cotizacion) => ({
+        label: getCotizacionLabel(cotizacion),
+        value: cotizacion.id,
+      })),
+    [cotizaciones]
+  );
+
   const clienteOptions = useMemo(() => {
     return clientesTrager.map((cliente) => ({
       label: getClienteTragerLabel(cliente),
       value: cliente.id,
+      clienteId: cliente.id,
     }));
   }, [clientesTrager]);
+
+  const contactoOptions = useMemo(
+    () =>
+      contactosCliente
+        .filter((contacto) => contacto.activo)
+        .map((contacto) => ({
+          label: contacto.cargo
+            ? `${contacto.nombre} — ${contacto.cargo}`
+            : contacto.nombre,
+          value: contacto.nombre,
+          contactoId: contacto.id,
+        })),
+    [contactosCliente]
+  );
 
   const regionOptions = useMemo(
     () =>
@@ -759,12 +968,52 @@ const TragerFunnel: React.FC<{
     [regionWatch]
   );
 
+  const cotizacionTotals = useMemo(
+    () => calculateTotals(lineasCotizacionWatch),
+    [lineasCotizacionWatch]
+  );
+
+  const relatedCotizaciones = useMemo(() => {
+    if (!selected) return [];
+
+    const linkedIds = new Set(
+      [selected.cotizacionId, selected.cotizacion?.id]
+        .filter((value): value is string | number => value !== null && value !== undefined)
+        .map((value) => String(value))
+    );
+
+    const fromList = cotizaciones.filter((cotizacion) =>
+      linkedIds.has(String(cotizacion.id))
+    );
+
+    if (
+      selected.cotizacion &&
+      !fromList.some((cotizacion) => cotizacion.id === selected.cotizacion?.id)
+    ) {
+      return [selected.cotizacion, ...fromList];
+    }
+
+    return fromList;
+  }, [cotizaciones, selected]);
+
   const cargar = useCallback(async () => {
     try {
       setLoading(true);
-      const funnelResponse = await tragerFunnelAPI.listar({});
+      const [funnelResponse, cotizacionesResponse] = await Promise.all([
+        tragerFunnelAPI.listar({}),
+        tragerCotizacionesAPI.listar({}),
+      ]);
+
       setOportunidades(funnelResponse.data);
       setResumen(funnelResponse.resumen);
+      setCotizaciones(cotizacionesResponse.data);
+
+      try {
+        const productosResponse = await tragerProductosAPI.listar({ activo: true });
+        setProductos(productosResponse.data);
+      } catch {
+        setProductos([]);
+      }
     } catch {
       void message.error("No se pudo cargar el funnel Trager");
       setOportunidades([]);
@@ -843,7 +1092,7 @@ const TragerFunnel: React.FC<{
     embedOpenedIdRef.current = embedOportunidadId;
     embedHasOpenedRef.current = false;
     void openOportunidad(
-      { id: Number(embedOportunidadId) } as TragerFunnelOportunidad,
+      { id: embedOportunidadId } as TragerFunnelOportunidad,
       "ver"
     ).then(() => {
       embedHasOpenedRef.current = true;
@@ -891,7 +1140,7 @@ const TragerFunnel: React.FC<{
   }, []);
 
   const cargarArchivosTrager = useCallback(
-    async (oportunidadId: number) => {
+    async (oportunidadId: string | number) => {
       try {
         const archivos = await tragerFunnelAPI.listarArchivos(oportunidadId);
         setArchivosTrager(archivos);
@@ -908,15 +1157,34 @@ const TragerFunnel: React.FC<{
       setClientesLoading(true);
       try {
         const cliente = await clientesTragerAPI.obtener(clienteId);
+        const contactosActivos = (cliente.contactos ?? []).filter(
+          (contacto) => contacto.activo
+        );
+
+        setSelectedClienteId(cliente.id);
+        setContactosCliente(contactosActivos);
         form.setFieldsValue({
+          clienteId: cliente.id,
           clienteTragerId: cliente.id,
-          cliente: cliente.nombre,
-          contacto: cliente.contactoNombre ?? "",
-          telefono: cliente.contactoTelefono ?? "",
-          correo: cliente.contactoCorreo ?? "",
+          cliente: getClienteTragerNombre(cliente),
+          telefono: cliente.telefono ?? "",
+          correo: cliente.email ?? cliente.correo ?? "",
+          tipoCliente: getClienteTragerTipo(cliente),
           rutEmpresa: preservarDatosOportunidad
             ? form.getFieldValue("rutEmpresa")
             : cliente.rut ?? "",
+          region: preservarDatosOportunidad
+            ? form.getFieldValue("region")
+            : cliente.region ?? "",
+          comuna: preservarDatosOportunidad
+            ? form.getFieldValue("comuna")
+            : cliente.comuna ?? "",
+          direccionProyecto: preservarDatosOportunidad
+            ? form.getFieldValue("direccionProyecto")
+            : cliente.direccion ?? "",
+          contacto: "",
+          contactoId: undefined,
+          contactoTragerId: undefined,
         });
         if (!preservarDatosOportunidad) {
           setShowClienteSelector(false);
@@ -931,21 +1199,56 @@ const TragerFunnel: React.FC<{
   );
 
   const limpiarClienteTragerSeleccionado = useCallback(() => {
+    setSelectedClienteId(null);
+    setContactosCliente([]);
     form.setFieldsValue({
+      clienteId: undefined,
       clienteTragerId: undefined,
+      contactoId: undefined,
+      contactoTragerId: undefined,
+      contacto: "",
     });
   }, [form]);
+
+  const abrirNuevoContacto = () => {
+    contactoForm.resetFields();
+    contactoForm.setFieldsValue({ activo: true, principal: false });
+    setContactoModalOpen(true);
+  };
+
+  const guardarNuevoContacto = async (values: ContactoClienteTragerPayload) => {
+    if (!selectedClienteId) return;
+    setContactoSaving(true);
+    try {
+      await clientesTragerAPI.agregarContacto(selectedClienteId, values);
+      const cliente = await clientesTragerAPI.obtener(selectedClienteId);
+      const contactosActivos = (cliente.contactos ?? []).filter(
+        (contacto) => contacto.activo
+      );
+      setContactosCliente(contactosActivos);
+      setContactoModalOpen(false);
+      contactoForm.resetFields();
+      void message.success("Contacto agregado");
+    } catch {
+      void message.error("No se pudo agregar el contacto");
+    } finally {
+      setContactoSaving(false);
+    }
+  };
 
   const setFormFromOportunidad = (
     oportunidad: TragerFunnelOportunidad,
     etapaOverride?: TragerFunnelEtapa
   ) => {
     form.setFieldsValue({
+      // En Trager los ids de cliente son numéricos.
+      clienteId: toClienteId(oportunidad.clienteId ?? oportunidad.clienteTragerId),
+      clienteTragerId: toClienteId(oportunidad.clienteTragerId ?? oportunidad.clienteId),
       cliente: oportunidad.cliente,
       contacto: oportunidad.contacto ?? "",
       telefono: oportunidad.telefono ?? "",
       correo: oportunidad.correo ?? "",
-      tipoCliente: oportunidad.tipoCliente ?? undefined,
+      tipoCliente: oportunidad.tipoCliente as TragerCotizacionTipoCliente | undefined,
       rutEmpresa: oportunidad.rutEmpresa ?? "",
       region: oportunidad.region ?? "",
       comuna: oportunidad.comuna ?? "",
@@ -1035,7 +1338,13 @@ const TragerFunnel: React.FC<{
       comentariosInternos: oportunidad.comentariosInternos ?? "",
       observacionesTecnicas: oportunidad.observacionesTecnicas ?? "",
     });
-    limpiarClienteTragerSeleccionado();
+
+    const clienteId = toClienteId(oportunidad.clienteId ?? oportunidad.clienteTragerId);
+    if (clienteId) {
+      void seleccionarClienteTrager(clienteId, true);
+    } else {
+      limpiarClienteTragerSeleccionado();
+    }
   };
 
   const openCrear = () => {
@@ -1043,6 +1352,8 @@ const TragerFunnel: React.FC<{
     setModalMode("crear");
     setInitialEditSection(null);
     setTargetEtapa(null);
+    setSelectedClienteId(null);
+    setContactosCliente([]);
     setShowClienteSelector(false);
     form.resetFields();
     form.setFieldsValue({
@@ -1076,7 +1387,7 @@ const TragerFunnel: React.FC<{
     return etapa.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const loadHistorialEtapas = async (id: number) => {
+  const loadHistorialEtapas = async (id: string | number) => {
     setHistorialEtapasLoading(true);
     setHistorialEtapasError(null);
     setHistorialEtapas([]);
@@ -1169,7 +1480,7 @@ const TragerFunnel: React.FC<{
     return false;
   };
 
-  const handleEliminarArchivoTrager = async (archivoId: number) => {
+  const handleEliminarArchivoTrager = async (archivoId: string | number) => {
     try {
       await tragerFunnelAPI.eliminarArchivo(archivoId);
       setArchivosTrager((current) =>
@@ -1219,6 +1530,9 @@ const TragerFunnel: React.FC<{
   };
 
   const buildPayload = (values: FunnelFormValues): TragerFunnelPayload => ({
+    clienteId: values.clienteId ?? selected?.clienteId ?? selectedClienteId,
+    clienteTragerId:
+      values.clienteTragerId ?? selected?.clienteTragerId ?? selectedClienteId,
     cliente: values.cliente?.trim() || selected?.cliente || "",
     contacto: keepString(values.contacto, selected?.contacto),
     telefono: keepString(values.telefono, selected?.telefono),
@@ -1318,7 +1632,12 @@ const TragerFunnel: React.FC<{
     ),
     observaciones: keepString(values.observaciones, selected?.observaciones),
     origen: keepString(values.origen, selected?.origen),
-    cotizacionId: selected?.cotizacionId ?? null,
+    cotizacionId:
+      values.cotizacionId !== undefined && values.cotizacionId !== null
+        ? values.cotizacionId
+        : initialEditSection
+          ? selected?.cotizacionId ?? null
+          : null,
     motivoPerdida: keepString(
       normalizarMotivoSubmit(values.motivoPerdida, values.motivoPerdidaDetalle) || undefined,
       selected?.motivoPerdida
@@ -1436,7 +1755,7 @@ const TragerFunnel: React.FC<{
 
   const handleSubmit = async (values: FunnelFormValues) => {
     if (modalMode === "ver") return;
-    if (modalMode === "crear" && !clienteTragerIdWatch && !values.cliente?.trim()) {
+    if (modalMode === "crear" && !selectedClienteId && !values.cliente?.trim()) {
       void message.error("Selecciona un cliente registrado o ingresa un cliente no registrado");
       return;
     }
@@ -1603,7 +1922,8 @@ const TragerFunnel: React.FC<{
   };
 
   const buildPayloadFromOportunidad = (
-    oportunidad: TragerFunnelOportunidad
+    oportunidad: TragerFunnelOportunidad,
+    cotizacionId?: string | number | null
   ): TragerFunnelPayload => ({
     cliente: oportunidad.cliente,
     contacto: oportunidad.contacto ?? null,
@@ -1648,7 +1968,7 @@ const TragerFunnel: React.FC<{
     fechaProximaAccion: oportunidad.fechaProximaAccion ?? null,
     observaciones: oportunidad.observaciones ?? null,
     origen: oportunidad.origen ?? null,
-    cotizacionId: oportunidad.cotizacionId ?? null,
+    cotizacionId: cotizacionId ?? oportunidad.cotizacionId ?? null,
     motivoPerdida: oportunidad.motivoPerdida ?? null,
     motivoPostergacion: oportunidad.motivoPostergacion ?? null,
     fechaReactivacion: oportunidad.fechaReactivacion ?? null,
@@ -1779,6 +2099,152 @@ const TragerFunnel: React.FC<{
     }
   };
 
+  const buildCotizacionPayload = (
+    values: CotizacionFormValues
+  ): TragerCotizacionPayload => {
+    const detalles = (values.lineas ?? [])
+      .filter((linea) => linea.productoId && Number(linea.cantidad || 0) > 0)
+      .map((linea) => ({
+        productoId: Number(linea.productoId),
+        cantidad: Number(linea.cantidad || 0),
+        precioUnitario: Number(linea.precioUnitario || 0),
+        descuentoPct: Number(linea.descuentoPct || 0),
+        observacion: linea.observacion?.trim() || null,
+      }));
+
+    return {
+      cliente: values.cliente.trim(),
+      contacto: values.contacto?.trim() || null,
+      tipoCliente: values.tipoCliente,
+      responsable: values.responsable?.trim() || null,
+      fechaVencimiento: values.fechaVencimiento?.format("YYYY-MM-DD") ?? null,
+      fechaSeguimiento: values.fechaSeguimiento?.format("YYYY-MM-DD") ?? null,
+      observaciones: values.observaciones?.trim() || null,
+      subtotal: cotizacionTotals.subtotal,
+      descuento: cotizacionTotals.descuento,
+      impuesto: cotizacionTotals.iva,
+      total: cotizacionTotals.total,
+      detalles,
+    };
+  };
+
+  const openCrearCotizacion = () => {
+    if (!selected) return;
+
+    const producto = selected.productoId ? productoMap.get(selected.productoId) : null;
+
+    setSelectedCotizacion(null);
+    setCotizacionModalMode("crear");
+    cotizacionForm.resetFields();
+    cotizacionForm.setFieldsValue({
+      cliente: selected.cliente,
+      contacto: [selected.contacto, selected.telefono, selected.correo]
+        .filter(Boolean)
+        .join(" / "),
+      tipoCliente:
+        (selected.tipoCliente as TragerCotizacionTipoCliente | undefined) ??
+        "CLIENTE_FINAL",
+      responsable: selected.responsable ?? "",
+      fechaSeguimiento: selected.fechaProximaAccion
+        ? dayjs(selected.fechaProximaAccion)
+        : null,
+      observaciones: selected.observaciones ?? "",
+      lineas: selected.productoId
+        ? [
+            {
+              productoId: selected.productoId,
+              cantidad: Number(selected.cantidadEstimada || 1),
+              precioUnitario: Number(producto?.precio || 0),
+              descuentoPct: 0,
+            },
+          ]
+        : [{ cantidad: 1, descuentoPct: 0 }],
+    });
+    setCotizacionModalOpen(true);
+  };
+
+  const openCotizacion = async (record: TragerCotizacion, mode: ModalMode) => {
+    try {
+      setCotizacionModalMode(mode);
+      setCotizacionModalOpen(true);
+      const detalle = await tragerCotizacionesAPI.obtener(record.id);
+      const lineasDetalle = getLineasCotizacion(detalle).map((linea) => ({
+        productoId: Number(linea.productoId),
+        cantidad: Number(linea.cantidad || 1),
+        precioUnitario: Number(linea.precioUnitario || 0),
+        descuentoPct: Number(linea.descuentoPct || 0),
+      }));
+
+      setSelectedCotizacion(detalle);
+      cotizacionForm.setFieldsValue({
+        cliente: detalle.cliente,
+        contacto: detalle.contacto ?? "",
+        tipoCliente:
+          (detalle.tipoCliente as TragerCotizacionTipoCliente | undefined) ??
+          "CLIENTE_FINAL",
+        responsable: detalle.responsable ?? "",
+        fechaVencimiento: detalle.fechaVencimiento
+          ? dayjs(detalle.fechaVencimiento)
+          : null,
+        fechaSeguimiento: detalle.fechaSeguimiento
+          ? dayjs(detalle.fechaSeguimiento)
+          : null,
+        observaciones: detalle.observaciones ?? "",
+        lineas: lineasDetalle.length ? lineasDetalle : [{ cantidad: 1, descuentoPct: 0 }],
+      });
+    } catch {
+      setCotizacionModalOpen(false);
+      void message.error("No se pudo cargar la cotización");
+    }
+  };
+
+  const handleCotizacionSubmit = async (values: CotizacionFormValues) => {
+    if (cotizacionModalMode === "ver") return;
+    const payload = buildCotizacionPayload(values);
+
+    if (!payload.detalles.length) {
+      void message.error("Agrega al menos un producto a la cotización");
+      return;
+    }
+
+    setSavingCotizacion(true);
+    try {
+      if (cotizacionModalMode === "editar" && selectedCotizacion) {
+        await tragerCotizacionesAPI.actualizar(selectedCotizacion.id, payload);
+        void message.success("Cotización actualizada");
+      } else {
+        const nuevaCotizacion = await tragerCotizacionesAPI.crear(payload);
+        if (selected) {
+          const updated = await tragerFunnelAPI.actualizar(
+            selected.id,
+            buildPayloadFromOportunidad(selected, nuevaCotizacion.id)
+          );
+          setSelected(updated);
+          setFormFromOportunidad(updated);
+        }
+        void message.success("Cotización creada y vinculada");
+      }
+
+      setCotizacionModalOpen(false);
+      setSelectedCotizacion(null);
+      cotizacionForm.resetFields();
+      await cargar();
+    } catch {
+      void message.error("No se pudo guardar la cotización");
+    } finally {
+      setSavingCotizacion(false);
+    }
+  };
+
+  const handlePdf = async (record: TragerCotizacion) => {
+    try {
+      const blob = await tragerCotizacionesAPI.descargarPdf(record.id);
+      downloadBlob(blob, `cotizacion-trager-${record.id}.pdf`);
+    } catch {
+      void message.error("No se pudo descargar el PDF");
+    }
+  };
+
 
   const getColumnaKanban = useCallback(
     (item: TragerFunnelOportunidad): TragerFunnelEtapa =>
@@ -1820,10 +2286,12 @@ const TragerFunnel: React.FC<{
     [visibleOportunidades, getColumnaKanban]
   );
 
-  const canSeleccionarCliente = puedeSeleccionarClienteComercial(modalMode, canEditTragerFunnel, canCambiarEmpresaTrager);
   const modalReadOnly = modalMode === "ver";
   const isFocusedStageEdit = modalMode === "editar" && Boolean(initialEditSection);
   const isCreateMode = modalMode === "crear";
+  const canSeleccionarCliente = puedeSeleccionarClienteComercial(
+    modalMode, canEditTragerFunnel, isAdminGlobal || canCambiarEmpresaTrager,
+  );
   const isFullEditMode = modalMode === "editar" && !initialEditSection;
   const modalWidth =
     modalReadOnly
@@ -1833,14 +2301,74 @@ const TragerFunnel: React.FC<{
       : "min(720px, 95vw)";
 
   const renderIdentityFields = () => (
-    <Form.Item name="clienteTragerId" hidden>
-      <Input />
-    </Form.Item>
+    <>
+      <Form.Item name="clienteId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="clienteTragerId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="contactoId" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item name="contactoTragerId" hidden>
+        <Input />
+      </Form.Item>
+    </>
   );
 
   const renderContactoField = () => (
     <Form.Item name="contacto" label={<>Nombre de contacto <span className="text-red-500">*</span></>}>
-      <Input placeholder="Nombre contacto" />
+      {selectedClienteId ? (
+        <div className="space-y-2">
+          {contactoOptions.length ? (
+            <Select
+              options={contactoOptions}
+              placeholder="Seleccionar contacto"
+              allowClear
+              onChange={(_, option) => {
+                const selectedOption = Array.isArray(option) ? option[0] : option;
+                const contactoId =
+                  typeof selectedOption === "object" && selectedOption
+                    ? (selectedOption as { contactoId?: number }).contactoId
+                    : undefined;
+                const contacto = contactosCliente.find(
+                  (item) => item.id === contactoId
+                );
+                if (!contacto) {
+                  form.setFieldsValue({
+                    contacto: "",
+                    contactoId: undefined,
+                    contactoTragerId: undefined,
+                  });
+                  return;
+                }
+
+                form.setFieldsValue({
+                  contactoId: contacto.id,
+                  contactoTragerId: contacto.id,
+                  contacto: contacto.nombre,
+                  telefono: contacto.telefono || form.getFieldValue("telefono"),
+                  correo: contacto.correo || form.getFieldValue("correo"),
+                });
+              }}
+            />
+          ) : (
+            <Text type="secondary">Este cliente no tiene contactos registrados</Text>
+          )}
+          <Button
+            size="small"
+            type="link"
+            icon={<PlusOutlined />}
+            onClick={abrirNuevoContacto}
+            className="!px-0"
+          >
+            Nuevo contacto
+          </Button>
+        </div>
+      ) : (
+        <Input placeholder="Nombre contacto" />
+      )}
     </Form.Item>
   );
 
@@ -1968,7 +2496,7 @@ const TragerFunnel: React.FC<{
               type="link"
               onClick={() => setShowClienteSelector(true)}
               disabled={!canSeleccionarCliente}
-              title={!canSeleccionarCliente ? "No tienes permiso para cambiar empresa" : undefined}
+              title={!canSeleccionarCliente ? "No tienes permiso para cambiar el cliente" : undefined}
               className="!px-0 text-xs"
             >
               Cambiar cliente
@@ -2033,7 +2561,7 @@ const TragerFunnel: React.FC<{
                 size="small"
                 type="link"
                 disabled={!canSeleccionarCliente}
-                title={!canSeleccionarCliente ? "No tienes permiso para cambiar empresa" : undefined}
+                title={!canSeleccionarCliente ? "No tienes permiso para cambiar el cliente" : undefined}
                 onClick={() => setShowClienteSelector(false)}
                 className="!px-0 text-xs"
               >
@@ -2047,7 +2575,7 @@ const TragerFunnel: React.FC<{
                 showSearch
                 allowClear
                 loading={clientesLoading}
-                value={clienteTragerIdWatch ?? undefined}
+                value={selectedClienteId ?? undefined}
                 options={clienteOptions}
                 optionFilterProp="label"
                 placeholder={
@@ -2062,15 +2590,15 @@ const TragerFunnel: React.FC<{
                 }}
                 onChange={(clienteId) => {
                   if (clienteId) {
-                    void seleccionarClienteTrager(clienteId);
+                    void seleccionarClienteTrager(Number(clienteId));
                     return;
                   }
                   limpiarClienteTragerSeleccionado();
                 }}
               />
             </Form.Item>
-            {clienteTragerIdWatch && (
-              <Button onClick={limpiarClienteTragerSeleccionado}>
+            {selectedClienteId && (
+              <Button onClick={limpiarClienteTragerSeleccionado} disabled={!canSeleccionarCliente}>
                 Quitar cliente asociado
               </Button>
             )}
@@ -2087,7 +2615,7 @@ const TragerFunnel: React.FC<{
             rules={[
               {
                 validator: (_, value: string) => {
-                  if (clienteTragerIdWatch || value?.trim()) {
+                  if (selectedClienteId || value?.trim()) {
                     return Promise.resolve();
                   }
                   return Promise.reject(
@@ -2103,7 +2631,7 @@ const TragerFunnel: React.FC<{
                   ? "No tienes permiso para cambiar empresa"
                   : "Nombre cliente no registrado"
               }
-              disabled={Boolean(clienteTragerIdWatch) || !canSeleccionarCliente}
+              disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
             />
           </Form.Item>
         )}
@@ -2164,7 +2692,8 @@ const TragerFunnel: React.FC<{
             options={[
               { value: "Beck", label: "Beck" },
               { value: "Trager", label: "Trager" },
-              { value: "Mixto", label: "Mixto" },
+              { value: "Firemat", label: "Firemat" },
+                  { value: "Mixto", label: "Mixto" },
             ]}
           />
         </Form.Item>
@@ -2175,7 +2704,13 @@ const TragerFunnel: React.FC<{
           <Input placeholder="Linea de producto" />
         </Form.Item>
         <Form.Item name="productoId" label="Producto">
-          <InputNumber className="w-full" placeholder="ID de producto (catálogo pendiente)" min={0} />
+          <Select
+            options={productoOptions}
+            placeholder="Producto Trager"
+            showSearch
+            optionFilterProp="label"
+            allowClear
+          />
         </Form.Item>
         <Form.Item name="cantidadEstimada" label="Cantidad estimada">
           <InputNumber min={0} className="w-full" />
@@ -2317,7 +2852,13 @@ const TragerFunnel: React.FC<{
         <Input placeholder="Linea de producto" />
       </Form.Item>
       <Form.Item name="productoId" label="Producto">
-        <InputNumber className="w-full" placeholder="ID de producto (catálogo pendiente)" min={0} />
+        <Select
+          options={productoOptions}
+          placeholder="Producto Trager"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
       </Form.Item>
       <Form.Item name="cantidadEstimada" label="Cantidad estimada">
         <InputNumber min={0} className="w-full" />
@@ -2364,11 +2905,29 @@ const TragerFunnel: React.FC<{
       <Form.Item name="origen" label="Origen">
         <Input placeholder="CRM, web, referido..." />
       </Form.Item>
+      <Form.Item name="cotizacionId" label="Cotizacion vinculada">
+        <Select
+          options={cotizacionOptions}
+          placeholder="Seleccionar cotizacion"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
     </div>
   );
 
   const renderCotizacionEnviadaFields = () => (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Form.Item name="cotizacionId" label="Cotizacion vinculada">
+        <Select
+          options={cotizacionOptions}
+          placeholder="Seleccionar cotizacion"
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
       <Form.Item name="versionCotizacion" label="Version cotizacion">
         <Input placeholder="Ej: v1, v2, v3" />
       </Form.Item>
@@ -2738,6 +3297,7 @@ const TragerFunnel: React.FC<{
             tiposOportunidadDisponibles={[...new Set(oportunidades.map((o) => o.tipoOportunidad).filter((v): v is string => Boolean(v)))]}
             clientesDisponibles={[...new Set(oportunidades.map((o) => o.cliente).filter((v): v is string => Boolean(v)))]}
             proyectosDisponibles={[...new Set(oportunidades.map((o) => o.nombreOportunidad).filter((v): v is string => Boolean(v)))]}
+            productosDisponibles={productos.map((p) => ({ value: p.id, label: p.nombre }))}
           />
         </section>
       ) : (
@@ -2760,11 +3320,25 @@ const TragerFunnel: React.FC<{
             size="small"
             style={{ minWidth: 160 }}
             value={filterUnidadNegocio}
-            onChange={(v) => setFilterUnidadNegocio(v ?? "Trager")}
+            onChange={(value: string) => {
+              // Firemat usa su propio funnel y endpoints, nunca FunnelBeck.
+              if (value === "Firemat") {
+                if (!canViewFunnel("firemat_acceder_plataforma") || !canViewFunnel("firemat_funnel")) {
+                  void message.warning("Necesitas acceso a Firemat y permiso para ver su funnel.");
+                  return;
+                }
+                navigate("/firemat/funnel");
+                return;
+              }
+              if (value === "Beck" || value === "Mixto" || value === "Trager") {
+                setFilterUnidadNegocio(value);
+              }
+            }}
             options={[
               { value: "Beck", label: "Beck" },
               { value: "Trager", label: "Trager" },
-              { value: "Mixto", label: "Mixto" },
+              { value: "Firemat", label: "Firemat" },
+                  { value: "Mixto", label: "Mixto" },
             ]}
           />
           <span className="text-xs font-medium text-slate-500">
@@ -2832,6 +3406,7 @@ const TragerFunnel: React.FC<{
                     <TragerFunnelColumn
                       key={column.value}
                       column={column}
+                      productoMap={productoMap}
                       dragDisabled={!canEditTragerFunnel}
                       onViewDetail={(item) => openOportunidad(item, "ver")}
                     />
@@ -2940,7 +3515,12 @@ const TragerFunnel: React.FC<{
               </Descriptions.Item>
               <Descriptions.Item label="Producto">
                 <span style={{ whiteSpace: "normal", wordBreak: "normal", overflowWrap: "break-word" }}>
-                  {selected.productoId ?? "—"}
+                  {selected.producto?.nombre ??
+                    selected.productoNombre ??
+                    (selected.productoId
+                      ? productoMap.get(selected.productoId)?.nombre
+                      : null) ??
+                    "—"}
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label="Linea de producto">
@@ -2991,6 +3571,13 @@ const TragerFunnel: React.FC<{
                   {selected.proximaAccion || "—"}
                 </span>
               </Descriptions.Item>
+              {relatedCotizaciones.length > 0 && (
+                <Descriptions.Item label="Cotización vinculada" span={2}>
+                  {relatedCotizaciones
+                    .map((cot) => `#${cot.numero ?? cot.id} · ${formatCLP(cot.total)}`)
+                    .join(", ")}
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
             {/* B. Cambiar etapa */}
@@ -3002,6 +3589,60 @@ const TragerFunnel: React.FC<{
                 style={{ width: 240 }}
                 options={ETAPAS}
               />
+            </div>
+
+            {/* C. Cotizaciones vinculadas */}
+            <div>
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Cotizaciones vinculadas
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Cotizaciones Trager asociadas a esta oportunidad.
+                </p>
+              </div>
+              {relatedCotizaciones.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-[#ead7d2]">
+                  <table className="min-w-full divide-y divide-[#ead7d2] text-sm">
+                    <thead className="bg-[#fff7f5]">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Numero</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Estado</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Total</th>
+                        <th className="px-3 py-2 text-left font-medium text-beck-muted">Fecha</th>
+                        <th className="px-3 py-2 text-right font-medium text-beck-muted">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {relatedCotizaciones.map((cotizacion) => (
+                        <tr key={cotizacion.id}>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {cotizacion.numero ?? cotizacion.id}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Tag color={getEstadoColor(cotizacion.estado)}>
+                              {getEstadoLabel(cotizacion.estado)}
+                            </Tag>
+                          </td>
+                          <td className="px-3 py-2 tabular-nums">
+                            {formatCLP(cotizacion.total)}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {formatDate(cotizacion.fecha ?? cotizacion.fechaCotizacion ?? cotizacion.createdAt ?? null)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-2">
+                              <Button size="small" icon={<EyeOutlined />} onClick={() => void openCotizacion(cotizacion, "ver")}>Ver</Button>
+                              <Button size="small" icon={<DownloadOutlined />} onClick={() => void handlePdf(cotizacion)}>PDF</Button>
+                              <Button size="small" icon={<EditOutlined />} onClick={() => void openCotizacion(cotizacion, "editar")}>Editar</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* D. Botones de acción */}
@@ -3050,6 +3691,14 @@ const TragerFunnel: React.FC<{
                   Eliminar
                 </Button>
               </Popconfirm>
+              <Button
+                className="firemat-action-button"
+                type="primary"
+                icon={<FileTextOutlined />}
+                onClick={openCrearCotizacion}
+              >
+                Crear cotización
+              </Button>
             </Space>
 
             {/* E. Archivos adjuntos */}
@@ -3100,7 +3749,16 @@ const TragerFunnel: React.FC<{
           {isFocusedStageEdit && renderFocusedStageFields()}
           {isFullEditMode && (
           <>
+          <Form.Item name="clienteId" hidden>
+            <Input />
+          </Form.Item>
           <Form.Item name="clienteTragerId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contactoId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contactoTragerId" hidden>
             <Input />
           </Form.Item>
           <div className="mb-4 rounded-lg border border-[#ead7d2] bg-[#fff7f5] p-3">
@@ -3110,25 +3768,26 @@ const TragerFunnel: React.FC<{
                   showSearch
                   allowClear
                   loading={clientesLoading}
-                  value={clienteTragerIdWatch ?? undefined}
+                  value={selectedClienteId ?? undefined}
                   options={clienteOptions}
                   optionFilterProp="label"
                   placeholder="Seleccionar cliente por RUT, nombre o razón social"
+                  disabled={!canSeleccionarCliente}
                   onClear={() => {
                     limpiarClienteTragerSeleccionado();
                     form.setFieldValue("cliente", "");
                   }}
                   onChange={(clienteId) => {
                     if (clienteId) {
-                      void seleccionarClienteTrager(clienteId);
+                      void seleccionarClienteTrager(Number(clienteId));
                       return;
                     }
                     limpiarClienteTragerSeleccionado();
                   }}
                 />
               </Form.Item>
-              {clienteTragerIdWatch && (
-                <Button onClick={limpiarClienteTragerSeleccionado}>
+              {selectedClienteId && (
+                <Button onClick={limpiarClienteTragerSeleccionado} disabled={!canSeleccionarCliente}>
                   Quitar cliente asociado
                 </Button>
               )}
@@ -3144,7 +3803,7 @@ const TragerFunnel: React.FC<{
                 rules={[
                   {
                     validator: (_, value: string) => {
-                      if (clienteTragerIdWatch || value?.trim()) {
+                      if (selectedClienteId || value?.trim()) {
                         return Promise.resolve();
                       }
                       return Promise.reject(
@@ -3156,12 +3815,61 @@ const TragerFunnel: React.FC<{
               >
                 <Input
                   placeholder="Nombre cliente no registrado"
-                  disabled={Boolean(clienteTragerIdWatch)}
+                  disabled={Boolean(selectedClienteId) || !canSeleccionarCliente}
                 />
               </Form.Item>
             )}
             <Form.Item name="contacto" label={<>Nombre de contacto <span className="text-red-500">*</span></>}>
-              <Input placeholder="Nombre contacto" />
+              {selectedClienteId ? (
+                <div className="space-y-2">
+                  {contactoOptions.length ? (
+                    <Select
+                      options={contactoOptions}
+                      placeholder="Seleccionar contacto"
+                      allowClear
+                      onChange={(_, option) => {
+                        const selectedOption = Array.isArray(option) ? option[0] : option;
+                        const contactoId =
+                          typeof selectedOption === "object" && selectedOption
+                            ? (selectedOption as { contactoId?: number }).contactoId
+                            : undefined;
+                        const contacto = contactosCliente.find(
+                          (item) => item.id === contactoId
+                        );
+                        if (!contacto) {
+                          form.setFieldsValue({
+                            contacto: "",
+                            contactoId: undefined,
+                            contactoTragerId: undefined,
+                          });
+                          return;
+                        }
+
+                        form.setFieldsValue({
+                          contactoId: contacto.id,
+                          contactoTragerId: contacto.id,
+                          contacto: contacto.nombre,
+                          telefono: contacto.telefono || form.getFieldValue("telefono"),
+                          correo: contacto.correo || form.getFieldValue("correo"),
+                        });
+                      }}
+                    />
+                  ) : (
+                    <Text type="secondary">Este cliente no tiene contactos registrados</Text>
+                  )}
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<PlusOutlined />}
+                    onClick={abrirNuevoContacto}
+                    className="!px-0"
+                  >
+                    Nuevo contacto
+                  </Button>
+                </div>
+              ) : (
+                <Input placeholder="Nombre contacto" />
+              )}
             </Form.Item>
             <Form.Item name="cargoContacto" label="Cargo del contacto">
               <Input placeholder="Cargo o rol del contacto" />
@@ -3219,6 +3927,7 @@ const TragerFunnel: React.FC<{
                 options={[
                   { value: "Beck", label: "Beck" },
                   { value: "Trager", label: "Trager" },
+                  { value: "Firemat", label: "Firemat" },
                   { value: "Mixto", label: "Mixto" },
                 ]}
               />
@@ -3273,7 +3982,13 @@ const TragerFunnel: React.FC<{
               <Input placeholder="Linea de producto" />
             </Form.Item>
             <Form.Item name="productoId" label="Producto">
-              <InputNumber className="w-full" placeholder="ID de producto (catálogo pendiente)" min={0} />
+              <Select
+                options={productoOptions}
+                placeholder="Producto Trager"
+                showSearch
+                optionFilterProp="label"
+                allowClear
+              />
             </Form.Item>
             <Form.Item name="cantidadEstimada" label="Cantidad estimada">
               <InputNumber min={0} className="w-full" />
@@ -3441,6 +4156,15 @@ const TragerFunnel: React.FC<{
             {renderFechaProximaAccionField()}
             <Form.Item name="origen" label="Origen">
               <Input placeholder="CRM, web, referido..." />
+            </Form.Item>
+            <Form.Item name="cotizacionId" label="Cotización vinculada">
+              <Select
+                options={cotizacionOptions}
+                placeholder="Seleccionar cotización"
+                showSearch
+                optionFilterProp="label"
+                allowClear
+              />
             </Form.Item>
             <div className="md:col-span-3 mt-2 border-t border-[#ead7d2] pt-3">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-beck-muted">
@@ -3995,6 +4719,286 @@ const TragerFunnel: React.FC<{
           </div>
           </>
         )}
+      </Modal>
+
+      <Modal
+        title="Nuevo contacto"
+        open={contactoModalOpen}
+        onCancel={() => {
+          setContactoModalOpen(false);
+          contactoForm.resetFields();
+        }}
+        destroyOnClose
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setContactoModalOpen(false);
+              contactoForm.resetFields();
+            }}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="submit"
+            loading={contactoSaving}
+            onClick={() => contactoForm.submit()}
+            style={{
+              backgroundColor: "#475569",
+              borderColor: "#475569",
+              color: "#ffffff",
+            }}
+          >
+            Agregar
+          </Button>,
+        ]}
+      >
+        <Form
+          form={contactoForm}
+          layout="vertical"
+          onFinish={guardarNuevoContacto}
+          initialValues={{ activo: true, principal: false }}
+        >
+          <Form.Item
+            name="nombre"
+            label="Nombre"
+            rules={[{ required: true, message: "Ingresa el nombre" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="cargo" label="Cargo">
+            <Input />
+          </Form.Item>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Form.Item name="telefono" label="Teléfono">
+              <Input placeholder="+56..." />
+            </Form.Item>
+            <Form.Item name="correo" label="Correo">
+              <Input placeholder="correo@empresa.cl" />
+            </Form.Item>
+            <Form.Item name="principal" label="Contacto principal">
+              <Select
+                options={[
+                  { label: "Sí", value: true },
+                  { label: "No", value: false },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="activo" label="Estado">
+              <Select
+                options={[
+                  { label: "Activo", value: true },
+                  { label: "Inactivo", value: false },
+                ]}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item name="observaciones" label="Observaciones">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          cotizacionModalMode === "crear"
+            ? "Nueva cotización Trager"
+            : cotizacionModalMode === "editar"
+            ? `Editar cotización ${selectedCotizacion?.numero ?? selectedCotizacion?.id ?? ""}`
+            : `Detalle cotización ${selectedCotizacion?.numero ?? selectedCotizacion?.id ?? ""}`
+        }
+        open={cotizacionModalOpen}
+        onCancel={() => {
+          setCotizacionModalOpen(false);
+          setSelectedCotizacion(null);
+          cotizacionForm.resetFields();
+        }}
+        onOk={() => cotizacionForm.submit()}
+        okText={cotizacionModalMode === "crear" ? "Crear" : "Guardar"}
+        cancelText={cotizacionModalMode === "ver" ? "Cerrar" : "Cancelar"}
+        okButtonProps={{
+          hidden: cotizacionModalMode === "ver",
+          className: "firemat-action-button",
+        }}
+        confirmLoading={savingCotizacion}
+        width="min(980px, 95vw)"
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
+        destroyOnClose
+      >
+        <Form<CotizacionFormValues>
+          form={cotizacionForm}
+          layout="vertical"
+          disabled={cotizacionModalMode === "ver"}
+          onFinish={handleCotizacionSubmit}
+          initialValues={{
+            tipoCliente: "CLIENTE_FINAL",
+            lineas: [{ cantidad: 1, descuentoPct: 0 }],
+          }}
+        >
+          <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+            <Form.Item
+              name="cliente"
+              label="Cliente"
+              rules={[{ required: true, message: "Ingresa el cliente" }]}
+            >
+              <Input placeholder="Cliente" />
+            </Form.Item>
+            <Form.Item name="contacto" label="Nombre de contacto">
+              <Input placeholder="Nombre, teléfono o correo" />
+            </Form.Item>
+            <Form.Item
+              name="tipoCliente"
+              label="Tipo de cliente"
+              rules={[{ required: true, message: "Selecciona el tipo" }]}
+            >
+              <Select options={TIPO_CLIENTE_OPTIONS} />
+            </Form.Item>
+            <Form.Item name="responsable" label="Responsable">
+              <Input placeholder="Responsable comercial" />
+            </Form.Item>
+            <Form.Item name="fechaVencimiento" label="Fecha vencimiento">
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item name="fechaSeguimiento" label="Fecha seguimiento">
+              <DatePicker format="DD-MM-YYYY" className="w-full" />
+            </Form.Item>
+            <Form.Item
+              name="observaciones"
+              label="Observaciones"
+              className="md:col-span-2"
+            >
+              <Input.TextArea rows={3} placeholder="Notas comerciales" />
+            </Form.Item>
+          </div>
+
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-beck-ink">Productos</p>
+          </div>
+
+          <Form.List name="lineas">
+            {(fields, { add, remove }) => (
+              <div className="space-y-3">
+                {fields.map((field) => {
+                  const linea = lineasCotizacionWatch[field.name] ?? {};
+                  const producto = linea.productoId
+                    ? productoMap.get(Number(linea.productoId))
+                    : undefined;
+                  const cantidad = Number(linea.cantidad || 0);
+                  const superaStock =
+                    producto && cantidad > Number(producto.stockDisponible || 0);
+
+                  return (
+                    <div
+                      key={field.key}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[2fr,90px,130px,110px,130px,auto]">
+                        <Form.Item
+                          name={[field.name, "productoId"]}
+                          label="Producto"
+                          rules={[{ required: true, message: "Selecciona producto" }]}
+                        >
+                          <Select
+                            showSearch
+                            placeholder="Seleccionar producto"
+                            optionFilterProp="label"
+                            options={productoOptions}
+                            onChange={(nextProductoId) => {
+                              const selectedProduct = productoMap.get(Number(nextProductoId));
+                              const current = cotizacionForm.getFieldValue("lineas") ?? [];
+                              current[field.name] = {
+                                ...current[field.name],
+                                productoId: nextProductoId,
+                                precioUnitario: selectedProduct?.precio ?? 0,
+                                cantidad: current[field.name]?.cantidad ?? 1,
+                                descuentoPct: current[field.name]?.descuentoPct ?? 0,
+                              };
+                              cotizacionForm.setFieldValue("lineas", [...current]);
+                            }}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, "cantidad"]}
+                          label="Cantidad"
+                          rules={[{ required: true, message: "Cantidad" }]}
+                        >
+                          <InputNumber min={1} className="w-full" />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, "precioUnitario"]}
+                          label="Precio unit."
+                        >
+                          <InputNumber min={0} className="w-full" prefix="$" />
+                        </Form.Item>
+                        <Form.Item name={[field.name, "descuentoPct"]} label="Desc. %">
+                          <InputNumber min={0} max={100} className="w-full" />
+                        </Form.Item>
+                        <div className="space-y-1">
+                          <p className="text-xs text-beck-muted">Subtotal</p>
+                          <p className="rounded-md border border-slate-200 bg-white px-2 py-[5px] text-right text-sm font-semibold tabular-nums">
+                            {formatCLP(calculateLineSubtotal(linea))}
+                          </p>
+                        </div>
+                        {cotizacionModalMode !== "ver" && (
+                          <div className="flex items-end">
+                            <Button danger onClick={() => remove(field.name)}>
+                              Quitar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {producto && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          <Tag color={producto.alertaStockBajo ? "red" : "green"}>
+                            Stock disponible: {producto.stockDisponible}
+                          </Tag>
+                          {producto.alertaStockBajo && <Tag color="red">Stock bajo</Tag>}
+                          {superaStock && (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              className="py-1"
+                              message="La cantidad supera el stock disponible"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {cotizacionModalMode !== "ver" && (
+                  <Button
+                    icon={<PlusOutlined />}
+                    onClick={() => add({ cantidad: 1, descuentoPct: 0 })}
+                  >
+                    Agregar producto
+                  </Button>
+                )}
+              </div>
+            )}
+          </Form.List>
+
+          <div className="mt-4 ml-auto w-full max-w-sm rounded-lg border border-slate-200 bg-white p-3 text-sm">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <b>{formatCLP(cotizacionTotals.subtotal)}</b>
+            </div>
+            <div className="mt-1 flex justify-between text-beck-muted">
+              <span>Descuento</span>
+              <b>{formatCLP(cotizacionTotals.descuento)}</b>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span>IVA 19%</span>
+              <b>{formatCLP(cotizacionTotals.iva)}</b>
+            </div>
+            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-base">
+              <span>Total</span>
+              <b className="text-firemat-primary">{formatCLP(cotizacionTotals.total)}</b>
+            </div>
+          </div>
+        </Form>
       </Modal>
 
       {/* Modal bloqueo — 409 con bloqueos y puedeAvanzar: false */}

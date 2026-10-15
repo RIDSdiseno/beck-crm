@@ -23,7 +23,7 @@ import {
   type UsuarioApiRol,
 } from "../services/api";
 
-type EmpresaParam = "beck" | "firemat";
+type EmpresaParam = "beck" | "firemat" | "trager";
 
 type RoleOption = { label: string; value: UsuarioApiRol };
 
@@ -70,6 +70,9 @@ const roleLabels: Record<UsuarioApiRol, string> = {
   bodeguero: "Bodeguero",
   visualizador_firemat: "Visualizador Firemat",
   cliente: "Cliente",
+  vendedor_trager: "Vendedor Trager",
+  bodeguero_trager: "Bodeguero Trager",
+  visualizador_trager: "Visualizador Trager",
 };
 
 const roleTagColor: Record<UsuarioApiRol, string> = {
@@ -83,6 +86,9 @@ const roleTagColor: Record<UsuarioApiRol, string> = {
   bodeguero: "lime",
   visualizador_firemat: "blue",
   cliente: "teal",
+  vendedor_trager: "orange",
+  bodeguero_trager: "lime",
+  visualizador_trager: "blue",
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -251,11 +257,15 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const canEditModulo =
     empresa === "beck"
       ? canEdit("beck_usuarios_parametros")
-      : canEdit("firemat_usuarios_parametros");
+      : empresa === "trager"
+        ? canEdit("trager_usuarios_parametros")
+        : canEdit("firemat_usuarios_parametros");
   const editPermissionMessage =
     empresa === "firemat"
       ? "No tienes permiso para editar usuarios y parámetros Firemat."
-      : "No tienes permisos para realizar esta accion";
+      : empresa === "trager"
+        ? "No tienes permiso para editar usuarios y parámetros Trager."
+        : "No tienes permisos para realizar esta accion";
   const getWriteErrorMessage = (error: unknown, fallback: string) =>
     isAxiosError(error) && error.response?.status === 403
       ? editPermissionMessage
@@ -752,7 +762,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
   const usuariosCliente = safeUsuarios.filter((usuario) => usuario.rol === "cliente");
   const activos = safeUsuarios.filter((u) => u.activo).length;
   const inactivos = safeUsuarios.length - activos;
-  const isFiremat = empresa === "firemat";
+  // Trager usa el mismo tema visual que Firemat.
+  const isTrager = empresa === "trager";
+  const isFiremat = empresa === "firemat" || isTrager;
   const clientesBeckById = useMemo(
     () => new Map(clientesBeck.map((cliente) => [cliente.id, cliente])),
     [clientesBeck]
@@ -1414,7 +1426,9 @@ const UsuariosParametrosUI: React.FC<Props> = ({
         title={
           createClienteMode
             ? "Crear usuario cliente"
-            : isFiremat
+            : isTrager
+              ? "Crear usuario Trager"
+              : isFiremat
               ? "Crear usuario Firemat"
               : "Crear usuario app"
         }
@@ -1452,7 +1466,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
                 if (createClienteMode) return;
                 const emailActual = form.getFieldValue("email") ?? "";
                 if (emailActual && emailActual !== correoAutoGeneradoRef.current) return;
-                const dominio = isFiremat ? "@firemat.cl" : "@becksoluciones.cl";
+                const dominio = isTrager ? "@trager.cl" : isFiremat ? "@firemat.cl" : "@becksoluciones.cl";
                 const correoGenerado = generarCorreoDesdeNombre(e.target.value, dominio);
                 correoAutoGeneradoRef.current = correoGenerado;
                 form.setFieldValue("email", correoGenerado);
@@ -1467,7 +1481,7 @@ const UsuariosParametrosUI: React.FC<Props> = ({
               { type: "email", message: "Correo no válido" },
             ]}
           >
-            <Input placeholder={isFiremat ? "usuario@firemat.cl" : "usuario@becksoluciones.cl"} />
+            <Input placeholder={isTrager ? "usuario@trager.cl" : isFiremat ? "usuario@firemat.cl" : "usuario@becksoluciones.cl"} />
           </Form.Item>
           <Form.Item
             label="Contraseña"

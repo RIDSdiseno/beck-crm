@@ -14,7 +14,10 @@ export const MODULOS_TRAGER: Array<{ key: ModuloBeck; label: string }> = [
   { key: "trager_productos", label: "Trager · Productos" },
   { key: "trager_categorias", label: "Trager · Categorías" },
   { key: "trager_inventario", label: "Trager · Inventario" },
+  { key: "trager_ventas", label: "Trager · Ventas" },
   { key: "trager_movimientos", label: "Trager · Movimientos" },
+  { key: "trager_reportes", label: "Trager · Reportes" },
+  { key: "trager_usuarios_parametros", label: "Trager · Usuarios y parámetros" },
   { key: "trager_cambiar_empresa", label: "Trager · Cambiar cliente de un documento existente" },
 ];
 
@@ -22,5 +25,5 @@ export const TRAGER_NAV_MODULO: Record<string, ModuloBeck> = {
   dashboard: "trager_dashboard", funnel: "trager_funnel",
   clientes: "trager_clientes", cotizaciones: "trager_cotizaciones",
   productos: "trager_productos", categorias: "trager_categorias",
-  inventario: "trager_inventario", movimientos: "trager_movimientos",
+  inventario: "trager_inventario", ventas: "trager_ventas", movimientos: "trager_movimientos", reportes: "trager_reportes",
 };

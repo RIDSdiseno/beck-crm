@@ -298,7 +298,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     { key: "productos", to: "/trager/productos", icon: <AppstoreOutlined />, label: "Productos", access: hasViewPermission("trager_productos") },
     { key: "categorias", to: "/trager/categorias", icon: <ProfileOutlined />, label: "Categorias", access: hasViewPermission("trager_categorias") },
     { key: "inventario", to: "/trager/inventario", icon: <InboxOutlined />, label: "Inventario", access: hasViewPermission("trager_inventario") },
+    { key: "ventas", to: "/trager/ventas", icon: <ShoppingCartOutlined />, label: "Ventas", access: hasViewPermission("trager_ventas") },
     { key: "movimientos", to: "/trager/movimientos", icon: <HistoryOutlined />, label: "Movimientos", access: hasViewPermission("trager_movimientos") },
+    { key: "reportes", to: "/trager/reportes", icon: <BarChartOutlined />, label: "Reportes", access: hasViewPermission("trager_reportes") },
   ];
 
   const clienteNav = [
@@ -338,7 +340,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     (isBeck
       ? hasViewPermission("beck_usuarios_parametros") ||
         hasViewPermission("beck_reglas_validacion")
-      : activeCompany === "trager" ? isAdmin : hasViewPermission("firemat_usuarios_parametros"));
+      : activeCompany === "trager"
+        ? isAdmin || hasViewPermission("trager_usuarios_parametros")
+        : hasViewPermission("firemat_usuarios_parametros"));
   const companyOptions: Company[] = [
     ...(canCambiarEmpresaBeck ? (["beck"] as Company[]) : []),
     ...(canCambiarEmpresaFiremat ? (["firemat"] as Company[]) : []),
@@ -478,7 +482,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               <p className={`${sectionTitleCls} mb-1.5`}>Configuración</p>
             )}
             <nav className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-              {activeCompany !== "trager" && (isBeck ? hasViewPermission("beck_usuarios_parametros") : hasViewPermission("firemat_usuarios_parametros")) && (
+              {(isBeck
+                ? hasViewPermission("beck_usuarios_parametros")
+                : activeCompany === "trager"
+                  ? hasViewPermission("trager_usuarios_parametros")
+                  : hasViewPermission("firemat_usuarios_parametros")) && (
               <NavLink
                 to={isBeck ? "/beck/usuarios-parametros" : `/${firematBase}/usuarios-parametros`}
                 className={({ isActive }) =>
@@ -538,9 +546,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Reglas de Validación</span>}
               </NavLink>
               )}
-              {activeCompany === "firemat" && user?.rol === "Administrador" && (
+              {(activeCompany === "firemat" || activeCompany === "trager") && user?.rol === "Administrador" && (
               <NavLink
-                to="/firemat/configuracion-validacion"
+                to={`/${activeCompany}/configuracion-validacion`}
                 className={({ isActive }) =>
                   `${linkBase} ${
                     collapsed

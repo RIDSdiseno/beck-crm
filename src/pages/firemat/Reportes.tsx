@@ -61,24 +61,21 @@ const formatYVentas = (v: number): string => {
 
 /* ── constantes ───────────────────────────────────────── */
 
+// Estados reales de las cotizaciones de Firemat (los mismos del backend).
 const COTIZ_COLORES: Record<string, string> = {
   BORRADOR: "#94a3b8",
   ENVIADA: "#1677ff",
-  SEGUIMIENTO: "#9254de",
-  ORDEN_CONFIRMADA: "#13c2c2",
-  GANADA: "#52c41a",
-  PERDIDA: "#ff4d4f",
-  POSTERGADA: "#fa8c16",
+  ACEPTADA: "#52c41a",
+  RECHAZADA: "#ff4d4f",
+  VENCIDA: "#fa8c16",
 };
 
 const COTIZ_LABELS: Record<string, string> = {
   BORRADOR: "Borrador",
   ENVIADA: "Enviada",
-  SEGUIMIENTO: "Seguimiento",
-  ORDEN_CONFIRMADA: "Confirmada",
-  GANADA: "Ganada",
-  PERDIDA: "Perdida",
-  POSTERGADA: "Postergada",
+  ACEPTADA: "Aceptada",
+  RECHAZADA: "Rechazada",
+  VENCIDA: "Vencida",
 };
 
 const ETAPA_COLORES: Record<string, string> = {
@@ -124,11 +121,9 @@ const ESTADO_VENTA_OPTIONS = [
 const ESTADO_COTIZACION_OPTIONS = [
   { label: "Borrador", value: "BORRADOR" },
   { label: "Enviada", value: "ENVIADA" },
-  { label: "Seguimiento", value: "SEGUIMIENTO" },
-  { label: "Orden confirmada", value: "ORDEN_CONFIRMADA" },
-  { label: "Ganada", value: "GANADA" },
-  { label: "Perdida", value: "PERDIDA" },
-  { label: "Postergada", value: "POSTERGADA" },
+  { label: "Aceptada", value: "ACEPTADA" },
+  { label: "Rechazada", value: "RECHAZADA" },
+  { label: "Vencida", value: "VENCIDA" },
 ];
 
 const ETAPA_OPORTUNIDAD_OPTIONS = [

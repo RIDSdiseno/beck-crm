@@ -171,7 +171,10 @@ export interface LoginResponse {
       | "vendedor_firemat"
       | "bodeguero"
       | "visualizador_firemat"
-      | "cliente";
+      | "cliente"
+      | "vendedor_trager"
+      | "bodeguero_trager"
+      | "visualizador_trager";
   };
   empresaDefault?: "beck" | "firemat" | "trager";
 }
@@ -188,7 +191,7 @@ export type CambioVendedorAutomatico = {
   automatico: true;
 } | null;
 
-interface ApiResponseEnvelope<T> {
+export interface ApiResponseEnvelope<T> {
   success: boolean;
   data: T;
   message?: string;
@@ -197,7 +200,7 @@ interface ApiResponseEnvelope<T> {
   cambioVendedor?: CambioVendedorAutomatico;
 }
 
-interface ApiResponseWithTotal<T> {
+export interface ApiResponseWithTotal<T> {
   success: boolean;
   data: T;
   total?: number;
@@ -240,7 +243,7 @@ export interface CotizacionUpsertPayload {
   lineas: CotizacionLineaPayload[];
 }
 
-const unwrapApiResponse = <T>(payload: ApiResponseEnvelope<T>): T => {
+export const unwrapApiResponse = <T>(payload: ApiResponseEnvelope<T>): T => {
   if (!payload.success) {
     throw new Error(payload.error || payload.message || "Error en la solicitud");
   }
@@ -1544,7 +1547,10 @@ export type UsuarioApiRol =
   | "vendedor_firemat"
   | "bodeguero"
   | "visualizador_firemat"
-  | "cliente";
+  | "cliente"
+  | "vendedor_trager"
+  | "bodeguero_trager"
+  | "visualizador_trager";
 
 export interface UsuarioApi {
   id: string;
@@ -1772,7 +1778,7 @@ export const oficinaTecnicaPreventaAPI = {
   },
 };
 
-type EmpresaParam = "beck" | "firemat";
+type EmpresaParam = "beck" | "firemat" | "trager";
 
 const extractArray = (payload: unknown): UsuarioApi[] => {
   if (Array.isArray(payload)) return payload as UsuarioApi[];
@@ -3564,6 +3570,17 @@ export const firematReportesAPI = {
       "/firemat/reportes",
       { params }
     );
+    return unwrapApiResponse(response.data);
+  },
+};
+
+// Reportes de Trager: misma respuesta y filtros que Firemat.
+export type TragerReportesParams = FirematReportesParams;
+export type TragerReportesData = FirematReportesData & { ventasDisponible?: boolean };
+
+export const tragerReportesAPI = {
+  obtener: async (params?: TragerReportesParams): Promise<TragerReportesData> => {
+    const response = await api.get<ApiResponseEnvelope<TragerReportesData>>("/trager/reportes", { params });
     return unwrapApiResponse(response.data);
   },
 };
@@ -5832,7 +5849,10 @@ export type ModuloBeck =
   | "trager_categorias"
   | "trager_cotizaciones"
   | "trager_inventario"
-  | "trager_movimientos";
+  | "trager_movimientos"
+  | "trager_reportes"
+  | "trager_usuarios_parametros"
+  | "trager_ventas";
 
 export interface PermisoModulo {
   modulo: ModuloBeck;

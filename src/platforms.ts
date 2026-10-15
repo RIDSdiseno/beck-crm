@@ -54,7 +54,7 @@ export const getFirematLikePath = (
 
 // Páginas que existen en Trager: al cambiar de empresa se conserva la misma página.
 const RUTAS_TRAGER = [
-  "dashboard", "funnel", "clientes", "cotizaciones", "productos", "categorias", "inventario", "movimientos",
+  "dashboard", "funnel", "clientes", "cotizaciones", "productos", "categorias", "inventario", "ventas", "movimientos", "reportes", "usuarios-parametros", "configuracion-validacion",
 ];
 
 export const getEquivalentCompanyPath = (

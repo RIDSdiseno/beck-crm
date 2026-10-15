@@ -61,6 +61,9 @@ import {
   TragerCotizaciones,
   TragerInventario,
   TragerMovimientos,
+  TragerReportes,
+  TragerUsuariosParametros,
+  TragerVentas,
 } from "./pages/trager";
 
 import RegistrosMiEmpresa from "./pages/cliente/RegistrosMiEmpresa";
@@ -211,6 +214,10 @@ const getHomeRouteForRole = (rol: RolUsuario): string => {
     case "Bodeguero":
     case "VisualizadorFiremat":
       return "/firemat/dashboard";
+    case "VendedorTrager":
+    case "BodegueroTrager":
+    case "VisualizadorTrager":
+      return "/trager/dashboard";
     case "Cliente":
       return "/cliente/registros-mi-empresa";
     case "Visualizador":
@@ -341,7 +348,10 @@ const TRAGER_ROUTE_MODULO: Record<string, ModuloBeck> = {
   "/trager/categorias": "trager_categorias",
   "/trager/cotizaciones": "trager_cotizaciones",
   "/trager/inventario": "trager_inventario",
+  "/trager/ventas": "trager_ventas",
   "/trager/movimientos": "trager_movimientos",
+  "/trager/reportes": "trager_reportes",
+  "/trager/usuarios-parametros": "trager_usuarios_parametros",
 };
 
 const PermisosFallback: React.FC = () => (
@@ -420,6 +430,13 @@ const AppShell: React.FC = () => {
 
     const tragerHome = Object.entries(TRAGER_NAV_MODULO).find(([, modulo]) => canView(modulo));
     const fallbackHome = tragerHome ? `/trager/${tragerHome[0]}` : "/login";
+
+    // Roles de Trager: entran al primer módulo de Trager que puedan ver.
+    const isTragerRole =
+      user.rol === "VendedorTrager" ||
+      user.rol === "BodegueroTrager" ||
+      user.rol === "VisualizadorTrager";
+    if (isTragerRole) return fallbackHome;
 
     if (isFirematRole) {
       const FIREMAT_HOME_ORDER: Array<{ route: string; modulo: ModuloBeck }> = [
@@ -1026,12 +1043,40 @@ const AppShell: React.FC = () => {
                   }
                 />
                 <Route
+                  path="/trager/ventas"
+                  element={
+                    <PermisosGate modulo="trager_ventas" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerVentas />
+                    </PermisosGate>
+                  }
+                />
+                <Route
                   path="/trager/movimientos"
                   element={
                     <PermisosGate modulo="trager_movimientos" homeRoute={homeRoute} permisosReady={permisosReady}>
                       <TragerMovimientos />
                     </PermisosGate>
                   }
+                />
+                <Route
+                  path="/trager/reportes"
+                  element={
+                    <PermisosGate modulo="trager_reportes" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerReportes />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/usuarios-parametros"
+                  element={
+                    <PermisosGate modulo="trager_usuarios_parametros" homeRoute={homeRoute} permisosReady={permisosReady}>
+                      <TragerUsuariosParametros />
+                    </PermisosGate>
+                  }
+                />
+                <Route
+                  path="/trager/configuracion-validacion"
+                  element={user.rol === "Administrador" ? <BeckConfiguracionValidacion /> : <Navigate to={homeRoute} replace />}
                 />
                 <Route path="/trager/*" element={<TragerProximamente />} />
 

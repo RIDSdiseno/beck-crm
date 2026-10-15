@@ -7,3 +7,6 @@ export { default as TragerProductos } from "./Productos";
 export { default as TragerCotizaciones } from "./Cotizaciones";
 export { default as TragerInventario } from "./Inventario";
 export { default as TragerMovimientos } from "./Movimientos";
+export { default as TragerReportes } from "./Reportes";
+export { default as TragerUsuariosParametros } from "./UsuariosParametros";
+export { default as TragerVentas } from "./Ventas";
